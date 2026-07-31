@@ -106,6 +106,15 @@ input {
   margin-left: auto;
 }
 
+.account-bar {
+  justify-content: space-between;
+}
+
+.account-bar-name {
+  font-size: 15px;
+  color: var(--fg-muted);
+}
+
 .list-title {
   font-size: 20px;
   flex: 1;

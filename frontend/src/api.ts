@@ -50,12 +50,52 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
   return (await res.json()) as T
 }
 
+const unauthorizedProblemType = '/problems/unauthorized'
+
+/**
+ * True when `err` is a `ProblemDetail` signalling that the request was
+ * unauthenticated (HTTP 401). Callers use this to distinguish "not signed
+ * in" from other failures (network errors, 404s, ...) without `apiFetch`
+ * itself performing any hard redirect — the caller decides how to react.
+ */
+export function isUnauthorized(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false
+  const problem = err as ProblemDetail
+  return problem.status === 401 || problem.type === unauthorizedProblemType
+}
+
+/**
+ * Starts the BFF login flow via a top-level navigation (not `fetch`) so the
+ * browser follows the server's 302 to the IdP. `returnTo` defaults to the
+ * current path+query so the user lands back where they were after login.
+ */
+export function login(returnTo?: string): void {
+  const target = returnTo ?? window.location.pathname + window.location.search
+  window.location.href = '/api/auth/login?return_to=' + encodeURIComponent(target)
+}
+
+/**
+ * Logs out via a top-level form POST (not `fetch`/XHR) to `/api/auth/logout`,
+ * so the browser follows the server's redirect and the session cookie is
+ * cleared. An XHR POST would not follow a cross-origin redirect to the IdP's
+ * RP-initiated logout endpoint the way a real navigation does.
+ */
+export function logout(): void {
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = '/api/auth/logout'
+  form.style.display = 'none'
+  document.body.appendChild(form)
+  form.submit()
+}
+
 // --- Domain types (mirrors splitkauf.openapi.yaml) ------------------------
 
-/** The authenticated user (US-A.1). */
+/** The authenticated user (US-A.1). `email` is populated in OIDC mode. */
 export interface User {
   id: string
   name: string
+  email?: string
 }
 
 /** A shopping list with a summary of its item counts. */

@@ -8,7 +8,10 @@ import {
   deleteList,
   getList,
   getMe,
+  isUnauthorized,
   listLists,
+  login,
+  logout,
   renameList,
   uncheckItem,
   updateItem,
@@ -310,5 +313,78 @@ describe('endpoint helpers', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/uncheck', {
       method: 'POST',
     })
+  })
+})
+
+describe('isUnauthorized', () => {
+  it('is true for a 401 ProblemDetail', () => {
+    const problem: ProblemDetail = {
+      type: '/problems/unauthorized',
+      title: 'Unauthorized',
+      status: 401,
+    }
+    expect(isUnauthorized(problem)).toBe(true)
+  })
+
+  it('is true when the type is /problems/unauthorized even without a status', () => {
+    expect(isUnauthorized({ type: '/problems/unauthorized' })).toBe(true)
+  })
+
+  it('is false for a 404 ProblemDetail', () => {
+    const problem: ProblemDetail = {
+      type: '/problems/not-found',
+      title: 'Not Found',
+      status: 404,
+    }
+    expect(isUnauthorized(problem)).toBe(false)
+  })
+
+  it('is false for a non-ProblemDetail error', () => {
+    expect(isUnauthorized(new Error('network down'))).toBe(false)
+    expect(isUnauthorized(null)).toBe(false)
+    expect(isUnauthorized(undefined)).toBe(false)
+  })
+})
+
+describe('login', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('navigates to the login endpoint with an explicit encoded return_to', () => {
+    const location = { href: '', pathname: '/lists/abc', search: '?x=1' }
+    vi.stubGlobal('location', location)
+
+    login('/lists/abc?x=1')
+
+    expect(location.href).toBe('/api/auth/login?return_to=%2Flists%2Fabc%3Fx%3D1')
+  })
+
+  it('defaults return_to to the current path and query', () => {
+    const location = { href: '', pathname: '/lists/abc', search: '?x=1' }
+    vi.stubGlobal('location', location)
+
+    login()
+
+    expect(location.href).toBe('/api/auth/login?return_to=%2Flists%2Fabc%3Fx%3D1')
+  })
+})
+
+describe('logout', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    document.body.innerHTML = ''
+  })
+
+  it('submits a top-level POST form to /api/auth/logout', () => {
+    const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {})
+
+    logout()
+
+    const form = document.querySelector('form')
+    expect(form).not.toBeNull()
+    expect(form?.method).toBe('post')
+    expect(form?.action).toContain('/api/auth/logout')
+    expect(submit).toHaveBeenCalledTimes(1)
   })
 })
