@@ -3,6 +3,7 @@
 package web_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,10 +11,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexedwards/scs/v2"
+
+	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/members"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 )
+
+// devHandler builds the full REST handler in dev-auth mode for these tests.
+func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
+	t.Helper()
+	sm := scs.New()
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	if err != nil {
+		t.Fatalf("auth.New (dev): %v", err)
+	}
+	return rest.New(si, sm, authr)
+}
+
+type noopMembers struct{}
+
+func (noopMembers) Upsert(context.Context, members.Member) error { return nil }
+func (noopMembers) Get(context.Context, string) (members.Member, error) {
+	return members.Member{}, members.ErrNotFound
+}
 
 func TestMain(m *testing.M) {
 	if err := config.Load(); err != nil {
@@ -28,7 +51,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestRootServesIndexHTML(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/")
@@ -46,7 +69,7 @@ func TestRootServesIndexHTML(t *testing.T) {
 }
 
 func TestSPARouteFallsBackToIndexHTML(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/some/spa/route")
@@ -64,7 +87,7 @@ func TestSPARouteFallsBackToIndexHTML(t *testing.T) {
 }
 
 func TestMissingFileWithExtensionReturns404(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/does-not-exist.js")
@@ -79,7 +102,7 @@ func TestMissingFileWithExtensionReturns404(t *testing.T) {
 }
 
 func TestAPIHealthStillReachable(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/v1/health")

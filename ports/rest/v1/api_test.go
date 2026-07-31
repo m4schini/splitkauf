@@ -3,16 +3,32 @@
 package v1_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/alexedwards/scs/v2"
+
+	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 )
+
+// devHandler builds the full REST handler in dev-auth mode for tests that do
+// not go through newServer.
+func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
+	t.Helper()
+	sm := scs.New()
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	if err != nil {
+		t.Fatalf("auth.New (dev): %v", err)
+	}
+	return rest.New(si, sm, authr)
+}
 
 func TestMain(m *testing.M) {
 	// The REST handlers construct named loggers (via telemetry.Logger), which
@@ -31,7 +47,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetHealth(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/v1/health")
@@ -59,7 +75,7 @@ func TestGetHealth(t *testing.T) {
 // TestGetHealthNilDB verifies that a nil (unconfigured) database handle reports
 // the database check as "error" and degrades overall status, without panicking.
 func TestGetHealthNilDB(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{DB: nil}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/v1/health")

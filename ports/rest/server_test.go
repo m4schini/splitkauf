@@ -48,7 +48,7 @@ func decodeProblem(t *testing.T, resp *http.Response) problem.Problem {
 }
 
 func TestUnknownAPIRouteReturnsNotFoundProblem(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/v1/nope")
@@ -73,7 +73,7 @@ func TestUnknownAPIRouteReturnsNotFoundProblem(t *testing.T) {
 }
 
 func TestWrongMethodReturnsMethodNotAllowedProblem(t *testing.T) {
-	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/api/v1/health", nil)
@@ -99,7 +99,7 @@ func TestWrongMethodReturnsMethodNotAllowedProblem(t *testing.T) {
 }
 
 func TestPanicReturnsInternalProblemWithoutLeaking(t *testing.T) {
-	srv := httptest.NewServer(rest.New(panicServer{}))
+	srv := httptest.NewServer(devHandler(t, panicServer{}))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/api/v1/health")

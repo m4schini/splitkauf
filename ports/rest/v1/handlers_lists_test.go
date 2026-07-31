@@ -11,8 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/google/uuid"
+
+	"github.com/m4schini/splitkauf/auth"
+	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/lists"
+	"github.com/m4schini/splitkauf/members"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 )
@@ -73,13 +78,28 @@ func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID uuid.UUID)
 	return f.uncheckItem(ctx, listID, itemID)
 }
 
-// newServer starts a full-stack REST server (via rest.New) backed by the given
-// fake service, exercising the real router, validator, and DevAuth middleware.
+// newServer starts a full-stack dev-mode REST server (via rest.New) backed by
+// the given fake service, exercising the real router, session middleware,
+// validator, and the dev authenticator (which injects the fixed dev user).
 func newServer(t *testing.T, svc v1.ListService) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}))
+	sm := scs.New()
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	if err != nil {
+		t.Fatalf("auth.New (dev): %v", err)
+	}
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// noopMembers is a members.Repository that records nothing; sufficient for the
+// hermetic handler tests, which never actually sign a user in.
+type noopMembers struct{}
+
+func (noopMembers) Upsert(context.Context, members.Member) error { return nil }
+func (noopMembers) Get(context.Context, string) (members.Member, error) {
+	return members.Member{}, members.ErrNotFound
 }
 
 func TestGetMe(t *testing.T) {
@@ -104,6 +124,187 @@ func TestGetMe(t *testing.T) {
 	if got.Id == (uuid.UUID{}) {
 		t.Error("dev user id is zero")
 	}
+	// Dev mode has no email; the field is omitted.
+	if got.Email != nil {
+		t.Errorf("email = %v, want nil (omitted) in dev mode", *got.Email)
+	}
+}
+
+// TestGetMeShape checks the /me payload shape for both the with-email and
+// without-email cases by driving the handler directly with a context user (the
+// authenticator is exercised end-to-end elsewhere).
+func TestGetMeShape(t *testing.T) {
+	id := uuid.New()
+
+	t.Run("with email", func(t *testing.T) {
+		v := &v1.V1{}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+		req = req.WithContext(auth.WithUser(req.Context(), auth.User{ID: id, Name: "Alice", Email: "alice@example.com"}))
+		rec := httptest.NewRecorder()
+		v.GetMe(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var got v1.User
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.Id != id || got.Name != "Alice" {
+			t.Errorf("got %+v", got)
+		}
+		if got.Email == nil || string(*got.Email) != "alice@example.com" {
+			t.Errorf("email = %v, want alice@example.com", got.Email)
+		}
+	})
+
+	t.Run("without email", func(t *testing.T) {
+		v := &v1.V1{}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+		req = req.WithContext(auth.WithUser(req.Context(), auth.User{ID: id, Name: "Bob"}))
+		rec := httptest.NewRecorder()
+		v.GetMe(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+		var got v1.User
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got.Email != nil {
+			t.Errorf("email = %v, want nil (omitted)", *got.Email)
+		}
+	})
+}
+
+// TestOIDCUnauthenticated401 is the key auth-mode acceptance check: in OIDC
+// mode, a request to a guarded /api/v1 endpoint with no session is rejected by
+// RequireAuth with a 401 application/problem+json unauthorized problem — before
+// the handler runs. The provider is a local discovery stub (no live IdP).
+func TestOIDCUnauthenticated401(t *testing.T) {
+	sm := scs.New()
+
+	cfg := &config.Config{}
+	cfg.Auth.OIDC.Issuer = newDiscoveryServer(t)
+	cfg.Auth.OIDC.ClientID = "client-id"
+	cfg.Auth.OIDC.ClientSecret = "client-secret"
+	cfg.Auth.OIDC.RedirectURL = "https://app.example.com/api/auth/callback"
+	if !cfg.IsOIDCEnabled() {
+		t.Fatal("test config is not OIDC-enabled")
+	}
+
+	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{})
+	if err != nil {
+		t.Fatalf("auth.New (oidc): %v", err)
+	}
+
+	// The service must never be reached for an unauthenticated request.
+	svc := &fakeService{listsFn: func(context.Context) ([]lists.List, error) {
+		t.Fatal("service should not be called for an unauthenticated request")
+		return nil, nil
+	}}
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/v1/lists")
+	if err != nil {
+		t.Fatalf("GET /lists: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("content-type = %q, want application/problem+json", ct)
+	}
+	var prob struct {
+		Type   string `json:"type"`
+		Status int    `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&prob); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if prob.Type != "/problems/unauthorized" {
+		t.Errorf("type = %q, want /problems/unauthorized", prob.Type)
+	}
+	if prob.Status != http.StatusUnauthorized {
+		t.Errorf("problem status = %d, want 401", prob.Status)
+	}
+}
+
+// TestOIDCHealthPublic proves that even in OIDC mode the health endpoint stays
+// publicly reachable: GET /api/v1/health returns 200 with no session, while a
+// guarded route (GET /api/v1/lists) is still rejected with 401. This is the
+// wiring-layer carve-out in rest.New that bypasses RequireAuth for health only.
+func TestOIDCHealthPublic(t *testing.T) {
+	sm := scs.New()
+
+	cfg := &config.Config{}
+	cfg.Auth.OIDC.Issuer = newDiscoveryServer(t)
+	cfg.Auth.OIDC.ClientID = "client-id"
+	cfg.Auth.OIDC.ClientSecret = "client-secret"
+	cfg.Auth.OIDC.RedirectURL = "https://app.example.com/api/auth/callback"
+	if !cfg.IsOIDCEnabled() {
+		t.Fatal("test config is not OIDC-enabled")
+	}
+
+	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{})
+	if err != nil {
+		t.Fatalf("auth.New (oidc): %v", err)
+	}
+
+	svc := &fakeService{listsFn: func(context.Context) ([]lists.List, error) {
+		t.Fatal("service should not be called for an unauthenticated request")
+		return nil, nil
+	}}
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
+	t.Cleanup(srv.Close)
+
+	// Health is public: 200 even with no session.
+	health, err := http.Get(srv.URL + "/api/v1/health")
+	if err != nil {
+		t.Fatalf("GET /health: %v", err)
+	}
+	defer health.Body.Close()
+	if health.StatusCode != http.StatusOK {
+		t.Fatalf("health status = %d, want 200", health.StatusCode)
+	}
+
+	// A guarded route is still rejected: 401.
+	guarded, err := http.Get(srv.URL + "/api/v1/lists")
+	if err != nil {
+		t.Fatalf("GET /lists: %v", err)
+	}
+	defer guarded.Body.Close()
+	if guarded.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("lists status = %d, want 401", guarded.StatusCode)
+	}
+}
+
+// newDiscoveryServer starts an httptest server serving a minimal OIDC discovery
+// document so auth.New's provider discovery succeeds without a live IdP.
+func newDiscoveryServer(t *testing.T) string {
+	t.Helper()
+	mux := http.NewServeMux()
+	var issuer string
+	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+		doc := map[string]any{
+			"issuer":                                issuer,
+			"authorization_endpoint":                issuer + "/authorize",
+			"token_endpoint":                        issuer + "/token",
+			"jwks_uri":                              issuer + "/jwks",
+			"end_session_endpoint":                  issuer + "/logout",
+			"id_token_signing_alg_values_supported": []string{"RS256"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(doc)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	issuer = srv.URL
+	return issuer
 }
 
 func TestCreateListHappyPath(t *testing.T) {

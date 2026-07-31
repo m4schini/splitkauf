@@ -12,22 +12,29 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/google/uuid"
+	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/lists"
-	"github.com/m4schini/splitkauf/ports/rest/middleware"
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
 )
 
-// GetMe returns the authenticated user injected by the DevAuth middleware. In
-// M1 this is always the fixed dev user.
+// GetMe returns the authenticated user placed in the request context by the
+// authenticator's RequireAuth middleware — the OIDC session user in OIDC mode,
+// or the fixed dev user in dev-auth mode. The email is omitted when the
+// provider does not supply one (and always in dev mode).
 func (v *V1) GetMe(w http.ResponseWriter, r *http.Request) {
-	u, ok := middleware.UserFrom(r.Context())
+	u, ok := auth.UserFrom(r.Context())
 	if !ok {
 		problem.Write(w, r, problem.New(problem.Internal, "no authenticated user in context"))
 		return
 	}
-	writeJSON(w, r, http.StatusOK, User{Id: u.ID, Name: u.Name})
+	out := User{Id: u.ID, Name: u.Name}
+	if u.Email != "" {
+		email := openapi_types.Email(u.Email)
+		out.Email = &email
+	}
+	writeJSON(w, r, http.StatusOK, out)
 }
 
 // ListLists returns every list with its item-count summary.
