@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
@@ -44,6 +45,20 @@ type ListService interface {
 type V1 struct {
 	DB      *sql.DB
 	Service ListService
+	// Events broadcasts real-time reload hints after a successful mutation. It
+	// is optional: when nil (as in most handler unit tests) publish is a no-op,
+	// so handlers never depend on a live broker being wired.
+	Events events.Publisher
+}
+
+// publish broadcasts e via the configured Events publisher. It is nil-safe: a
+// V1 with no Events (e.g. in tests) simply does not broadcast. Handlers call it
+// only after a mutating service call has succeeded.
+func (v *V1) publish(e events.Event) {
+	if v.Events == nil {
+		return
+	}
+	v.Events.Publish(e)
 }
 
 // GetHealth reports overall service health and the status of downstream

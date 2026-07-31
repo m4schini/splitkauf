@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/m4schini/splitkauf/auth"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
@@ -62,6 +63,7 @@ func (v *V1) CreateList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeLists})
 	writeJSON(w, r, http.StatusCreated, toList(l))
 }
 
@@ -86,6 +88,7 @@ func (v *V1) RenameList(w http.ResponseWriter, r *http.Request, listId ListId) {
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeLists})
 	writeJSON(w, r, http.StatusOK, toList(l))
 }
 
@@ -95,6 +98,7 @@ func (v *V1) DeleteList(w http.ResponseWriter, r *http.Request, listId ListId) {
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeLists})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -113,6 +117,7 @@ func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusCreated, toItem(item))
 }
 
@@ -149,6 +154,7 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
 
@@ -158,6 +164,7 @@ func (v *V1) DeleteItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -168,6 +175,7 @@ func (v *V1) CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, it
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
 
@@ -178,6 +186,7 @@ func (v *V1) UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, 
 		writeError(w, r, err)
 		return
 	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
 

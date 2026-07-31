@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/members"
 	"github.com/m4schini/splitkauf/ports/rest"
@@ -83,14 +85,42 @@ func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID uuid.UUID)
 // validator, and the dev authenticator (which injects the fixed dev user).
 func newServer(t *testing.T, svc v1.ListService) *httptest.Server {
 	t.Helper()
+	return newServerWithEvents(t, svc, nil)
+}
+
+// newServerWithEvents is newServer with an events.Publisher wired into V1 so
+// tests can assert the real-time hints handlers emit after a mutation.
+func newServerWithEvents(t *testing.T, svc v1.ListService, pub events.Publisher) *httptest.Server {
+	t.Helper()
 	sm := scs.New()
 	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
-	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc, Events: pub}, sm, authr, events.NewBroker()))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// capturingPublisher records every published event for assertions. It is safe
+// for concurrent use, though these tests publish synchronously in the handler.
+type capturingPublisher struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (c *capturingPublisher) Publish(e events.Event) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.events = append(c.events, e)
+}
+
+func (c *capturingPublisher) captured() []events.Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]events.Event, len(c.events))
+	copy(out, c.events)
+	return out
 }
 
 // noopMembers is a members.Repository that records nothing; sufficient for the
@@ -204,7 +234,7 @@ func TestOIDCUnauthenticated401(t *testing.T) {
 		t.Fatal("service should not be called for an unauthenticated request")
 		return nil, nil
 	}}
-	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr, events.NewBroker()))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/api/v1/lists")
@@ -259,7 +289,7 @@ func TestOIDCHealthPublic(t *testing.T) {
 		t.Fatal("service should not be called for an unauthenticated request")
 		return nil, nil
 	}}
-	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr))
+	srv := httptest.NewServer(rest.New(&v1.V1{Service: svc}, sm, authr, events.NewBroker()))
 	t.Cleanup(srv.Close)
 
 	// Health is public: 200 even with no session.
