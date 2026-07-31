@@ -2,4 +2,5 @@ package: v1
 generate:
   chi-server: true
   models: true
+  embedded-spec: true
 output: gen.go

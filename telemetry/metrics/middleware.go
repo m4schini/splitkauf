@@ -56,3 +56,11 @@ func (rw *recordingWriter) Write(b []byte) (int, error) {
 	rw.bytes += n
 	return n, err
 }
+
+// Flush forwards to the underlying ResponseWriter when it supports
+// http.Flusher, so streaming/SSE responses are not broken by this wrapper.
+func (rw *recordingWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}

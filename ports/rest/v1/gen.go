@@ -4,16 +4,34 @@
 package v1
 
 import (
+	"bytes"
+	"compress/flate"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
+	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 )
 
+// FieldError A single field-level validation error.
+type FieldError struct {
+	// Detail Human-readable description of the field error.
+	Detail string `json:"detail"`
+
+	// Pointer A JSON Pointer (RFC 6901) identifying the offending field within
+	// the request body.
+	Pointer *string `json:"pointer,omitempty"`
+}
+
 // HealthChecks defines model for HealthChecks.
 type HealthChecks struct {
-	// Database Status of the database dependency ("ok", "error", or "disabled"
-	// when database wiring is not yet enabled).
+	// Database Status of the database dependency ("ok" when reachable, "error"
+	// when unreachable or not configured).
 	Database string `json:"database"`
 }
 
@@ -23,6 +41,177 @@ type HealthStatus struct {
 
 	// Status Overall service status (e.g. "ok" or "degraded").
 	Status string `json:"status"`
+}
+
+// ProblemDetail RFC 9457 (Problem Details for HTTP APIs) error object. The standard
+// members are optional; additional extension members may be present.
+type ProblemDetail struct {
+	// Detail A human-readable explanation specific to this occurrence.
+	Detail *string `json:"detail,omitempty"`
+
+	// Errors Field-level validation errors, when applicable.
+	Errors *[]FieldError `json:"errors,omitempty"`
+
+	// Instance A URI reference identifying the specific occurrence.
+	Instance *string `json:"instance,omitempty"`
+
+	// Status The HTTP status code for this occurrence of the problem.
+	Status *int32 `json:"status,omitempty"`
+
+	// Title A short, human-readable summary of the problem type.
+	Title *string `json:"title,omitempty"`
+
+	// Type A URI reference identifying the problem type. Resolves to a
+	// human-readable explanation page (e.g. "/problems/not-found").
+	Type                 *string                `json:"type,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// Problem RFC 9457 (Problem Details for HTTP APIs) error object. The standard
+// members are optional; additional extension members may be present.
+type Problem = ProblemDetail
+
+// Getter for additional properties for ProblemDetail. Returns the specified
+// element and whether it was found
+func (a ProblemDetail) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ProblemDetail
+func (a *ProblemDetail) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ProblemDetail to handle AdditionalProperties
+func (a *ProblemDetail) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["detail"]; found {
+		err = json.Unmarshal(raw, &a.Detail)
+		if err != nil {
+			return fmt.Errorf("error reading 'detail': %w", err)
+		}
+		delete(object, "detail")
+	}
+
+	if raw, found := object["errors"]; found {
+		err = json.Unmarshal(raw, &a.Errors)
+		if err != nil {
+			return fmt.Errorf("error reading 'errors': %w", err)
+		}
+		delete(object, "errors")
+	}
+
+	if raw, found := object["instance"]; found {
+		err = json.Unmarshal(raw, &a.Instance)
+		if err != nil {
+			return fmt.Errorf("error reading 'instance': %w", err)
+		}
+		delete(object, "instance")
+	}
+
+	if raw, found := object["status"]; found {
+		err = json.Unmarshal(raw, &a.Status)
+		if err != nil {
+			return fmt.Errorf("error reading 'status': %w", err)
+		}
+		delete(object, "status")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ProblemDetail to handle AdditionalProperties
+func (a ProblemDetail) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Detail != nil {
+		object["detail"], err = json.Marshal(a.Detail)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'detail': %w", err)
+		}
+	}
+
+	if a.Errors != nil {
+		object["errors"], err = json.Marshal(a.Errors)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'errors': %w", err)
+		}
+	}
+
+	if a.Instance != nil {
+		object["instance"], err = json.Marshal(a.Instance)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'instance': %w", err)
+		}
+	}
+
+	if a.Status != nil {
+		object["status"], err = json.Marshal(a.Status)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'status': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	if a.Type != nil {
+		object["type"], err = json.Marshal(a.Type)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'type': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
 }
 
 // ServerInterface represents all server handlers.
@@ -53,6 +242,7 @@ type MiddlewareFunc func(http.Handler) http.Handler
 
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
 	}))
@@ -182,4 +372,121 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
+// Stored as a slice of fixed-width chunks rather than one concatenated
+// const string: with thousands of chunks the chained `+` fold is several
+// times slower for the Go compiler than parsing a slice literal.
+var swaggerSpec = []string{
+	"lFZNU+M4E/4rXXrfA9QmToD9qMmcKGZY2MNCMexpzEGx2rEGuaWV5DAuyv99S1Js4iQwzC2OWv3x9NNP",
+	"65kVujaakLxji2dm0RlNDuPHrdVLhXX4WWjySD785MYoWXAvNc1Msvjlm9MUzlxRYc3Dr/9bLNmC/W/2",
+	"4n+WTt1s4/cTei4V67puwgS6wkoTnLIFOydAa7UFXRSNtSgyuK8Qllq0IB1wgrvLC/jw629/wMYXJGcO",
+	"9PIbFh6epK9yukhZT+9bg/Ba3hl8XqNtIWe+NZizGAEM99WUL51Wjcec/rm7hqOc9Rfd7NmpZtXl7Bh8",
+	"xT1YdFqt0YHXwKFqak5Ti1zwpULA70ZxipFzMnyF4NCuUcCyBV8hnN9eZzmxgMMGooDgpUQlPgcYwtcO",
+	"QOAkrRRCGYymCteoYM2VFDFKQi9jE2asNmi9TA0VCfE9d1fjfLcOQZcxxRjnxW1Aii2Y81bSinUTZrQk",
+	"jwcz/evLzd9wm87hKDTu9w/zk2OQAsnLspW0iiF0WSKJ8JWChRZKyimcWfy3QecjAwJUexl0ExZspEXB",
+	"Fl/7Qh8Gu0SLkOkVcuWriwqLx4jJDkLc8yV3uF/IF89943o8ejsQaJAEUtEGfujHnMFThQQWeVEFNCeQ",
+	"s4hbznKKRw0Nh6AtkPZQaCrlqrEojt9VXp/l6wWmdPcLLIbC35rQEUiBloO3MSg3a7RcqchnWSAkOzjC",
+	"bJXBBg5tIWcCV5YLFDk7zn5Y3ibapE/2UJVjDQmyJIQMWXF1u1Wwtw3uqsugHUe74lFqC1f397dhIt1x",
+	"r0ExZlIg5zkJbkVONdZLtA64RdAmBf4IL0kAfvdILoxQb1rzFpYIxqJD8qnP75vP8zcUBZzBQpayCNLj",
+	"K+l60aQCD45qrOpALy/fkBI3SazeaOhSRdfSY/1DKm3JWDdkw63lbfiWFCAt8FDNQXMtlhhL2ZOLoexx",
+	"uaW2NfdswRorp8PtQzi8xunQ50iCDZkLLTAyYwfcXgo2K2EUXJI/O30JGrRvhQkA6dXBal2lrZ/sNto1",
+	"dc1tuxMLgt+DzU1//CyWI7dwt73LcnqDenGX9cP+shtJ+2mpG4rTHmn+3q50e5PeRZKU+oAgGyX9I2/K",
+	"fn9OmJIFUhJv4nVwc3/z6WYL9vElNmFrtC65m2cn2TyYaoPEjWQLdpbNs7MwpNxXkSizKupi+LlCv5/S",
+	"HRptvQO9I4vpGnASibrDKhH6iZy3yOuchk0i0WVwrp5468Cibyy5RMjT+fwjSArM96lvvFWai8jO5DTh",
+	"EDQlduhasAX7E33SczYZv+9O5/M33nY/96YbbZ0DT7p0vlV6BCLhk7FoXvJG+dfiDIn3r8f0XErjERo7",
+	"gjowi69cXCat81izh5hTfHcF8fv6zBqr2ILNuJGz9QnrHoYre0Tb7+IAcBB6EvH148JAbmi3Cdo9dP8F",
+	"AAD//w==",
+}
+
+// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
+// after base64-decoding and flate-decompressing the embedded blob.
+func decodeSpec() ([]byte, error) {
+	encoded := strings.Join(swaggerSpec, "")
+	compressed, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
+	}
+	zr := flate.NewReader(bytes.NewReader(compressed))
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(zr); err != nil {
+		return nil, fmt.Errorf("read flate: %w", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, fmt.Errorf("close flate reader: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+var rawSpec = decodeSpecCached()
+
+// a naive cache of the decoded OpenAPI spec
+func decodeSpecCached() func() ([]byte, error) {
+	data, err := decodeSpec()
+	return func() ([]byte, error) {
+		return data, err
+	}
+}
+
+// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
+func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
+	res := make(map[string]func() ([]byte, error))
+	if len(pathToFile) > 0 {
+		res[pathToFile] = rawSpec
+	}
+
+	return res
+}
+
+// GetSpec returns the OpenAPI specification corresponding to the generated
+// code in this file. External references in the spec are resolved through
+// PathToRawSpec; externally-referenced files must be embedded in their
+// corresponding Go packages (via the import-mapping feature). URL-based
+// external refs are not supported.
+func GetSpec() (swagger *openapi3.T, err error) {
+	resolvePath := PathToRawSpec("")
+
+	loader := openapi3.NewLoader()
+	loader.IsExternalRefsAllowed = true
+	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
+		pathToFile := url.String()
+		pathToFile = path.Clean(pathToFile)
+		getSpec, ok := resolvePath[pathToFile]
+		if !ok {
+			err1 := fmt.Errorf("path not found: %s", pathToFile)
+			return nil, err1
+		}
+		return getSpec()
+	}
+	var specData []byte
+	specData, err = rawSpec()
+	if err != nil {
+		return
+	}
+	swagger, err = loader.LoadFromData(specData)
+	if err != nil {
+		return
+	}
+	return
+}
+
+// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
+// specification: decompressed but not unmarshaled. External references
+// are not resolved here; the bytes are the spec exactly as embedded by
+// codegen. The result is cached at package init time, so repeated calls
+// are cheap.
+func GetSpecJSON() ([]byte, error) {
+	return rawSpec()
+}
+
+// GetSwagger returns the OpenAPI specification corresponding to the
+// generated code in this file.
+//
+// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
+// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
+// backwards compatibility.
+func GetSwagger() (*openapi3.T, error) {
+	return GetSpec()
 }

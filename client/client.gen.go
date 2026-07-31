@@ -13,6 +13,16 @@ import (
 	"strings"
 )
 
+// FieldError A single field-level validation error.
+type FieldError struct {
+	// Detail Human-readable description of the field error.
+	Detail string `json:"detail"`
+
+	// Pointer A JSON Pointer (RFC 6901) identifying the offending field within
+	// the request body.
+	Pointer *string `json:"pointer,omitempty"`
+}
+
 // HealthChecks defines model for HealthChecks.
 type HealthChecks struct {
 	// Database Status of the database dependency ("ok" when reachable, "error"
@@ -26,6 +36,177 @@ type HealthStatus struct {
 
 	// Status Overall service status (e.g. "ok" or "degraded").
 	Status string `json:"status"`
+}
+
+// ProblemDetail RFC 9457 (Problem Details for HTTP APIs) error object. The standard
+// members are optional; additional extension members may be present.
+type ProblemDetail struct {
+	// Detail A human-readable explanation specific to this occurrence.
+	Detail *string `json:"detail,omitempty"`
+
+	// Errors Field-level validation errors, when applicable.
+	Errors *[]FieldError `json:"errors,omitempty"`
+
+	// Instance A URI reference identifying the specific occurrence.
+	Instance *string `json:"instance,omitempty"`
+
+	// Status The HTTP status code for this occurrence of the problem.
+	Status *int32 `json:"status,omitempty"`
+
+	// Title A short, human-readable summary of the problem type.
+	Title *string `json:"title,omitempty"`
+
+	// Type A URI reference identifying the problem type. Resolves to a
+	// human-readable explanation page (e.g. "/problems/not-found").
+	Type                 *string                `json:"type,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// Problem RFC 9457 (Problem Details for HTTP APIs) error object. The standard
+// members are optional; additional extension members may be present.
+type Problem = ProblemDetail
+
+// Getter for additional properties for ProblemDetail. Returns the specified
+// element and whether it was found
+func (a ProblemDetail) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for ProblemDetail
+func (a *ProblemDetail) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for ProblemDetail to handle AdditionalProperties
+func (a *ProblemDetail) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["detail"]; found {
+		err = json.Unmarshal(raw, &a.Detail)
+		if err != nil {
+			return fmt.Errorf("error reading 'detail': %w", err)
+		}
+		delete(object, "detail")
+	}
+
+	if raw, found := object["errors"]; found {
+		err = json.Unmarshal(raw, &a.Errors)
+		if err != nil {
+			return fmt.Errorf("error reading 'errors': %w", err)
+		}
+		delete(object, "errors")
+	}
+
+	if raw, found := object["instance"]; found {
+		err = json.Unmarshal(raw, &a.Instance)
+		if err != nil {
+			return fmt.Errorf("error reading 'instance': %w", err)
+		}
+		delete(object, "instance")
+	}
+
+	if raw, found := object["status"]; found {
+		err = json.Unmarshal(raw, &a.Status)
+		if err != nil {
+			return fmt.Errorf("error reading 'status': %w", err)
+		}
+		delete(object, "status")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for ProblemDetail to handle AdditionalProperties
+func (a ProblemDetail) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Detail != nil {
+		object["detail"], err = json.Marshal(a.Detail)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'detail': %w", err)
+		}
+	}
+
+	if a.Errors != nil {
+		object["errors"], err = json.Marshal(a.Errors)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'errors': %w", err)
+		}
+	}
+
+	if a.Instance != nil {
+		object["instance"], err = json.Marshal(a.Instance)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'instance': %w", err)
+		}
+	}
+
+	if a.Status != nil {
+		object["status"], err = json.Marshal(a.Status)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'status': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	if a.Type != nil {
+		object["type"], err = json.Marshal(a.Type)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'type': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
 }
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
@@ -192,9 +373,10 @@ type ClientWithResponsesInterface interface {
 }
 
 type GetHealthResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *HealthStatus
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *HealthStatus
+	ApplicationproblemJSONDefault *Problem
 }
 
 // Status returns HTTPResponse.Status
@@ -250,6 +432,14 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
