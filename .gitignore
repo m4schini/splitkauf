@@ -1,0 +1,15 @@
+.env
+data/
+--db-path
+*.exe
+coverage.out
+coverage-unit.out
+coverage.xml
+diff-cover.json
+baseline/
+
+# Frontend
+frontend/node_modules/
+
+# Embedded frontend build output (generated; stub created by Makefile)
+ports/web/dist/

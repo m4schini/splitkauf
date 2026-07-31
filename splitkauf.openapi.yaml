@@ -1,0 +1,58 @@
+openapi: "3.0.3"
+info:
+  title: Splitkauf API
+  version: "0.1.0"
+  description: |
+    Splitkauf API.
+
+  license:
+    name: TODO
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: system
+    description: Service health and operational endpoints.
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Service health
+      description: |
+        Reports overall service health and the status of downstream
+        dependencies. Always returns HTTP 200; inspect the payload for status.
+      tags:
+        - system
+      responses:
+        "200":
+          description: Health status of the service.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required:
+        - status
+        - checks
+      properties:
+        status:
+          type: string
+          description: Overall service status (e.g. "ok" or "degraded").
+        checks:
+          $ref: "#/components/schemas/HealthChecks"
+    HealthChecks:
+      type: object
+      required:
+        - database
+      properties:
+        database:
+          type: string
+          description: |
+            Status of the database dependency ("ok", "error", or "disabled"
+            when database wiring is not yet enabled).

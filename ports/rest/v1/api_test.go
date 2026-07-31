@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: TODO
+
+package v1_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/ports/rest"
+	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
+)
+
+func TestMain(m *testing.M) {
+	// The REST handlers construct named loggers (via telemetry.Logger), which
+	// reads config.C. Load config (defaults + env) before any handler runs.
+	if err := config.Load(); err != nil {
+		panic(err)
+	}
+	// The docs/api-catalog handlers require the OpenAPI spec, normally set from
+	// the embedded copy in main. Load it from the repo root for tests.
+	spec, err := os.ReadFile("../../../splitkauf.openapi.yaml")
+	if err != nil {
+		panic(err)
+	}
+	rest.SetOpenAPISpec(spec)
+	os.Exit(m.Run())
+}
+
+func TestGetHealth(t *testing.T) {
+	srv := httptest.NewServer(rest.New(&v1.V1{}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/health")
+	if err != nil {
+		t.Fatalf("GET /api/v1/health: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got v1.HealthStatus
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+
+	if got.Status != "ok" {
+		t.Errorf("status = %q, want %q", got.Status, "ok")
+	}
+}
