@@ -3,6 +3,7 @@ app:
   environment: development
   debug: true
   log_level: debug
+  base_url: ""
 
 server:
   host: 127.0.0.1
@@ -15,3 +16,17 @@ database:
   password: splitkauf
   name: splitkauf
   ssl_mode: disable
+
+# Auth: leave the OIDC block empty for dev-auth (local development).
+# Setting auth.oidc.issuer (plus client_id/client_secret/redirect_url) switches
+# the backend to the OIDC BFF flow.
+auth:
+  oidc:
+    issuer: ""
+    client_id: ""
+    client_secret: ""
+    redirect_url: ""
+    post_logout_redirect_url: ""
+  session:
+    lifetime: 168h
+    cookie_secure: true

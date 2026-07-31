@@ -43,6 +43,21 @@ func validate(c *Config) error {
 		errs = append(errs, errors.New("database.user is required"))
 	}
 
+	// ── Auth (OIDC) ──────────────────────────────────────
+	// OIDC is optional: an empty issuer means dev-auth. When an issuer is set,
+	// the confidential-client parameters become required.
+	if c.Auth.OIDC.Issuer != "" {
+		if c.Auth.OIDC.ClientID == "" {
+			errs = append(errs, errors.New("auth.oidc.client_id is required when auth.oidc.issuer is set"))
+		}
+		if c.Auth.OIDC.ClientSecret == "" {
+			errs = append(errs, errors.New("auth.oidc.client_secret is required when auth.oidc.issuer is set"))
+		}
+		if c.Auth.OIDC.RedirectURL == "" {
+			errs = append(errs, errors.New("auth.oidc.redirect_url is required when auth.oidc.issuer is set"))
+		}
+	}
+
 	// ── Allowed values ───────────────────────────────────
 	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLogLevels[c.App.LogLevel] {

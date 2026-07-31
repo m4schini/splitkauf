@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/spf13/viper"
@@ -23,6 +24,7 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Metrics  MetricsConfig  `mapstructure:"metrics"`
 	Database DatabaseConfig `mapstructure:"database"`
+	Auth     AuthConfig     `mapstructure:"auth"`
 }
 
 type AppConfig struct {
@@ -31,6 +33,43 @@ type AppConfig struct {
 	Environment string `mapstructure:"environment"`
 	Debug       bool   `mapstructure:"debug"`
 	LogLevel    string `mapstructure:"log_level"`
+	// BaseURL is the externally reachable origin of the app (scheme + host),
+	// used to build OIDC redirect/callback URLs. Empty in dev-auth mode.
+	BaseURL string `mapstructure:"base_url"`
+}
+
+// AuthConfig groups authentication settings: the OIDC provider parameters and
+// the server-side session settings. When no OIDC issuer/client is configured,
+// the backend falls back to dev-auth.
+type AuthConfig struct {
+	OIDC    OIDCConfig    `mapstructure:"oidc"`
+	Session SessionConfig `mapstructure:"session"`
+}
+
+// OIDCConfig holds the confidential-client OIDC parameters. All fields are
+// empty in dev-auth mode; setting the issuer switches the backend to the OIDC
+// BFF flow and makes client_id/client_secret/redirect_url required.
+type OIDCConfig struct {
+	Issuer                string `mapstructure:"issuer"`
+	ClientID              string `mapstructure:"client_id"`
+	ClientSecret          string `mapstructure:"client_secret"`
+	RedirectURL           string `mapstructure:"redirect_url"`
+	PostLogoutRedirectURL string `mapstructure:"post_logout_redirect_url"`
+}
+
+// SessionConfig controls the server-side session store cookie behaviour.
+type SessionConfig struct {
+	Lifetime     time.Duration `mapstructure:"lifetime"`
+	CookieSecure bool          `mapstructure:"cookie_secure"`
+}
+
+// IsOIDCEnabled reports whether the OIDC BFF flow is configured. It requires the
+// issuer, client id, and client secret to all be set; otherwise the backend runs
+// in dev-auth mode.
+func (c *Config) IsOIDCEnabled() bool {
+	return c.Auth.OIDC.Issuer != "" &&
+		c.Auth.OIDC.ClientID != "" &&
+		c.Auth.OIDC.ClientSecret != ""
 }
 
 type ServerConfig struct {
