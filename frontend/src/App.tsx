@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiFetch } from './api'
 
 interface HealthStatus {
   status: string
@@ -10,8 +11,7 @@ function App() {
   useEffect(() => {
     let cancelled = false
 
-    fetch('/api/v1/health')
-      .then((res) => res.json() as Promise<HealthStatus>)
+    apiFetch<HealthStatus>('/api/v1/health')
       .then((data) => {
         if (!cancelled) setStatus(data.status)
       })
