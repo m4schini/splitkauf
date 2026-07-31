@@ -19,6 +19,7 @@ import (
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
@@ -122,11 +123,17 @@ func serve() error {
 		cancel()
 	}
 
+	// The event broker fans real-time reload hints from the mutating REST
+	// handlers out to every connected SSE stream. It is the same instance the
+	// handlers publish to (via v1.V1.Events) and the SSE endpoint subscribes to
+	// (via rest.New).
+	broker := events.NewBroker()
+
 	servers := []namedServer{{
 		name: "api",
 		srv: &http.Server{
 			Addr:              net.JoinHostPort(config.C.Server.Host, strconv.Itoa(config.C.Server.Port)),
-			Handler:           rest.New(&v1.V1{DB: conn, Service: service}, sm, authr),
+			Handler:           rest.New(&v1.V1{DB: conn, Service: service, Events: broker}, sm, authr, broker),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}}

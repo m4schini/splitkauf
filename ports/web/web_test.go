@@ -15,6 +15,7 @@ import (
 
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/members"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
@@ -28,7 +29,7 @@ func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
-	return rest.New(si, sm, authr)
+	return rest.New(si, sm, authr, events.NewBroker())
 }
 
 type noopMembers struct{}

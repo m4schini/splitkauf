@@ -8,6 +8,7 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/m4schini/splitkauf/auth"
+	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/ports/rest/middleware"
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
@@ -19,7 +20,7 @@ import (
 // LoadAndSave middleware wraps every route (so sessions load/save for the auth
 // endpoints too); authr provides the browser-facing /api/auth/* handlers and
 // the RequireAuth middleware guarding the JSON API.
-func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator) http.Handler {
+func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator, broker *events.Broker) http.Handler {
 	r := chi.NewRouter()
 	r.Mount("/", ApiDocsHandler())
 
@@ -46,6 +47,17 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	apiRouter.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.MethodNotAllowed, "this method is not supported for this resource"))
 	})
+
+	// The SSE stream is registered by hand on the API subrouter, OUTSIDE the
+	// generated ServerInterface handler and its OpenAPI request-validation
+	// middleware: an event stream is not a JSON request/response operation and
+	// cannot be modeled by oapi-codegen, so it must bypass the validator to
+	// stream (the same precedent as the /api/auth/* endpoints above). apiRouter
+	// is mounted at /api/v1, so the route path is relative ("/events" →
+	// /api/v1/events). It is guarded by RequireAuth — events require a logged-in
+	// user — but NOT by publicHealth: unlike health, this endpoint is never
+	// public. Recover (Use'd on apiRouter above) still wraps it.
+	apiRouter.With(authr.RequireAuth).Get("/events", sseHandler(broker))
 
 	r.Mount("/api/v1", v1.New(si, v1.ChiServerOptions{
 		BaseRouter: apiRouter,
