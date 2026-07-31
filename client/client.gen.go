@@ -180,6 +180,9 @@ type UpdateItemRequest struct {
 
 // User An authenticated user.
 type User struct {
+	// Email The user's email address, if known.
+	Email *openapi_types.Email `json:"email,omitempty"`
+
 	// Id The user's unique identifier.
 	Id openapi_types.UUID `json:"id"`
 

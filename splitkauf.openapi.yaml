@@ -372,6 +372,11 @@ components:
         name:
           type: string
           description: The user's display name.
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: The user's email address, if known.
     List:
       type: object
       description: A shopping list with a summary of its item counts.
