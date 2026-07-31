@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/m4schini/splitkauf/ports/rest/middleware"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
+	"github.com/m4schini/splitkauf/ports/web"
 	"github.com/m4schini/splitkauf/telemetry/metrics"
 )
 
@@ -20,6 +21,9 @@ func New(si v1.ServerInterface) http.Handler {
 			metrics.Middleware,
 		},
 	}))
+	// The embedded frontend is the root catch-all: it serves the SPA for any
+	// path not matched above (api-catalog, openapi spec, docs, or /api/v1).
+	r.NotFound(web.Handler().ServeHTTP)
 
 	return r
 }

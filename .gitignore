@@ -2,6 +2,7 @@
 data/
 --db-path
 *.exe
+/splitkauf
 coverage.out
 coverage-unit.out
 coverage.xml
