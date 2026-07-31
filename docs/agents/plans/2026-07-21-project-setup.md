@@ -4,7 +4,7 @@ git_commit: ee412e7abf80ac069e9c09caa63cdf430ef042ef
 branch: main
 topic: "Project setup: Go backend + React PWA frontend + dev harness + CI/deployment"
 tags: [plan, setup, go, react, postgres, pwa, harness, ci, quadlet]
-status: ready
+status: complete
 ---
 
 # PLAN: Splitkauf Project Setup
