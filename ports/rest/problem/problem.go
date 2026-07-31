@@ -33,8 +33,8 @@ func (t Type) URI() string {
 	return "/problems/" + t.Slug
 }
 
-// The four registered problem types. Each covers one of the API's error
-// surfaces and has a self-hosted explanation page.
+// The registered problem types. Each covers one of the API's error surfaces
+// and has a self-hosted explanation page.
 var (
 	// Validation covers request-validation failures and parameter binding.
 	Validation = Type{
@@ -73,25 +73,49 @@ var (
 			"prevented it from fulfilling the request. This is a fault on the " +
 			"server side; no details are exposed. Retrying later may succeed.",
 	}
+	// Unauthorized covers requests to authenticated endpoints made without a
+	// valid session (no session, or an expired/revoked one).
+	Unauthorized = Type{
+		Slug:   "unauthorized",
+		Title:  http.StatusText(http.StatusUnauthorized),
+		Status: http.StatusUnauthorized,
+		Description: "The request was not accompanied by a valid authenticated " +
+			"session. The session may be missing, expired, or revoked. Start a " +
+			"new sign-in via the login endpoint before retrying.",
+	}
+	// Unavailable covers dependencies the request needs that are temporarily
+	// down, notably the identity provider during sign-in.
+	Unavailable = Type{
+		Slug:   "unavailable",
+		Title:  http.StatusText(http.StatusServiceUnavailable),
+		Status: http.StatusServiceUnavailable,
+		Description: "The server could not complete the request because a " +
+			"dependency it relies on is temporarily unavailable, such as the " +
+			"identity provider during sign-in. Retrying later may succeed.",
+	}
 )
 
 // Types returns every registered problem type. It drives the explanation pages
 // and the registry drift test (every emitted type must have a page).
 func Types() []Type {
-	return []Type{Validation, NotFound, MethodNotAllowed, Internal}
+	return []Type{Validation, Unauthorized, NotFound, MethodNotAllowed, Internal, Unavailable}
 }
 
 // FromStatus maps an HTTP status code to its registered problem type: 400 →
-// Validation, 404 → NotFound, 405 → MethodNotAllowed, and anything else →
-// Internal.
+// Validation, 401 → Unauthorized, 404 → NotFound, 405 → MethodNotAllowed, 503
+// → Unavailable, and anything else → Internal.
 func FromStatus(status int) Type {
 	switch status {
 	case http.StatusBadRequest:
 		return Validation
+	case http.StatusUnauthorized:
+		return Unauthorized
 	case http.StatusNotFound:
 		return NotFound
 	case http.StatusMethodNotAllowed:
 		return MethodNotAllowed
+	case http.StatusServiceUnavailable:
+		return Unavailable
 	default:
 		return Internal
 	}
