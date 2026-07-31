@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
 )
@@ -20,10 +22,28 @@ func New(si ServerInterface, options ChiServerOptions) http.Handler {
 	return HandlerWithOptions(si, options)
 }
 
+// ListService is the subset of the lists domain the REST handlers depend on. It
+// mirrors *lists.Service; declaring it as an interface here lets tests inject a
+// fake without a database. The concrete *lists.Service satisfies it.
+type ListService interface {
+	CreateList(ctx context.Context, name string) (lists.List, error)
+	Lists(ctx context.Context) ([]lists.List, error)
+	GetList(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
+	RenameList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
+	DeleteList(ctx context.Context, id uuid.UUID) error
+	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (lists.Item, error)
+	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
+	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
+	CheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
+	UncheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
+}
+
 // V1 implements the generated ServerInterface. It carries the process-level
-// dependencies (e.g. the database handle) shared by all handlers.
+// dependencies (the database handle for health checks and the lists service)
+// shared by all handlers.
 type V1 struct {
-	DB *sql.DB
+	DB      *sql.DB
+	Service ListService
 }
 
 // GetHealth reports overall service health and the status of downstream

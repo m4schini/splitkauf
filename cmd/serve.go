@@ -15,6 +15,7 @@ import (
 
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/config"
+	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 	"github.com/m4schini/splitkauf/telemetry"
@@ -58,11 +59,16 @@ func serve() error {
 		log.Warn("database not reachable at startup; serving with degraded health", zap.Error(err))
 	}
 
+	// The lists service persists to Postgres via the db adapter. The handle may
+	// be temporarily unreachable (health reports degraded); requests error until
+	// it recovers.
+	service := lists.NewService(db.NewListsRepository(conn))
+
 	servers := []namedServer{{
 		name: "api",
 		srv: &http.Server{
 			Addr:              net.JoinHostPort(config.C.Server.Host, strconv.Itoa(config.C.Server.Port)),
-			Handler:           rest.New(&v1.V1{DB: conn}),
+			Handler:           rest.New(&v1.V1{DB: conn, Service: service}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}}

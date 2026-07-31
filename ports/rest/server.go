@@ -35,7 +35,14 @@ func New(si v1.ServerInterface) http.Handler {
 
 	r.Mount("/api/v1", v1.New(si, v1.ChiServerOptions{
 		BaseRouter: apiRouter,
+		// The generated wrapper applies these in slice order so the LAST entry is
+		// outermost: on a request, metrics runs first, then Logging, then the
+		// Validator, then DevAuth, then the handler. Keeping metrics/Logging
+		// outermost lets them observe validation failures too; DevAuth is
+		// innermost so it injects the dev user for every (valid) API request.
+		// DevAuth is temporary (M1); see middleware.DevAuth.
 		Middlewares: []v1.MiddlewareFunc{
+			middleware.DevAuth,
 			v1.Validator(),
 			middleware.Logging,
 			metrics.Middleware,
