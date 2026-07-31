@@ -1,62 +1,52 @@
+/*
+ * Theming: CSS custom properties, system-following dark mode via
+ * `prefers-color-scheme`. Colors are chosen to meet WCAG 2.2 AA contrast
+ * (>=4.5:1 for text, >=3:1 for UI/icons) in BOTH themes — see the
+ * implementation report for the computed ratios. Dark mode uses an off-white
+ * foreground on a dark *gray* background, never pure white on pure black.
+ */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow: rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --bg: #ffffff;
+  --bg-elevated: #f2f2f5;
+  --bg-elevated-hover: #e8e8ec;
+  --fg: #1a1a1e;
+  --fg-muted: #52525b;
+  --border: #d4d4d8;
+  --control-border: #71717a;
+  --accent: #6d28d9;
+  --accent-contrast: #ffffff;
+  --danger: #b91c1c;
+  --focus-ring: #6d28d9;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
   color-scheme: light dark;
-  color: var(--text);
+
+  font: 16px/1.45 var(--sans);
+  color: var(--fg);
   background: var(--bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
     --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+    --bg-elevated: #202129;
+    --bg-elevated-hover: #292b35;
+    --fg: #e5e5ea;
+    --fg-muted: #a8a8b3;
+    --border: #33333d;
+    --control-border: #6b6b76;
+    --accent: #c4b5fd;
+    --accent-contrast: #16171d;
+    --danger: #fca5a5;
+    --focus-ring: #c4b5fd;
   }
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
 }
 
@@ -64,46 +54,353 @@ body {
   margin: 0;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
+h1,
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
+  font-family: var(--sans);
+  font-weight: 600;
+  color: var(--fg);
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+button,
+input {
+  font: inherit;
+  color: inherit;
 }
 
-code {
+:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* --- Layout: 8pt spacing grid, 16px screen-edge padding, safe areas ----- */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100svh;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-top: max(16px, env(safe-area-inset-top));
+}
+
+.screen-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.screen-header-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.list-title {
+  font-size: 20px;
+  flex: 1;
+}
+
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  padding-top: 16px;
+  padding-bottom: 24px;
+}
+
+.section-heading {
+  font-size: 16px;
+  color: var(--fg-muted);
+  margin: 24px 0 8px;
+}
+
+.done-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.hint {
+  color: var(--fg-muted);
+  font-size: 16px;
+  padding: 16px 0;
+}
+
+.hint-error {
+  color: var(--danger);
+}
+
+/* --- Rows: full-row tap target for check-off / navigation --------------- */
+
+.row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 48px;
+  background: var(--bg-elevated);
+  border-radius: 8px;
+}
+
+.row-tap-target {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 16px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.row-tap-target:hover {
+  background: var(--bg-elevated-hover);
+}
+
+.list-row-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.list-row-name {
+  font-size: 18px;
+}
+
+.list-row-counts {
+  color: var(--fg-muted);
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  white-space: nowrap;
+}
+
+/* Item rows: a <label> wrapping a native checkbox gives the entire row a
+   click/tap target "for free" (clicking anywhere in the label toggles the
+   checkbox), while remaining a real form control for free (no custom ARIA
+   checkbox re-implementation needed). */
+.item-row-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.item-checkbox {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  accent-color: var(--accent);
+}
+
+.item-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 16px;
+}
+
+.item-name {
+  color: var(--fg);
+}
+
+.item-qty {
+  color: var(--fg-muted);
+}
+
+.item-note {
+  color: var(--fg-muted);
+  font-size: 14px;
+  flex-basis: 100%;
+}
+
+.item-row:has(.item-checkbox:checked) .item-name,
+.item-row:has(.item-checkbox:checked) .item-qty {
+  /* Checked items are visually separated (done section) but text stays at
+     full AA contrast — no additional dimming beyond --fg-muted. */
+  text-decoration: line-through;
+  color: var(--fg-muted);
+}
+
+.item-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+/* --- Buttons: >=44x44 targets, >=8px spacing, visible (not gesture-only) - */
+
+.icon-button,
+.secondary-button,
+.primary-button,
+.snackbar-undo {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.icon-button {
+  background: none;
+  border: 1px solid var(--control-border);
+  color: var(--fg);
+}
+
+.icon-button:hover {
+  background: var(--bg-elevated-hover);
+}
+
+.icon-button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.secondary-button {
+  background: var(--bg-elevated);
+  border: 1px solid var(--control-border);
+  color: var(--fg);
+}
+
+.primary-button {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+/* --- Quick-add: bottom-anchored, stays focused after submit ------------- */
+
+.quick-add {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-add > label {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.quick-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.quick-add-row input {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 16px;
+}
+
+/* --- Inline edit / rename forms ------------------------------------------ */
+
+.item-edit-form,
+.rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  flex: 1;
+}
+
+.item-edit-form label,
+.rename-form label {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.item-edit-form input,
+.rename-form input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 16px;
+}
+
+.item-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* --- Snackbar: undo, not confirm() ---------------------------------------- */
+
+.snackbar-stack {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.snackbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 48px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 15px;
+}
+
+.snackbar-undo {
+  background: none;
+  border: 1px solid var(--bg);
+  color: var(--bg);
+  font-weight: 600;
+  min-height: 36px;
+}
+
+.api-status {
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px;
+  margin: 0;
 }

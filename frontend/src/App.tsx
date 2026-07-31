@@ -1,33 +1,20 @@
-import { useEffect, useState } from 'react'
-import { apiFetch } from './api'
+import { useState } from 'react'
+import { ListsOverview } from './ListsOverview'
+import { ListDetail } from './ListDetail'
 
-interface HealthStatus {
-  status: string
-}
+type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
 function App() {
-  const [status, setStatus] = useState<string>('checking')
+  const [view, setView] = useState<View>({ screen: 'overview' })
 
-  useEffect(() => {
-    let cancelled = false
-
-    apiFetch<HealthStatus>('/api/v1/health')
-      .then((data) => {
-        if (!cancelled) setStatus(data.status)
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('degraded')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return (
-    <main>
-      <h1>Splitkauf — API: {status}</h1>
-    </main>
+  return view.screen === 'overview' ? (
+    <ListsOverview onOpenList={(listId) => setView({ screen: 'list', listId })} />
+  ) : (
+    <ListDetail
+      listId={view.listId}
+      onBack={() => setView({ screen: 'overview' })}
+      onDeleted={() => setView({ screen: 'overview' })}
+    />
   )
 }
 

@@ -43,5 +43,140 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
     throw { status: res.status, title: res.statusText } satisfies ProblemDetail
   }
 
+  if (res.status === 204) {
+    return undefined as T
+  }
+
   return (await res.json()) as T
+}
+
+// --- Domain types (mirrors splitkauf.openapi.yaml) ------------------------
+
+/** The authenticated user (US-A.1). */
+export interface User {
+  id: string
+  name: string
+}
+
+/** A shopping list with a summary of its item counts. */
+export interface List {
+  id: string
+  name: string
+  openItemCount: number
+  checkedItemCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** A single item on a shopping list. */
+export interface Item {
+  id: string
+  listId: string
+  name: string
+  quantity: number
+  note?: string | null
+  checked: boolean
+  checkedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** A list together with all of its items. */
+export interface ListWithItems extends List {
+  items: Item[]
+}
+
+export interface CreateListRequest {
+  name: string
+}
+
+export interface RenameListRequest {
+  name: string
+}
+
+export interface AddItemRequest {
+  name: string
+  quantity?: number
+  note?: string | null
+}
+
+export interface UpdateItemRequest {
+  name?: string
+  quantity?: number
+  note?: string | null
+}
+
+// --- Endpoint helpers -------------------------------------------------------
+
+const jsonHeaders = { 'Content-Type': 'application/json' }
+
+/** GET /me — the authenticated (dev) user (US-A.1). */
+export function getMe(): Promise<User> {
+  return apiFetch<User>('/api/v1/me')
+}
+
+/** GET /lists — every shopping list with item-count summaries (US-L.2). */
+export function listLists(): Promise<List[]> {
+  return apiFetch<List[]>('/api/v1/lists')
+}
+
+/** POST /lists — create a new shopping list (US-L.1). */
+export function createList(body: CreateListRequest): Promise<List> {
+  return apiFetch<List>('/api/v1/lists', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  })
+}
+
+/** GET /lists/{listId} — a list with all of its items (US-L.2). */
+export function getList(listId: string): Promise<ListWithItems> {
+  return apiFetch<ListWithItems>(`/api/v1/lists/${listId}`)
+}
+
+/** PATCH /lists/{listId} — rename a list (US-L.3). */
+export function renameList(listId: string, body: RenameListRequest): Promise<List> {
+  return apiFetch<List>(`/api/v1/lists/${listId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  })
+}
+
+/** DELETE /lists/{listId} — delete a list and all of its items (US-L.3). */
+export function deleteList(listId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/lists/${listId}`, { method: 'DELETE' })
+}
+
+/** POST /lists/{listId}/items — add an item to a list (US-L.4). */
+export function addItem(listId: string, body: AddItemRequest): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/lists/${listId}/items`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  })
+}
+
+/** PATCH /lists/{listId}/items/{itemId} — update an item (US-L.5). */
+export function updateItem(listId: string, itemId: string, body: UpdateItemRequest): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/lists/${listId}/items/${itemId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+  })
+}
+
+/** DELETE /lists/{listId}/items/{itemId} — remove an item (US-L.6). */
+export function deleteItem(listId: string, itemId: string): Promise<void> {
+  return apiFetch<void>(`/api/v1/lists/${listId}/items/${itemId}`, { method: 'DELETE' })
+}
+
+/** POST /lists/{listId}/items/{itemId}/check — check off an item (US-L.7). */
+export function checkItem(listId: string, itemId: string): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/lists/${listId}/items/${itemId}/check`, { method: 'POST' })
+}
+
+/** POST /lists/{listId}/items/{itemId}/uncheck — return an item to the open list (US-L.8). */
+export function uncheckItem(listId: string, itemId: string): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/lists/${listId}/items/${itemId}/uncheck`, { method: 'POST' })
 }
