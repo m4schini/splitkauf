@@ -32,9 +32,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+        default:
+          $ref: "#/components/responses/Problem"
 
 components:
+  responses:
+    Problem:
+      description: |
+        An error occurred. The body is an RFC 9457 Problem Details object with
+        Content-Type application/problem+json. Every "type" is a path-absolute
+        URI ("/problems/{slug}") that resolves to a human-readable explanation
+        page served by the API.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    ProblemDetail:
+      type: object
+      description: |
+        RFC 9457 (Problem Details for HTTP APIs) error object. The standard
+        members are optional; additional extension members may be present.
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: |
+            A URI reference identifying the problem type. Resolves to a
+            human-readable explanation page (e.g. "/problems/not-found").
+        title:
+          type: string
+          description: A short, human-readable summary of the problem type.
+        status:
+          type: integer
+          format: int32
+          description: The HTTP status code for this occurrence of the problem.
+        detail:
+          type: string
+          description: A human-readable explanation specific to this occurrence.
+        instance:
+          type: string
+          format: uri-reference
+          description: A URI reference identifying the specific occurrence.
+        errors:
+          type: array
+          description: Field-level validation errors, when applicable.
+          items:
+            $ref: "#/components/schemas/FieldError"
+    FieldError:
+      type: object
+      description: A single field-level validation error.
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Human-readable description of the field error.
+        pointer:
+          type: string
+          description: |
+            A JSON Pointer (RFC 6901) identifying the offending field within
+            the request body.
     HealthStatus:
       type: object
       required:
