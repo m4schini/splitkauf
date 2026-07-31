@@ -41,6 +41,10 @@ repos:
         entry: go run mvdan.cc/gofumpt@v0.7.0 -w
         language: system
         files: \.go$
+        # Generated files are committed as oapi-codegen emits them (the CI
+        # generate-clean check compares against `make generate` output), so
+        # they must not be reformatted here. Mirrors .golangci.yml's exclusions.
+        exclude: (^|/)(gen|client\.gen)\.go$
 
       - id: golangci-lint
         name: golangci-lint
