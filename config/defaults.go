@@ -21,4 +21,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.host", "0.0.0.0")
 	v.SetDefault("metrics.port", 9090)
 	v.SetDefault("metrics.path", "/metrics")
+
+	// Database (PostgreSQL)
+	v.SetDefault("database.host", "localhost")
+	v.SetDefault("database.port", 5432)
+	v.SetDefault("database.user", "splitkauf")
+	v.SetDefault("database.password", "splitkauf")
+	v.SetDefault("database.name", "splitkauf")
+	v.SetDefault("database.ssl_mode", "disable")
 }

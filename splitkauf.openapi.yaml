@@ -54,5 +54,5 @@ components:
         database:
           type: string
           description: |
-            Status of the database dependency ("ok", "error", or "disabled"
-            when database wiring is not yet enabled).
+            Status of the database dependency ("ok" when reachable, "error"
+            when unreachable or not configured).

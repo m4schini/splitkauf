@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/ports/rest"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
@@ -48,11 +49,20 @@ func serve() error {
 
 	metrics.SetBuildInfo(config.C.App.Version, config.C.App.Environment)
 
+	// Open the database handle before starting the server. A ping failure is
+	// only a warning: the server still starts (health reports degraded) so it
+	// does not crash-loop while the DB is briefly unavailable. NewSQL returns
+	// the opened handle even on ping error, so it can recover once the DB is up.
+	conn, err := db.NewSQL(config.C.Database.DSN())
+	if err != nil {
+		log.Warn("database not reachable at startup; serving with degraded health", zap.Error(err))
+	}
+
 	servers := []namedServer{{
 		name: "api",
 		srv: &http.Server{
 			Addr:              net.JoinHostPort(config.C.Server.Host, strconv.Itoa(config.C.Server.Port)),
-			Handler:           rest.New(&v1.V1{}),
+			Handler:           rest.New(&v1.V1{DB: conn}),
 			ReadHeaderTimeout: 5 * time.Second,
 		},
 	}}

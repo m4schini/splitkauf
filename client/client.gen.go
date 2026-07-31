@@ -15,8 +15,8 @@ import (
 
 // HealthChecks defines model for HealthChecks.
 type HealthChecks struct {
-	// Database Status of the database dependency ("ok", "error", or "disabled"
-	// when database wiring is not yet enabled).
+	// Database Status of the database dependency ("ok" when reachable, "error"
+	// when unreachable or not configured).
 	Database string `json:"database"`
 }
 

@@ -49,7 +49,38 @@ func TestGetHealth(t *testing.T) {
 		t.Fatalf("decoding response: %v", err)
 	}
 
-	if got.Status != "ok" {
-		t.Errorf("status = %q, want %q", got.Status, "ok")
+	// With no database handle configured the endpoint still returns HTTP 200
+	// but reports degraded status.
+	if got.Status != "degraded" {
+		t.Errorf("status = %q, want %q", got.Status, "degraded")
+	}
+}
+
+// TestGetHealthNilDB verifies that a nil (unconfigured) database handle reports
+// the database check as "error" and degrades overall status, without panicking.
+func TestGetHealthNilDB(t *testing.T) {
+	srv := httptest.NewServer(rest.New(&v1.V1{DB: nil}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/v1/health")
+	if err != nil {
+		t.Fatalf("GET /api/v1/health: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got v1.HealthStatus
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+
+	if got.Status != "degraded" {
+		t.Errorf("status = %q, want %q", got.Status, "degraded")
+	}
+	if got.Checks.Database != "error" {
+		t.Errorf("checks.database = %q, want %q", got.Checks.Database, "error")
 	}
 }

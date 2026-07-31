@@ -32,6 +32,17 @@ func validate(c *Config) error {
 		}
 	}
 
+	// ── Database ─────────────────────────────────────────
+	if c.Database.Port < 1 || c.Database.Port > 65535 {
+		errs = append(errs, fmt.Errorf("database.port must be 1–65535, got %d", c.Database.Port))
+	}
+	if c.Database.Name == "" {
+		errs = append(errs, errors.New("database.name is required"))
+	}
+	if c.Database.User == "" {
+		errs = append(errs, errors.New("database.user is required"))
+	}
+
 	// ── Allowed values ───────────────────────────────────
 	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLogLevels[c.App.LogLevel] {

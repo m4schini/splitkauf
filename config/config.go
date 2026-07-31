@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -18,9 +19,10 @@ const (
 )
 
 type Config struct {
-	App     AppConfig     `mapstructure:"app"`
-	Server  ServerConfig  `mapstructure:"server"`
-	Metrics MetricsConfig `mapstructure:"metrics"`
+	App      AppConfig      `mapstructure:"app"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Metrics  MetricsConfig  `mapstructure:"metrics"`
+	Database DatabaseConfig `mapstructure:"database"`
 }
 
 type AppConfig struct {
@@ -44,6 +46,39 @@ type MetricsConfig struct {
 	Host    string `mapstructure:"host"`
 	Port    int    `mapstructure:"port"`
 	Path    string `mapstructure:"path"`
+}
+
+// DatabaseConfig holds the PostgreSQL connection parameters. Pool-tuning fields
+// (max open/idle conns, lifetimes) are intentionally omitted until needed.
+type DatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
+	SSLMode  string `mapstructure:"ssl_mode"`
+}
+
+// DSN builds the libpq-style keyword/value connection string for PostgreSQL.
+// Every value is single-quoted with backslashes and single quotes escaped, so
+// an empty value (e.g. an empty password) cannot swallow the following keyword
+// and leave dbname unset.
+func (d DatabaseConfig) DSN() string {
+	return strings.Join([]string{
+		"host=" + quoteDSNValue(d.Host),
+		"port=" + quoteDSNValue(strconv.Itoa(d.Port)),
+		"user=" + quoteDSNValue(d.User),
+		"password=" + quoteDSNValue(d.Password),
+		"dbname=" + quoteDSNValue(d.Name),
+		"sslmode=" + quoteDSNValue(d.SSLMode),
+	}, " ")
+}
+
+// quoteDSNValue wraps a libpq keyword/value string in single quotes, escaping
+// embedded backslashes and single quotes as required by the libpq parser.
+func quoteDSNValue(v string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+	return "'" + replacer.Replace(v) + "'"
 }
 
 var (
