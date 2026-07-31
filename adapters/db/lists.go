@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: TODO
+
+package db
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/m4schini/splitkauf/lists"
+)
+
+// ListsRepository is the Postgres implementation of lists.Repository over a
+// *sql.DB. It uses plain parameterised SQL (no ORM) and maps the driver's
+// no-rows sentinel to lists.ErrNotFound. Timestamps' updated_at columns are
+// app-managed on writes (created_at falls back to the schema default).
+type ListsRepository struct {
+	db *sql.DB
+}
+
+// NewListsRepository constructs a ListsRepository over the given handle.
+func NewListsRepository(db *sql.DB) *ListsRepository {
+	return &ListsRepository{db: db}
+}
+
+// Ensure ListsRepository satisfies the domain port at compile time.
+var _ lists.Repository = (*ListsRepository)(nil)
+
+// listSelect is the projection for a list together with its open/checked item
+// counts, derived by a left join over items. It is shared by the single-list
+// and all-lists reads so both compute counts identically.
+const listSelect = `
+	SELECT l.id, l.name, l.created_at, l.updated_at,
+	       COALESCE(SUM(CASE WHEN i.checked = false THEN 1 ELSE 0 END), 0) AS open_count,
+	       COALESCE(SUM(CASE WHEN i.checked = true  THEN 1 ELSE 0 END), 0) AS checked_count
+	FROM lists l
+	LEFT JOIN items i ON i.list_id = l.id`
+
+// itemColumns is the column list for an item row, ordered to match scanItem.
+const itemColumns = `id, list_id, name, quantity, note, checked, checked_at, created_at, updated_at`
+
+// CreateList inserts a new, empty list and returns it with zero counts.
+func (r *ListsRepository) CreateList(ctx context.Context, name string) (lists.List, error) {
+	now := time.Now()
+	row := r.db.QueryRowContext(ctx,
+		`INSERT INTO lists (name, created_at, updated_at) VALUES ($1, $2, $2)
+		 RETURNING id, name, created_at, updated_at`,
+		name, now)
+
+	var l lists.List
+	if err := row.Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt); err != nil {
+		return lists.List{}, fmt.Errorf("create list: %w", err)
+	}
+	return l, nil
+}
+
+// Lists returns every list with its item-count summary, newest first.
+func (r *ListsRepository) Lists(ctx context.Context) ([]lists.List, error) {
+	rows, err := r.db.QueryContext(ctx,
+		listSelect+` GROUP BY l.id ORDER BY l.created_at DESC, l.id`)
+	if err != nil {
+		return nil, fmt.Errorf("query lists: %w", err)
+	}
+	defer rows.Close()
+
+	var result []lists.List
+	for rows.Next() {
+		l, err := scanList(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate lists: %w", err)
+	}
+	return result, nil
+}
+
+// List returns a single list with its counts, or lists.ErrNotFound.
+func (r *ListsRepository) List(ctx context.Context, id uuid.UUID) (lists.List, error) {
+	row := r.db.QueryRowContext(ctx,
+		listSelect+` WHERE l.id = $1 GROUP BY l.id`, id)
+
+	l, err := scanList(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.List{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.List{}, err
+	}
+	return l, nil
+}
+
+// ListItems returns all items on a list, open and checked, oldest first. It
+// does not distinguish a missing list from an empty one (an empty slice).
+func (r *ListsRepository) ListItems(ctx context.Context, listID uuid.UUID) ([]lists.Item, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+itemColumns+` FROM items WHERE list_id = $1 ORDER BY created_at, id`, listID)
+	if err != nil {
+		return nil, fmt.Errorf("query items: %w", err)
+	}
+	defer rows.Close()
+
+	var result []lists.Item
+	for rows.Next() {
+		it, err := scanItem(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate items: %w", err)
+	}
+	return result, nil
+}
+
+// RenameList updates a list's name and returns the refreshed list (with
+// counts), or lists.ErrNotFound when it does not exist.
+func (r *ListsRepository) RenameList(ctx context.Context, id uuid.UUID, name string) (lists.List, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE lists SET name = $2, updated_at = $3 WHERE id = $1`,
+		id, name, time.Now())
+	if err != nil {
+		return lists.List{}, fmt.Errorf("rename list: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return lists.List{}, lists.ErrNotFound
+	}
+	return r.List(ctx, id)
+}
+
+// DeleteList deletes a list; its items cascade via the FK. It returns
+// lists.ErrNotFound when the list does not exist.
+func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM lists WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete list: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return lists.ErrNotFound
+	}
+	return nil
+}
+
+// AddItem inserts an item onto a list. A missing list surfaces as
+// lists.ErrNotFound (the FK insert finds no parent row).
+func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (lists.Item, error) {
+	if err := r.requireList(ctx, listID); err != nil {
+		return lists.Item{}, err
+	}
+	now := time.Now()
+	row := r.db.QueryRowContext(ctx,
+		`INSERT INTO items (list_id, name, quantity, note, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $5)
+		 RETURNING `+itemColumns,
+		listID, name, quantity, nullString(note), now)
+
+	it, err := scanItem(row)
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("add item: %w", err)
+	}
+	return it, nil
+}
+
+// Item returns a single item scoped to its list, or lists.ErrNotFound.
+func (r *ListsRepository) Item(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT `+itemColumns+` FROM items WHERE id = $1 AND list_id = $2`, itemID, listID)
+
+	it, err := scanItem(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.Item{}, err
+	}
+	return it, nil
+}
+
+// UpdateItem applies a partial update to an item and returns the updated row,
+// or lists.ErrNotFound. Only fields present in update are written.
+func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error) {
+	sets := []string{"updated_at = $1"}
+	args := []any{time.Now()}
+	next := 2
+
+	if update.Name != nil {
+		sets = append(sets, fmt.Sprintf("name = $%d", next))
+		args = append(args, *update.Name)
+		next++
+	}
+	if update.Quantity != nil {
+		sets = append(sets, fmt.Sprintf("quantity = $%d", next))
+		args = append(args, *update.Quantity)
+		next++
+	}
+	if update.NoteSet {
+		sets = append(sets, fmt.Sprintf("note = $%d", next))
+		args = append(args, nullString(update.Note))
+		next++
+	}
+
+	query := fmt.Sprintf(
+		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d RETURNING %s`,
+		strings.Join(sets, ", "), next, next+1, itemColumns)
+	args = append(args, itemID, listID)
+
+	it, err := scanItem(r.db.QueryRowContext(ctx, query, args...))
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("update item: %w", err)
+	}
+	return it, nil
+}
+
+// DeleteItem removes an item from a list, or returns lists.ErrNotFound.
+func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM items WHERE id = $1 AND list_id = $2`, itemID, listID)
+	if err != nil {
+		return fmt.Errorf("delete item: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return lists.ErrNotFound
+	}
+	return nil
+}
+
+// SetItemChecked writes an item's checked state and checkedAt timestamp,
+// returning the updated row or lists.ErrNotFound.
+func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (lists.Item, error) {
+	row := r.db.QueryRowContext(ctx,
+		`UPDATE items SET checked = $3, checked_at = $4, updated_at = $5
+		 WHERE id = $1 AND list_id = $2 RETURNING `+itemColumns,
+		itemID, listID, checked, nullTime(checkedAt), time.Now())
+
+	it, err := scanItem(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("set item checked: %w", err)
+	}
+	return it, nil
+}
+
+// requireList returns lists.ErrNotFound when no list with the given id exists.
+// It gives AddItem a clean domain error rather than a raw FK-violation.
+func (r *ListsRepository) requireList(ctx context.Context, id uuid.UUID) error {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM lists WHERE id = $1)`, id).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check list exists: %w", err)
+	}
+	if !exists {
+		return lists.ErrNotFound
+	}
+	return nil
+}
+
+// scanner abstracts *sql.Row and *sql.Rows so scanList/scanItem serve both the
+// single-row and iterating reads.
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+// scanList scans a list projection (see listSelect) into a lists.List.
+func scanList(s scanner) (lists.List, error) {
+	var l lists.List
+	if err := s.Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt, &l.OpenItemCount, &l.CheckedItemCount); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return lists.List{}, err
+		}
+		return lists.List{}, fmt.Errorf("scan list: %w", err)
+	}
+	return l, nil
+}
+
+// scanItem scans an item row (see itemColumns) into a lists.Item, translating
+// the nullable note/checked_at columns to their pointer fields.
+func scanItem(s scanner) (lists.Item, error) {
+	var (
+		it        lists.Item
+		note      sql.NullString
+		checkedAt sql.NullTime
+	)
+	if err := s.Scan(&it.ID, &it.ListID, &it.Name, &it.Quantity, &note, &it.Checked, &checkedAt, &it.CreatedAt, &it.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return lists.Item{}, err
+		}
+		return lists.Item{}, fmt.Errorf("scan item: %w", err)
+	}
+	if note.Valid {
+		it.Note = &note.String
+	}
+	if checkedAt.Valid {
+		t := checkedAt.Time
+		it.CheckedAt = &t
+	}
+	return it, nil
+}
+
+// nullString maps an optional string to a driver argument: nil becomes SQL NULL.
+func nullString(s *string) any {
+	if s == nil {
+		return nil
+	}
+	return *s
+}
+
+// nullTime maps an optional time to a driver argument: nil becomes SQL NULL.
+func nullTime(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return *t
+}
