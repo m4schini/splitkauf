@@ -1,0 +1,75 @@
+# Pre-commit hooks for the splitkauf repository.
+#
+# Install (both pre-commit and commit-msg stages, thanks to
+# default_install_hook_types below):
+#   pre-commit install --install-hooks
+#
+# Run manually:
+#   pre-commit run --all-files
+#   pre-commit run --hook-stage commit-msg --commit-msg-filename <file>
+
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  # General file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents, --unsafe]
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-json
+        # tsconfig*.json files are JSONC (allow comments), not strict JSON.
+        exclude: ^frontend/tsconfig.*\.json$
+
+  # Secret detection
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Local hooks (Go + frontend formatting/linting, commit message convention)
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        description: Format staged Go files with gofumpt.
+        entry: go run mvdan.cc/gofumpt@v0.7.0 -w
+        language: system
+        files: \.go$
+
+      - id: golangci-lint
+        name: golangci-lint
+        description: Lint staged Go files with golangci-lint (fast mode).
+        entry: bash -c 'make ports/web/dist/index.html >/dev/null && go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2 run --fast'
+        language: system
+        files: \.go$
+        pass_filenames: false
+
+      - id: frontend-format
+        name: frontend format (prettier)
+        description: Format staged frontend files with prettier.
+        entry: bash -c 'npm --prefix frontend exec -- prettier --write "$@"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx|css|json)$
+        exclude: ^frontend/package-lock\.json$
+
+      - id: frontend-lint
+        name: frontend lint (oxlint)
+        description: Lint staged frontend TS/TSX files with oxlint (fix mode).
+        entry: bash -c 'npm --prefix frontend exec -- oxlint --fix "$@"' --
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+
+      - id: conventional-commit
+        name: conventional commit message
+        description: Enforce a feat|fix|chore conventional-commit subject line.
+        entry: >-
+          bash -c 'grep -Eq "^(feat|fix|chore)(\([a-z0-9./-]+\))?!?: .+" "$1" ||
+          { echo "Commit message must match ^(feat|fix|chore)(\(scope\))?!?: subject" >&2; exit 1; }' --
+        language: system
+        stages: [commit-msg]

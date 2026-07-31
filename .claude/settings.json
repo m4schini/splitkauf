@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(jq -r '.tool_input.file_path // empty'); if [ -n \"$file\" ]; then \"$CLAUDE_PROJECT_DIR/hack/format-file.sh\" \"$file\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

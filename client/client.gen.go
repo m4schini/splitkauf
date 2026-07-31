@@ -250,7 +250,6 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 			return nil, err
 		}
 		response.JSON200 = &dest
-
 	}
 
 	return response, nil
