@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Pinned: vmware-labs/yaml-jsonpath v0.3.2 expects gopkg.in/yaml.v3 nodes, but go-yit versions from 2026+ migrated to go.yaml.in/yaml/v4 which breaks oapi-codegen generation. Unpin once yaml-jsonpath releases a v4-compatible version.",
+      "matchPackageNames": ["github.com/dprotaso/go-yit"],
+      "enabled": false
+    }
+  ]
+}

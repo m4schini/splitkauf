@@ -1,0 +1,18 @@
+[Unit]
+Description=Splitkauf application server
+Requires=splitkauf-db.service
+After=splitkauf-db.service
+
+[Container]
+Image=ghcr.io/m4schini/splitkauf:latest
+ContainerName=splitkauf
+Exec=serve
+Network=splitkauf.network
+PublishPort=8080:8080
+EnvironmentFile=/etc/splitkauf/splitkauf.env
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,4 +1,20 @@
 services:
+  app:
+    build:
+      context: .
+    environment:
+      SPLITKAUF_DATABASE_HOST: postgres
+      SPLITKAUF_DATABASE_PORT: "5432"
+      SPLITKAUF_DATABASE_USER: splitkauf
+      SPLITKAUF_DATABASE_PASSWORD: splitkauf
+      SPLITKAUF_DATABASE_NAME: splitkauf
+      SPLITKAUF_DATABASE_SSL_MODE: disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:17
     environment:

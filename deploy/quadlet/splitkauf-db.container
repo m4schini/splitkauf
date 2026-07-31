@@ -1,0 +1,19 @@
+[Unit]
+Description=Splitkauf PostgreSQL database
+
+[Container]
+Image=docker.io/library/postgres:17
+ContainerName=splitkauf-db
+Volume=splitkauf-db.volume:/var/lib/postgresql/data
+Network=splitkauf.network
+EnvironmentFile=/etc/splitkauf/db.env
+HealthCmd=pg_isready -U splitkauf -d splitkauf
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=5
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

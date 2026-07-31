@@ -1,0 +1,10 @@
+# Never ship (or shadow) local dependency/build artifacts — the Dockerfile
+# rebuilds these from source inside each stage.
+frontend/node_modules
+# A stale local dist must never shadow the node-stage build's output.
+ports/web/dist
+
+.git
+data
+coverage*
+docs
