@@ -14,6 +14,10 @@ servers:
 tags:
   - name: system
     description: Service health and operational endpoints.
+  - name: identity
+    description: The authenticated user.
+  - name: lists
+    description: Shopping lists and their items.
 
 paths:
   /health:
@@ -35,7 +39,246 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /me:
+    get:
+      operationId: getMe
+      summary: Get the authenticated user
+      description: |
+        Returns the user injected into the request. In M1 this is always the
+        hardcoded dev user (US-A.1); it is replaced by real authentication in M2.
+      tags:
+        - identity
+      responses:
+        "200":
+          description: The authenticated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists:
+    get:
+      operationId: listLists
+      summary: List all lists
+      description: |
+        Returns every shopping list, each with a summary of its open and checked
+        item counts. All lists are visible to every member (no per-user ownership).
+      tags:
+        - lists
+      responses:
+        "200":
+          description: All lists.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/List"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: createList
+      summary: Create a list
+      description: Creates a new shopping list with the given name.
+      tags:
+        - lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateListRequest"
+      responses:
+        "201":
+          description: The created list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists/{listId}:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+    get:
+      operationId: getList
+      summary: Get a list with its items
+      description: Returns a single list together with all of its items.
+      tags:
+        - lists
+      responses:
+        "200":
+          description: The list and its items.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWithItems"
+        default:
+          $ref: "#/components/responses/Problem"
+    patch:
+      operationId: renameList
+      summary: Rename a list
+      description: Renames an existing list.
+      tags:
+        - lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameListRequest"
+      responses:
+        "200":
+          description: The renamed list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteList
+      summary: Delete a list
+      description: Deletes a list and all of its items.
+      tags:
+        - lists
+      responses:
+        "204":
+          description: The list was deleted.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists/{listId}/items:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+    post:
+      operationId: addItem
+      summary: Add an item to a list
+      description: |
+        Adds an item to a list. The name is required; quantity defaults to 1;
+        the note is optional.
+      tags:
+        - lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddItemRequest"
+      responses:
+        "201":
+          description: The created item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists/{listId}/items/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+      - $ref: "#/components/parameters/ItemId"
+    patch:
+      operationId: updateItem
+      summary: Update an item
+      description: |
+        Updates an item's name, quantity, or note. Only the fields present in
+        the request are changed (last-write-wins for concurrent edits).
+      tags:
+        - lists
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateItemRequest"
+      responses:
+        "200":
+          description: The updated item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Problem"
+    delete:
+      operationId: deleteItem
+      summary: Remove an item
+      description: Removes an item from a list.
+      tags:
+        - lists
+      responses:
+        "204":
+          description: The item was removed.
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists/{listId}/items/{itemId}/check:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+      - $ref: "#/components/parameters/ItemId"
+    post:
+      operationId: checkItem
+      summary: Check off an item
+      description: |
+        Marks an item as checked (in the cart). Idempotent: checking an already
+        checked item is a no-op that returns the current state.
+      tags:
+        - lists
+      responses:
+        "200":
+          description: The checked item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /lists/{listId}/items/{itemId}/uncheck:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+      - $ref: "#/components/parameters/ItemId"
+    post:
+      operationId: uncheckItem
+      summary: Uncheck an item
+      description: |
+        Returns a checked item to the open list. Idempotent: unchecking an
+        already open item is a no-op that returns the current state.
+      tags:
+        - lists
+      responses:
+        "200":
+          description: The unchecked item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
+  parameters:
+    ListId:
+      name: listId
+      in: path
+      required: true
+      description: The list's unique identifier.
+      schema:
+        type: string
+        format: uuid
+    ItemId:
+      name: itemId
+      in: path
+      required: true
+      description: The item's unique identifier.
+      schema:
+        type: string
+        format: uuid
   responses:
     Problem:
       description: |
@@ -115,3 +358,171 @@ components:
           description: |
             Status of the database dependency ("ok" when reachable, "error"
             when unreachable or not configured).
+    User:
+      type: object
+      description: An authenticated user.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The user's unique identifier.
+        name:
+          type: string
+          description: The user's display name.
+    List:
+      type: object
+      description: A shopping list with a summary of its item counts.
+      required:
+        - id
+        - name
+        - openItemCount
+        - checkedItemCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The list's unique identifier.
+        name:
+          type: string
+          description: The list's name.
+        openItemCount:
+          type: integer
+          format: int32
+          description: The number of unchecked (open) items on the list.
+        checkedItemCount:
+          type: integer
+          format: int32
+          description: The number of checked items on the list.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the list was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the list was last modified.
+    ListWithItems:
+      description: A list together with all of its items.
+      allOf:
+        - $ref: "#/components/schemas/List"
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              description: All items on the list, open and checked.
+              items:
+                $ref: "#/components/schemas/Item"
+    Item:
+      type: object
+      description: A single item on a shopping list.
+      required:
+        - id
+        - listId
+        - name
+        - quantity
+        - checked
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The item's unique identifier.
+        listId:
+          type: string
+          format: uuid
+          description: The identifier of the list this item belongs to.
+        name:
+          type: string
+          description: What to buy.
+        quantity:
+          type: integer
+          format: int32
+          default: 1
+          minimum: 1
+          description: How many to buy. Defaults to 1.
+        note:
+          type: string
+          nullable: true
+          description: An optional free-text note (e.g. brand or size).
+        checked:
+          type: boolean
+          description: Whether the item has been checked off (in the cart).
+        checkedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the item was last checked off, if it is checked.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the item was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the item was last modified.
+    CreateListRequest:
+      type: object
+      description: Request body for creating a list.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The name for the new list.
+    RenameListRequest:
+      type: object
+      description: Request body for renaming a list.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The new name for the list.
+    AddItemRequest:
+      type: object
+      description: Request body for adding an item to a list.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: What to buy.
+        quantity:
+          type: integer
+          format: int32
+          default: 1
+          minimum: 1
+          description: How many to buy. Defaults to 1.
+        note:
+          type: string
+          nullable: true
+          description: An optional free-text note.
+    UpdateItemRequest:
+      type: object
+      description: |
+        Request body for updating an item. Only the fields present are changed.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: A new name for the item.
+        quantity:
+          type: integer
+          format: int32
+          minimum: 1
+          description: A new quantity for the item.
+        note:
+          type: string
+          nullable: true
+          description: A new note for the item (null clears it).

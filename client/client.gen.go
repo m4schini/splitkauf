@@ -4,6 +4,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,29 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// AddItemRequest Request body for adding an item to a list.
+type AddItemRequest struct {
+	// Name What to buy.
+	Name string `json:"name"`
+
+	// Note An optional free-text note.
+	Note *string `json:"note,omitempty"`
+
+	// Quantity How many to buy. Defaults to 1.
+	Quantity *int32 `json:"quantity,omitempty"`
+}
+
+// CreateListRequest Request body for creating a list.
+type CreateListRequest struct {
+	// Name The name for the new list.
+	Name string `json:"name"`
+}
 
 // FieldError A single field-level validation error.
 type FieldError struct {
@@ -38,6 +61,81 @@ type HealthStatus struct {
 	Status string `json:"status"`
 }
 
+// Item A single item on a shopping list.
+type Item struct {
+	// Checked Whether the item has been checked off (in the cart).
+	Checked bool `json:"checked"`
+
+	// CheckedAt When the item was last checked off, if it is checked.
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+
+	// CreatedAt When the item was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The item's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// ListId The identifier of the list this item belongs to.
+	ListId openapi_types.UUID `json:"listId"`
+
+	// Name What to buy.
+	Name string `json:"name"`
+
+	// Note An optional free-text note (e.g. brand or size).
+	Note *string `json:"note,omitempty"`
+
+	// Quantity How many to buy. Defaults to 1.
+	Quantity int32 `json:"quantity"`
+
+	// UpdatedAt When the item was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// List A shopping list with a summary of its item counts.
+type List struct {
+	// CheckedItemCount The number of checked items on the list.
+	CheckedItemCount int32 `json:"checkedItemCount"`
+
+	// CreatedAt When the list was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The list's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The list's name.
+	Name string `json:"name"`
+
+	// OpenItemCount The number of unchecked (open) items on the list.
+	OpenItemCount int32 `json:"openItemCount"`
+
+	// UpdatedAt When the list was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ListWithItems defines model for ListWithItems.
+type ListWithItems struct {
+	// CheckedItemCount The number of checked items on the list.
+	CheckedItemCount int32 `json:"checkedItemCount"`
+
+	// CreatedAt When the list was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The list's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Items All items on the list, open and checked.
+	Items []Item `json:"items"`
+
+	// Name The list's name.
+	Name string `json:"name"`
+
+	// OpenItemCount The number of unchecked (open) items on the list.
+	OpenItemCount int32 `json:"openItemCount"`
+
+	// UpdatedAt When the list was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // ProblemDetail RFC 9457 (Problem Details for HTTP APIs) error object. The standard
 // members are optional; additional extension members may be present.
 type ProblemDetail struct {
@@ -62,9 +160,54 @@ type ProblemDetail struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// RenameListRequest Request body for renaming a list.
+type RenameListRequest struct {
+	// Name The new name for the list.
+	Name string `json:"name"`
+}
+
+// UpdateItemRequest Request body for updating an item. Only the fields present are changed.
+type UpdateItemRequest struct {
+	// Name A new name for the item.
+	Name *string `json:"name,omitempty"`
+
+	// Note A new note for the item (null clears it).
+	Note *string `json:"note,omitempty"`
+
+	// Quantity A new quantity for the item.
+	Quantity *int32 `json:"quantity,omitempty"`
+}
+
+// User An authenticated user.
+type User struct {
+	// Id The user's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The user's display name.
+	Name string `json:"name"`
+}
+
+// ItemId defines model for ItemId.
+type ItemId = openapi_types.UUID
+
+// ListId defines model for ListId.
+type ListId = openapi_types.UUID
+
 // Problem RFC 9457 (Problem Details for HTTP APIs) error object. The standard
 // members are optional; additional extension members may be present.
 type Problem = ProblemDetail
+
+// CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
+type CreateListJSONRequestBody = CreateListRequest
+
+// RenameListJSONRequestBody defines body for RenameList for application/json ContentType.
+type RenameListJSONRequestBody = RenameListRequest
+
+// AddItemJSONRequestBody defines body for AddItem for application/json ContentType.
+type AddItemJSONRequestBody = AddItemRequest
+
+// UpdateItemJSONRequestBody defines body for UpdateItem for application/json ContentType.
+type UpdateItemJSONRequestBody = UpdateItemRequest
 
 // Getter for additional properties for ProblemDetail. Returns the specified
 // element and whether it was found
@@ -284,10 +427,231 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 type ClientInterface interface {
 	// GetHealth request
 	GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListLists request
+	ListLists(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateListWithBody request with any body
+	CreateListWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateList(ctx context.Context, body CreateListJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteList request
+	DeleteList(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetList request
+	GetList(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RenameListWithBody request with any body
+	RenameListWithBody(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RenameList(ctx context.Context, listId ListId, body RenameListJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AddItemWithBody request with any body
+	AddItemWithBody(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AddItem(ctx context.Context, listId ListId, body AddItemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteItem request
+	DeleteItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateItemWithBody request with any body
+	UpdateItemWithBody(ctx context.Context, listId ListId, itemId ItemId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateItem(ctx context.Context, listId ListId, itemId ItemId, body UpdateItemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CheckItem request
+	CheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UncheckItem request
+	UncheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMe request
+	GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListLists(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListListsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateListWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateListRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateList(ctx context.Context, body CreateListJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateListRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteList(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteListRequest(c.Server, listId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetList(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetListRequest(c.Server, listId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RenameListWithBody(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameListRequestWithBody(c.Server, listId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RenameList(ctx context.Context, listId ListId, body RenameListJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRenameListRequest(c.Server, listId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddItemWithBody(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddItemRequestWithBody(c.Server, listId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AddItem(ctx context.Context, listId ListId, body AddItemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAddItemRequest(c.Server, listId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteItemRequest(c.Server, listId, itemId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateItemWithBody(ctx context.Context, listId ListId, itemId ItemId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateItemRequestWithBody(c.Server, listId, itemId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateItem(ctx context.Context, listId ListId, itemId ItemId, body UpdateItemJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateItemRequest(c.Server, listId, itemId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCheckItemRequest(c.Server, listId, itemId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UncheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUncheckItemRequest(c.Server, listId, itemId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetMe(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMeRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -308,6 +672,439 @@ func NewGetHealthRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListListsRequest generates requests for ListLists
+func NewListListsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateListRequest calls the generic CreateList builder with application/json body
+func NewCreateListRequest(server string, body CreateListJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateListRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateListRequestWithBody generates requests for CreateList with any type of body
+func NewCreateListRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteListRequest generates requests for DeleteList
+func NewDeleteListRequest(server string, listId ListId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetListRequest generates requests for GetList
+func NewGetListRequest(server string, listId ListId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRenameListRequest calls the generic RenameList builder with application/json body
+func NewRenameListRequest(server string, listId ListId, body RenameListJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRenameListRequestWithBody(server, listId, "application/json", bodyReader)
+}
+
+// NewRenameListRequestWithBody generates requests for RenameList with any type of body
+func NewRenameListRequestWithBody(server string, listId ListId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAddItemRequest calls the generic AddItem builder with application/json body
+func NewAddItemRequest(server string, listId ListId, body AddItemJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAddItemRequestWithBody(server, listId, "application/json", bodyReader)
+}
+
+// NewAddItemRequestWithBody generates requests for AddItem with any type of body
+func NewAddItemRequestWithBody(server string, listId ListId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteItemRequest generates requests for DeleteItem
+func NewDeleteItemRequest(server string, listId ListId, itemId ItemId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "itemId", itemId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateItemRequest calls the generic UpdateItem builder with application/json body
+func NewUpdateItemRequest(server string, listId ListId, itemId ItemId, body UpdateItemJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateItemRequestWithBody(server, listId, itemId, "application/json", bodyReader)
+}
+
+// NewUpdateItemRequestWithBody generates requests for UpdateItem with any type of body
+func NewUpdateItemRequestWithBody(server string, listId ListId, itemId ItemId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "itemId", itemId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCheckItemRequest generates requests for CheckItem
+func NewCheckItemRequest(server string, listId ListId, itemId ItemId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "itemId", itemId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items/%s/check", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUncheckItemRequest generates requests for UncheckItem
+func NewUncheckItemRequest(server string, listId ListId, itemId ItemId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "itemId", itemId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items/%s/uncheck", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMeRequest generates requests for GetMe
+func NewGetMeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/me")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -370,6 +1167,47 @@ func WithBaseURL(baseURL string) ClientOption {
 type ClientWithResponsesInterface interface {
 	// GetHealthWithResponse request
 	GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error)
+
+	// ListListsWithResponse request
+	ListListsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListListsResponse, error)
+
+	// CreateListWithBodyWithResponse request with any body
+	CreateListWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateListResponse, error)
+
+	CreateListWithResponse(ctx context.Context, body CreateListJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateListResponse, error)
+
+	// DeleteListWithResponse request
+	DeleteListWithResponse(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*DeleteListResponse, error)
+
+	// GetListWithResponse request
+	GetListWithResponse(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*GetListResponse, error)
+
+	// RenameListWithBodyWithResponse request with any body
+	RenameListWithBodyWithResponse(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameListResponse, error)
+
+	RenameListWithResponse(ctx context.Context, listId ListId, body RenameListJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameListResponse, error)
+
+	// AddItemWithBodyWithResponse request with any body
+	AddItemWithBodyWithResponse(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddItemResponse, error)
+
+	AddItemWithResponse(ctx context.Context, listId ListId, body AddItemJSONRequestBody, reqEditors ...RequestEditorFn) (*AddItemResponse, error)
+
+	// DeleteItemWithResponse request
+	DeleteItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*DeleteItemResponse, error)
+
+	// UpdateItemWithBodyWithResponse request with any body
+	UpdateItemWithBodyWithResponse(ctx context.Context, listId ListId, itemId ItemId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateItemResponse, error)
+
+	UpdateItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, body UpdateItemJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateItemResponse, error)
+
+	// CheckItemWithResponse request
+	CheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*CheckItemResponse, error)
+
+	// UncheckItemWithResponse request
+	UncheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*UncheckItemResponse, error)
+
+	// GetMeWithResponse request
+	GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error)
 }
 
 type GetHealthResponse struct {
@@ -403,6 +1241,345 @@ func (r GetHealthResponse) ContentType() string {
 	return ""
 }
 
+type ListListsResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *[]List
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r ListListsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListListsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListListsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateListResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON201                       *List
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteListResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetListResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *ListWithItems
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RenameListResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *List
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r RenameListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RenameListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RenameListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AddItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON201                       *Item
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r AddItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AddItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AddItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *Item
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CheckItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *Item
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r CheckItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CheckItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CheckItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UncheckItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *Item
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r UncheckItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UncheckItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UncheckItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMeResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *User
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetHealthWithResponse request returning *GetHealthResponse
 func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResponse, error) {
 	rsp, err := c.GetHealth(ctx, reqEditors...)
@@ -410,6 +1587,137 @@ func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseGetHealthResponse(rsp)
+}
+
+// ListListsWithResponse request returning *ListListsResponse
+func (c *ClientWithResponses) ListListsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListListsResponse, error) {
+	rsp, err := c.ListLists(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListListsResponse(rsp)
+}
+
+// CreateListWithBodyWithResponse request with arbitrary body returning *CreateListResponse
+func (c *ClientWithResponses) CreateListWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateListResponse, error) {
+	rsp, err := c.CreateListWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateListResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateListWithResponse(ctx context.Context, body CreateListJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateListResponse, error) {
+	rsp, err := c.CreateList(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateListResponse(rsp)
+}
+
+// DeleteListWithResponse request returning *DeleteListResponse
+func (c *ClientWithResponses) DeleteListWithResponse(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*DeleteListResponse, error) {
+	rsp, err := c.DeleteList(ctx, listId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteListResponse(rsp)
+}
+
+// GetListWithResponse request returning *GetListResponse
+func (c *ClientWithResponses) GetListWithResponse(ctx context.Context, listId ListId, reqEditors ...RequestEditorFn) (*GetListResponse, error) {
+	rsp, err := c.GetList(ctx, listId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetListResponse(rsp)
+}
+
+// RenameListWithBodyWithResponse request with arbitrary body returning *RenameListResponse
+func (c *ClientWithResponses) RenameListWithBodyWithResponse(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RenameListResponse, error) {
+	rsp, err := c.RenameListWithBody(ctx, listId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameListResponse(rsp)
+}
+
+func (c *ClientWithResponses) RenameListWithResponse(ctx context.Context, listId ListId, body RenameListJSONRequestBody, reqEditors ...RequestEditorFn) (*RenameListResponse, error) {
+	rsp, err := c.RenameList(ctx, listId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRenameListResponse(rsp)
+}
+
+// AddItemWithBodyWithResponse request with arbitrary body returning *AddItemResponse
+func (c *ClientWithResponses) AddItemWithBodyWithResponse(ctx context.Context, listId ListId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AddItemResponse, error) {
+	rsp, err := c.AddItemWithBody(ctx, listId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddItemResponse(rsp)
+}
+
+func (c *ClientWithResponses) AddItemWithResponse(ctx context.Context, listId ListId, body AddItemJSONRequestBody, reqEditors ...RequestEditorFn) (*AddItemResponse, error) {
+	rsp, err := c.AddItem(ctx, listId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAddItemResponse(rsp)
+}
+
+// DeleteItemWithResponse request returning *DeleteItemResponse
+func (c *ClientWithResponses) DeleteItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*DeleteItemResponse, error) {
+	rsp, err := c.DeleteItem(ctx, listId, itemId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteItemResponse(rsp)
+}
+
+// UpdateItemWithBodyWithResponse request with arbitrary body returning *UpdateItemResponse
+func (c *ClientWithResponses) UpdateItemWithBodyWithResponse(ctx context.Context, listId ListId, itemId ItemId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateItemResponse, error) {
+	rsp, err := c.UpdateItemWithBody(ctx, listId, itemId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateItemResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, body UpdateItemJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateItemResponse, error) {
+	rsp, err := c.UpdateItem(ctx, listId, itemId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateItemResponse(rsp)
+}
+
+// CheckItemWithResponse request returning *CheckItemResponse
+func (c *ClientWithResponses) CheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*CheckItemResponse, error) {
+	rsp, err := c.CheckItem(ctx, listId, itemId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCheckItemResponse(rsp)
+}
+
+// UncheckItemWithResponse request returning *UncheckItemResponse
+func (c *ClientWithResponses) UncheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*UncheckItemResponse, error) {
+	rsp, err := c.UncheckItem(ctx, listId, itemId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUncheckItemResponse(rsp)
+}
+
+// GetMeWithResponse request returning *GetMeResponse
+func (c *ClientWithResponses) GetMeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetMeResponse, error) {
+	rsp, err := c.GetMe(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMeResponse(rsp)
 }
 
 // ParseGetHealthResponse parses an HTTP response from a GetHealthWithResponse call
@@ -428,6 +1736,355 @@ func ParseGetHealthResponse(rsp *http.Response) (*GetHealthResponse, error) {
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest HealthStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListListsResponse parses an HTTP response from a ListListsWithResponse call
+func ParseListListsResponse(rsp *http.Response) (*ListListsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListListsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []List
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateListResponse parses an HTTP response from a CreateListWithResponse call
+func ParseCreateListResponse(rsp *http.Response) (*CreateListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest List
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteListResponse parses an HTTP response from a DeleteListWithResponse call
+func ParseDeleteListResponse(rsp *http.Response) (*DeleteListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetListResponse parses an HTTP response from a GetListWithResponse call
+func ParseGetListResponse(rsp *http.Response) (*GetListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListWithItems
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRenameListResponse parses an HTTP response from a RenameListWithResponse call
+func ParseRenameListResponse(rsp *http.Response) (*RenameListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RenameListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest List
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAddItemResponse parses an HTTP response from a AddItemWithResponse call
+func ParseAddItemResponse(rsp *http.Response) (*AddItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AddItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Item
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteItemResponse parses an HTTP response from a DeleteItemWithResponse call
+func ParseDeleteItemResponse(rsp *http.Response) (*DeleteItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateItemResponse parses an HTTP response from a UpdateItemWithResponse call
+func ParseUpdateItemResponse(rsp *http.Response) (*UpdateItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Item
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCheckItemResponse parses an HTTP response from a CheckItemWithResponse call
+func ParseCheckItemResponse(rsp *http.Response) (*CheckItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CheckItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Item
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUncheckItemResponse parses an HTTP response from a UncheckItemWithResponse call
+func ParseUncheckItemResponse(rsp *http.Response) (*UncheckItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UncheckItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Item
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMeResponse parses an HTTP response from a GetMeWithResponse call
+func ParseGetMeResponse(rsp *http.Response) (*GetMeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest User
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

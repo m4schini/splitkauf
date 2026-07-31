@@ -13,10 +13,31 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// AddItemRequest Request body for adding an item to a list.
+type AddItemRequest struct {
+	// Name What to buy.
+	Name string `json:"name"`
+
+	// Note An optional free-text note.
+	Note *string `json:"note,omitempty"`
+
+	// Quantity How many to buy. Defaults to 1.
+	Quantity *int32 `json:"quantity,omitempty"`
+}
+
+// CreateListRequest Request body for creating a list.
+type CreateListRequest struct {
+	// Name The name for the new list.
+	Name string `json:"name"`
+}
 
 // FieldError A single field-level validation error.
 type FieldError struct {
@@ -43,6 +64,81 @@ type HealthStatus struct {
 	Status string `json:"status"`
 }
 
+// Item A single item on a shopping list.
+type Item struct {
+	// Checked Whether the item has been checked off (in the cart).
+	Checked bool `json:"checked"`
+
+	// CheckedAt When the item was last checked off, if it is checked.
+	CheckedAt *time.Time `json:"checkedAt,omitempty"`
+
+	// CreatedAt When the item was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The item's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// ListId The identifier of the list this item belongs to.
+	ListId openapi_types.UUID `json:"listId"`
+
+	// Name What to buy.
+	Name string `json:"name"`
+
+	// Note An optional free-text note (e.g. brand or size).
+	Note *string `json:"note,omitempty"`
+
+	// Quantity How many to buy. Defaults to 1.
+	Quantity int32 `json:"quantity"`
+
+	// UpdatedAt When the item was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// List A shopping list with a summary of its item counts.
+type List struct {
+	// CheckedItemCount The number of checked items on the list.
+	CheckedItemCount int32 `json:"checkedItemCount"`
+
+	// CreatedAt When the list was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The list's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The list's name.
+	Name string `json:"name"`
+
+	// OpenItemCount The number of unchecked (open) items on the list.
+	OpenItemCount int32 `json:"openItemCount"`
+
+	// UpdatedAt When the list was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ListWithItems defines model for ListWithItems.
+type ListWithItems struct {
+	// CheckedItemCount The number of checked items on the list.
+	CheckedItemCount int32 `json:"checkedItemCount"`
+
+	// CreatedAt When the list was created.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id The list's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Items All items on the list, open and checked.
+	Items []Item `json:"items"`
+
+	// Name The list's name.
+	Name string `json:"name"`
+
+	// OpenItemCount The number of unchecked (open) items on the list.
+	OpenItemCount int32 `json:"openItemCount"`
+
+	// UpdatedAt When the list was last modified.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // ProblemDetail RFC 9457 (Problem Details for HTTP APIs) error object. The standard
 // members are optional; additional extension members may be present.
 type ProblemDetail struct {
@@ -67,9 +163,54 @@ type ProblemDetail struct {
 	AdditionalProperties map[string]interface{} `json:"-"`
 }
 
+// RenameListRequest Request body for renaming a list.
+type RenameListRequest struct {
+	// Name The new name for the list.
+	Name string `json:"name"`
+}
+
+// UpdateItemRequest Request body for updating an item. Only the fields present are changed.
+type UpdateItemRequest struct {
+	// Name A new name for the item.
+	Name *string `json:"name,omitempty"`
+
+	// Note A new note for the item (null clears it).
+	Note *string `json:"note,omitempty"`
+
+	// Quantity A new quantity for the item.
+	Quantity *int32 `json:"quantity,omitempty"`
+}
+
+// User An authenticated user.
+type User struct {
+	// Id The user's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The user's display name.
+	Name string `json:"name"`
+}
+
+// ItemId defines model for ItemId.
+type ItemId = openapi_types.UUID
+
+// ListId defines model for ListId.
+type ListId = openapi_types.UUID
+
 // Problem RFC 9457 (Problem Details for HTTP APIs) error object. The standard
 // members are optional; additional extension members may be present.
 type Problem = ProblemDetail
+
+// CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
+type CreateListJSONRequestBody = CreateListRequest
+
+// RenameListJSONRequestBody defines body for RenameList for application/json ContentType.
+type RenameListJSONRequestBody = RenameListRequest
+
+// AddItemJSONRequestBody defines body for AddItem for application/json ContentType.
+type AddItemJSONRequestBody = AddItemRequest
+
+// UpdateItemJSONRequestBody defines body for UpdateItem for application/json ContentType.
+type UpdateItemJSONRequestBody = UpdateItemRequest
 
 // Getter for additional properties for ProblemDetail. Returns the specified
 // element and whether it was found
@@ -219,6 +360,39 @@ type ServerInterface interface {
 	// Service health
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// List all lists
+	// (GET /lists)
+	ListLists(w http.ResponseWriter, r *http.Request)
+	// Create a list
+	// (POST /lists)
+	CreateList(w http.ResponseWriter, r *http.Request)
+	// Delete a list
+	// (DELETE /lists/{listId})
+	DeleteList(w http.ResponseWriter, r *http.Request, listId ListId)
+	// Get a list with its items
+	// (GET /lists/{listId})
+	GetList(w http.ResponseWriter, r *http.Request, listId ListId)
+	// Rename a list
+	// (PATCH /lists/{listId})
+	RenameList(w http.ResponseWriter, r *http.Request, listId ListId)
+	// Add an item to a list
+	// (POST /lists/{listId}/items)
+	AddItem(w http.ResponseWriter, r *http.Request, listId ListId)
+	// Remove an item
+	// (DELETE /lists/{listId}/items/{itemId})
+	DeleteItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId)
+	// Update an item
+	// (PATCH /lists/{listId}/items/{itemId})
+	UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId)
+	// Check off an item
+	// (POST /lists/{listId}/items/{itemId}/check)
+	CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId)
+	// Uncheck an item
+	// (POST /lists/{listId}/items/{itemId}/uncheck)
+	UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId)
+	// Get the authenticated user
+	// (GET /me)
+	GetMe(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -228,6 +402,72 @@ type Unimplemented struct{}
 // Service health
 // (GET /health)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all lists
+// (GET /lists)
+func (_ Unimplemented) ListLists(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a list
+// (POST /lists)
+func (_ Unimplemented) CreateList(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a list
+// (DELETE /lists/{listId})
+func (_ Unimplemented) DeleteList(w http.ResponseWriter, r *http.Request, listId ListId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a list with its items
+// (GET /lists/{listId})
+func (_ Unimplemented) GetList(w http.ResponseWriter, r *http.Request, listId ListId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rename a list
+// (PATCH /lists/{listId})
+func (_ Unimplemented) RenameList(w http.ResponseWriter, r *http.Request, listId ListId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add an item to a list
+// (POST /lists/{listId}/items)
+func (_ Unimplemented) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Remove an item
+// (DELETE /lists/{listId}/items/{itemId})
+func (_ Unimplemented) DeleteItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update an item
+// (PATCH /lists/{listId}/items/{itemId})
+func (_ Unimplemented) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Check off an item
+// (POST /lists/{listId}/items/{itemId}/check)
+func (_ Unimplemented) CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Uncheck an item
+// (POST /lists/{listId}/items/{itemId}/uncheck)
+func (_ Unimplemented) UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get the authenticated user
+// (GET /me)
+func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -245,6 +485,292 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListLists operation middleware
+func (siw *ServerInterfaceWrapper) ListLists(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLists(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateList operation middleware
+func (siw *ServerInterfaceWrapper) CreateList(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateList(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteList operation middleware
+func (siw *ServerInterfaceWrapper) DeleteList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteList(w, r, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetList operation middleware
+func (siw *ServerInterfaceWrapper) GetList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetList(w, r, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameList operation middleware
+func (siw *ServerInterfaceWrapper) RenameList(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameList(w, r, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddItem operation middleware
+func (siw *ServerInterfaceWrapper) AddItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddItem(w, r, listId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteItem operation middleware
+func (siw *ServerInterfaceWrapper) DeleteItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteItem(w, r, listId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateItem operation middleware
+func (siw *ServerInterfaceWrapper) UpdateItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateItem(w, r, listId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckItem operation middleware
+func (siw *ServerInterfaceWrapper) CheckItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckItem(w, r, listId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UncheckItem operation middleware
+func (siw *ServerInterfaceWrapper) UncheckItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "listId" -------------
+	var listId ListId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "listId", chi.URLParam(r, "listId"), &listId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "listId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId ItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", chi.URLParam(r, "itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UncheckItem(w, r, listId, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -370,6 +896,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/lists", wrapper.ListLists)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/lists", wrapper.CreateList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/lists/{listId}", wrapper.DeleteList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/lists/{listId}", wrapper.GetList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/lists/{listId}", wrapper.RenameList)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/lists/{listId}/items", wrapper.AddItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/lists/{listId}/items/{itemId}", wrapper.DeleteItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/lists/{listId}/items/{itemId}", wrapper.UpdateItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/lists/{listId}/items/{itemId}/check", wrapper.CheckItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/lists/{listId}/items/{itemId}/uncheck", wrapper.UncheckItem)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me", wrapper.GetMe)
+	})
 
 	return r
 }
@@ -379,25 +938,50 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"lFZNU+M4E/4rXXrfA9QmToD9qMmcKGZY2MNCMexpzEGx2rEGuaWV5DAuyv99S1Js4iQwzC2OWv3x9NNP",
-	"65kVujaakLxji2dm0RlNDuPHrdVLhXX4WWjySD785MYoWXAvNc1Msvjlm9MUzlxRYc3Dr/9bLNmC/W/2",
-	"4n+WTt1s4/cTei4V67puwgS6wkoTnLIFOydAa7UFXRSNtSgyuK8Qllq0IB1wgrvLC/jw629/wMYXJGcO",
-	"9PIbFh6epK9yukhZT+9bg/Ba3hl8XqNtIWe+NZizGAEM99WUL51Wjcec/rm7hqOc9Rfd7NmpZtXl7Bh8",
-	"xT1YdFqt0YHXwKFqak5Ti1zwpULA70ZxipFzMnyF4NCuUcCyBV8hnN9eZzmxgMMGooDgpUQlPgcYwtcO",
-	"QOAkrRRCGYymCteoYM2VFDFKQi9jE2asNmi9TA0VCfE9d1fjfLcOQZcxxRjnxW1Aii2Y81bSinUTZrQk",
-	"jwcz/evLzd9wm87hKDTu9w/zk2OQAsnLspW0iiF0WSKJ8JWChRZKyimcWfy3QecjAwJUexl0ExZspEXB",
-	"Fl/7Qh8Gu0SLkOkVcuWriwqLx4jJDkLc8yV3uF/IF89943o8ejsQaJAEUtEGfujHnMFThQQWeVEFNCeQ",
-	"s4hbznKKRw0Nh6AtkPZQaCrlqrEojt9VXp/l6wWmdPcLLIbC35rQEUiBloO3MSg3a7RcqchnWSAkOzjC",
-	"bJXBBg5tIWcCV5YLFDk7zn5Y3ibapE/2UJVjDQmyJIQMWXF1u1Wwtw3uqsugHUe74lFqC1f397dhIt1x",
-	"r0ExZlIg5zkJbkVONdZLtA64RdAmBf4IL0kAfvdILoxQb1rzFpYIxqJD8qnP75vP8zcUBZzBQpayCNLj",
-	"K+l60aQCD45qrOpALy/fkBI3SazeaOhSRdfSY/1DKm3JWDdkw63lbfiWFCAt8FDNQXMtlhhL2ZOLoexx",
-	"uaW2NfdswRorp8PtQzi8xunQ50iCDZkLLTAyYwfcXgo2K2EUXJI/O30JGrRvhQkA6dXBal2lrZ/sNto1",
-	"dc1tuxMLgt+DzU1//CyWI7dwt73LcnqDenGX9cP+shtJ+2mpG4rTHmn+3q50e5PeRZKU+oAgGyX9I2/K",
-	"fn9OmJIFUhJv4nVwc3/z6WYL9vElNmFrtC65m2cn2TyYaoPEjWQLdpbNs7MwpNxXkSizKupi+LlCv5/S",
-	"HRptvQO9I4vpGnASibrDKhH6iZy3yOuchk0i0WVwrp5468Cibyy5RMjT+fwjSArM96lvvFWai8jO5DTh",
-	"EDQlduhasAX7E33SczYZv+9O5/M33nY/96YbbZ0DT7p0vlV6BCLhk7FoXvJG+dfiDIn3r8f0XErjERo7",
-	"gjowi69cXCat81izh5hTfHcF8fv6zBqr2ILNuJGz9QnrHoYre0Tb7+IAcBB6EvH148JAbmi3Cdo9dP8F",
-	"AAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

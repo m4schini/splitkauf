@@ -29,8 +29,10 @@ func TestMain(m *testing.M) {
 }
 
 // panicServer is a ServerInterface stub whose handler always panics, to
-// exercise the Recover middleware.
-type panicServer struct{}
+// exercise the Recover middleware. It embeds ServerInterface so the other
+// operations are satisfied without stubbing each one (they are never called
+// here); only GetHealth is overridden.
+type panicServer struct{ v1.ServerInterface }
 
 func (panicServer) GetHealth(http.ResponseWriter, *http.Request) {
 	panic("boom: this must never leak into the response body")
