@@ -7,7 +7,7 @@ This is a living document. It describes both the **implemented** foundation and 
 - ✅ **Implemented** — exists in code today.
 - 🔜 **Planned** — decided in research, not yet built.
 
-Last updated: 2026-07-21.
+Last updated: 2026-07-31.
 
 ---
 

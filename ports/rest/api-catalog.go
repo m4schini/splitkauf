@@ -33,6 +33,7 @@ func ApiDocsHandler() http.Handler {
 	r.Get("/openapi.yaml", openAPISpecHandler())
 	r.Get("/openapi.json", openAPISpecJSONHandler())
 	r.Get("/docs", docsHandler())
+	r.Get("/problems/{slug}", problemPageHandler())
 	return r
 }
 
