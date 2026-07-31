@@ -4,6 +4,7 @@ import { deleteList as apiDeleteList, type List } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
 import { listsKey, removeListLocally, restoreListLocally, useCreateList, useLists } from './queries'
+import { useLiveEvents } from './live'
 
 interface ListsOverviewProps {
   onOpenList: (listId: string) => void
@@ -17,6 +18,15 @@ export function ListsOverview({ onOpenList }: ListsOverviewProps) {
   const { pending, schedule, undo } = useUndoQueue()
   const [name, setName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Live updates (M3/US-S.1): any list or item mutation elsewhere can change
+  // what belongs in this overview (names, open/checked counts), and a
+  // reconnect may have missed hints while disconnected — so all three event
+  // kinds trigger a quiet refetch (no blocking spinner; React Query just
+  // refreshes the cache in place).
+  useLiveEvents(() => {
+    queryClient.invalidateQueries({ queryKey: listsKey })
+  })
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault()

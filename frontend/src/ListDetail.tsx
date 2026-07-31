@@ -18,6 +18,7 @@ import {
   useUncheckItem,
   useUpdateItem,
 } from './queries'
+import { useLiveEvents } from './live'
 
 interface ListDetailProps {
   listId: string
@@ -151,6 +152,19 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
   const deleteListMutation = useDeleteListMutation()
   const queryClient = useQueryClient()
   const { pending, schedule, undo } = useUndoQueue()
+
+  // Live updates (M3/US-S.1): an `items` event for this list means another
+  // client added/edited/checked/removed an item — refetch this list's detail
+  // (and the overview, for its open/checked counts). A `reconnect` may have
+  // missed hints while disconnected, so it also does a full reload; a plain
+  // `lists` event (rename/create/delete of some other list) doesn't affect
+  // this screen and is ignored.
+  useLiveEvents((event) => {
+    if (event.type === 'items' && event.listId !== listId) return
+    if (event.type === 'lists') return
+    queryClient.invalidateQueries({ queryKey: listKey(listId) })
+    queryClient.invalidateQueries({ queryKey: listsKey })
+  })
 
   const [itemName, setItemName] = useState('')
   const itemInputRef = useRef<HTMLInputElement>(null)
