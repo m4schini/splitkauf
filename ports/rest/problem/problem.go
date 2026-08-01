@@ -93,17 +93,27 @@ var (
 			"dependency it relies on is temporarily unavailable, such as the " +
 			"identity provider during sign-in. Retrying later may succeed.",
 	}
+	// PayloadTooLarge covers request bodies exceeding the API's size cap,
+	// whether rejected up front from a declared Content-Length or caught by
+	// the http.MaxBytesReader backstop while reading the body.
+	PayloadTooLarge = Type{
+		Slug:   "payload-too-large",
+		Title:  http.StatusText(http.StatusRequestEntityTooLarge),
+		Status: http.StatusRequestEntityTooLarge,
+		Description: "The request body exceeds the size limit the API enforces " +
+			"for every request. Reduce the size of the request body and retry.",
+	}
 )
 
 // Types returns every registered problem type. It drives the explanation pages
 // and the registry drift test (every emitted type must have a page).
 func Types() []Type {
-	return []Type{Validation, Unauthorized, NotFound, MethodNotAllowed, Internal, Unavailable}
+	return []Type{Validation, Unauthorized, NotFound, MethodNotAllowed, Internal, Unavailable, PayloadTooLarge}
 }
 
 // FromStatus maps an HTTP status code to its registered problem type: 400 →
-// Validation, 401 → Unauthorized, 404 → NotFound, 405 → MethodNotAllowed, 503
-// → Unavailable, and anything else → Internal.
+// Validation, 401 → Unauthorized, 404 → NotFound, 405 → MethodNotAllowed, 413
+// → PayloadTooLarge, 503 → Unavailable, and anything else → Internal.
 func FromStatus(status int) Type {
 	switch status {
 	case http.StatusBadRequest:
@@ -114,6 +124,8 @@ func FromStatus(status int) Type {
 		return NotFound
 	case http.StatusMethodNotAllowed:
 		return MethodNotAllowed
+	case http.StatusRequestEntityTooLarge:
+		return PayloadTooLarge
 	case http.StatusServiceUnavailable:
 		return Unavailable
 	default:

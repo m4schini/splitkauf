@@ -41,6 +41,12 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// every surface.
 	apiRouter := chi.NewRouter()
 	apiRouter.Use(middleware.Recover)
+	// MaxBody caps every /api/v1 request body at 1 MiB (US-Q.5): a declared
+	// oversized Content-Length is rejected immediately with a 413 problem, and
+	// http.MaxBytesReader backstops bodies without a declared length. The
+	// hand-written /api/auth/* endpoints above are mounted outside apiRouter
+	// and stay uncapped by design (they carry no request body).
+	apiRouter.Use(middleware.MaxBody(1 << 20))
 	apiRouter.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.NotFound, "no resource exists at this path"))
 	})

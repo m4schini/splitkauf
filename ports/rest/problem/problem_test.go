@@ -98,12 +98,13 @@ func TestWriteDefaultsStatusTo500(t *testing.T) {
 
 func TestFromStatus(t *testing.T) {
 	cases := map[int]problem.Type{
-		http.StatusBadRequest:          problem.Validation,
-		http.StatusNotFound:            problem.NotFound,
-		http.StatusMethodNotAllowed:    problem.MethodNotAllowed,
-		http.StatusInternalServerError: problem.Internal,
-		http.StatusTeapot:              problem.Internal, // unknown → internal
-		http.StatusBadGateway:          problem.Internal,
+		http.StatusBadRequest:            problem.Validation,
+		http.StatusNotFound:              problem.NotFound,
+		http.StatusMethodNotAllowed:      problem.MethodNotAllowed,
+		http.StatusRequestEntityTooLarge: problem.PayloadTooLarge,
+		http.StatusInternalServerError:   problem.Internal,
+		http.StatusTeapot:                problem.Internal, // unknown → internal
+		http.StatusBadGateway:            problem.Internal,
 	}
 	for status, want := range cases {
 		if got := problem.FromStatus(status); got.Slug != want.Slug {
