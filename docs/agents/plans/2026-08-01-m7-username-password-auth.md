@@ -111,22 +111,22 @@ frontend: fetch /api/auth/config -> render password form | OIDC button | (dev)
 
 ### Phase 1: Migration 000006 — users table (own commit)
 
-- [ ] `000006_password_users.up.sql`:
+- [x] `000006_password_users.up.sql`:
       `CREATE TABLE users (id uuid PK default gen_random_uuid(), username text NOT NULL UNIQUE, password_hash text NOT NULL, name text NOT NULL DEFAULT '', email text, created_at, updated_at)`.
-- [ ] `000006_password_users.down.sql`: `DROP TABLE users`.
+- [x] `000006_password_users.down.sql`: `DROP TABLE users`.
 - **Verify:** `go run . migrate` up to 6 and down against a disposable Postgres.
 
 ### Phase 2: users domain + bcrypt + repo + config flag
 
 Dependencies: Phase 1
 
-- [ ] `users/users.go`: `User` domain (Id, Username, Name, Email), `Repository`
+- [x] `users/users.go`: `User` domain (Id, Username, Name, Email), `Repository`
       (`Create(ctx, NewUser) (User,error)` with `ErrUsernameTaken`;
       `GetByUsername(ctx, string) (User, hash string, error)` with
       `ErrNotFound`). `HashPassword`/`CheckPassword` (bcrypt) + length guard.
-- [ ] `adapters/db/users.go`: Postgres repo; map unique-violation (23505) →
+- [x] `adapters/db/users.go`: Postgres repo; map unique-violation (23505) →
       `ErrUsernameTaken`, no-rows → `ErrNotFound`.
-- [ ] `config`: `IsPasswordEnabled()` from `auth.password.enabled`
+- [x] `config`: `IsPasswordEnabled()` from `auth.password.enabled`
       (`SPLITKAUF_AUTH_PASSWORD_ENABLED`); default false. Unit test the
       selection precedence.
 - **Verify:** `go test ./users/... ./adapters/db/... ./config/...` (integration
@@ -136,17 +136,17 @@ Dependencies: Phase 1
 
 Dependencies: Phase 2
 
-- [ ] `auth/password.go`: `passwordAuthenticator` implementing `Authenticator`
+- [x] `auth/password.go`: `passwordAuthenticator` implementing `Authenticator`
       (Key Decision 3 + 4: constant-time, dummy-hash on miss, member upsert,
       RenewToken, 204). Reuse `SessionData`/put/get.
-- [ ] `auth/auth.go` `New`: add the password branch (OIDC → password → dev).
-- [ ] `ports/rest/server.go`: register `POST /api/auth/login` → `authr.Login`;
+- [x] `auth/auth.go` `New`: add the password branch (OIDC → password → dev).
+- [x] `ports/rest/server.go`: register `POST /api/auth/login` → `authr.Login`;
       add `GET /api/auth/config` returning the mode (needs the mode from config,
       passed into `New`). Keep both outside the API body-cap subrouter (login
       handler self-limits its body).
-- [ ] `cmd/serve.go`: build the users repo + password authenticator when the
+- [x] `cmd/serve.go`: build the users repo + password authenticator when the
       flag is set; pass the resolved mode string to the config endpoint.
-- [ ] Tests: happy login (204 + session), wrong password / unknown user both
+- [x] Tests: happy login (204 + session), wrong password / unknown user both
       401 and indistinguishable, logout destroys session, `/api/auth/config`
       returns the right mode. **Security/go review** of `auth/password.go`.
 - **Verify:** `go test -race ./auth/... ./ports/...`; `make lint`.
@@ -155,10 +155,10 @@ Dependencies: Phase 2
 
 Dependencies: Phase 2
 
-- [ ] `cmd/useradd.go`: `useradd <username>`; read password from a no-echo TTY
+- [x] `cmd/useradd.go`: `useradd <username>`; read password from a no-echo TTY
       prompt (confirm twice) or `--password-stdin`; bcrypt; `repo.Create`;
       duplicate → nonzero exit with a clear message. No plaintext to logs/argv.
-- [ ] `cmd/useradd_test.go`: validation (empty username/password, >72 bytes),
+- [x] `cmd/useradd_test.go`: validation (empty username/password, >72 bytes),
       the stdin path.
 - **Verify:** `go test ./cmd/...`; manual `useradd` against the disposable DB.
 
@@ -166,28 +166,50 @@ Dependencies: Phase 2
 
 Dependencies: Phase 3
 
-- [ ] `frontend/src/api.ts`: `getAuthConfig()` → `{mode}`;
+- [x] `frontend/src/api.ts`: `getAuthConfig()` → `{mode}`;
       `passwordLogin(username,password)` → `POST /api/auth/login` (204).
-- [ ] `frontend/src/App.tsx`: fetch the mode; render a labelled
+- [x] `frontend/src/App.tsx`: fetch the mode; render a labelled
       username/password form (submit → passwordLogin → invalidate `['me']`) in
       password mode; keep the redirect button for OIDC; dev unchanged. Inline
       error on 401 (no enumeration wording). UX §6 (≥44px, ≥16px, AA, no
       blocking spinner).
-- [ ] Tests: form renders in password mode, submits and re-queries me; 401 shows
+- [x] Tests: form renders in password mode, submits and re-queries me; 401 shows
       an error; OIDC mode still shows the redirect button.
 - **Verify:** `make frontend-check`; `make check` from a clean tree.
 
 ### Phase 6: docs + push
 
-- [ ] `deploy/README.md`: password mode env, `useradd`, "no public sign-up".
-- [ ] `docs/architecture.md`: auth section — third mode + users table.
-- [ ] Quadlet env example note.
+- [x] `deploy/README.md`: password mode env, `useradd`, "no public sign-up".
+- [x] `docs/architecture.md`: auth section — third mode + users table.
+- [x] Quadlet env example note.
 - **Verify:** `make check` green; `make dist`; push.
 
 ## Implementation Notes
 
-During implementation, document decisions, deviations, and the security-review
-outcome here.
+- **Delivered as planned**, all six phases, one commit each (migration and the
+  useradd CLI's `x/term` bump in their own commits). Verified end-to-end with
+  the built binary in password mode: SPA serves, `GET /api/auth/config` →
+  `{"mode":"password"}`, `useradd` provisions an account (bcrypt `$2a$10$`),
+  login → 204 + HttpOnly SameSite=Lax cookie, `GET /api/v1/me` → the user;
+  wrong password / unknown user / no cookie → 401.
+- **Security review outcome (crux SOUND):** enumeration/timing resistance,
+  bcrypt handling, session-fixation ordering (`RenewToken` before
+  `putSessionData`), RequireAuth, the 4 KiB body limit → clean 400, and the DB
+  layer were all confirmed correct. One confirmed defect fixed: the password
+  min-length guard combined a byte-length and a rune-count check with `&&`,
+  making the rune term dead code and enforcing "8 bytes" not "8 characters" —
+  now measured in runes (max stays in bytes, bcrypt's truncation unit).
+  Applied improvements: `dummyHash` computed lazily via `sync.Once` (no bcrypt
+  in package init for dev/OIDC/test binaries); `Recover` added to the
+  hand-written auth route group for problem+json parity; the
+  indistinguishability test now asserts equal response bodies byte-for-byte.
+- **Known gaps (out of scope, noted for later):** no login rate-limiting /
+  lockout (bcrypt cost is the only brute-force brake — add a per-IP+username
+  limiter + a rejected-login metric before GA); no CSRF token on the login POST
+  (acceptable given SameSite=Lax + the `application/json` +
+  `DisallowUnknownFields` requirement, matching the existing plain-POST logout);
+  no immediate session revocation when a `users` row is deleted (same tradeoff
+  as the OIDC path — the session stays valid until its scs lifetime expires).
 
 ## References
 
