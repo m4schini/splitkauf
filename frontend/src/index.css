@@ -13,10 +13,10 @@
   --fg-muted: #52525b;
   --border: #d4d4d8;
   --control-border: #71717a;
-  --accent: #6d28d9;
+  --accent: #2e7d43;
   --accent-contrast: #ffffff;
   --danger: #b91c1c;
-  --focus-ring: #6d28d9;
+  --focus-ring: #2e7d43;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light dark;
@@ -39,10 +39,10 @@
     --fg-muted: #a8a8b3;
     --border: #33333d;
     --control-border: #6b6b76;
-    --accent: #c4b5fd;
+    --accent: #7abf7e;
     --accent-contrast: #16171d;
     --danger: #fca5a5;
-    --focus-ring: #c4b5fd;
+    --focus-ring: #7abf7e;
   }
 }
 
