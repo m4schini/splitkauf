@@ -20,6 +20,10 @@ import (
 
 // AddItemRequest Request body for adding an item to a list.
 type AddItemRequest struct {
+	// Checked Whether the item is checked off at creation. Used when an offline
+	// check folds into a still-queued create; defaults to false.
+	Checked *bool `json:"checked,omitempty"`
+
 	// Name What to buy.
 	Name string `json:"name"`
 
@@ -466,6 +470,9 @@ type ClientInterface interface {
 	// CheckItem request
 	CheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// RestoreItem request
+	RestoreItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// UncheckItem request
 	UncheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -631,6 +638,18 @@ func (c *Client) UpdateItem(ctx context.Context, listId ListId, itemId ItemId, b
 
 func (c *Client) CheckItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCheckItemRequest(c.Server, listId, itemId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RestoreItem(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreItemRequest(c.Server, listId, itemId)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,6 +1076,47 @@ func NewCheckItemRequest(server string, listId ListId, itemId ItemId) (*http.Req
 	return req, nil
 }
 
+// NewRestoreItemRequest generates requests for RestoreItem
+func NewRestoreItemRequest(server string, listId ListId, itemId ItemId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "listId", listId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "itemId", itemId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/lists/%s/items/%s/restore", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewUncheckItemRequest generates requests for UncheckItem
 func NewUncheckItemRequest(server string, listId ListId, itemId ItemId) (*http.Request, error) {
 	var err error
@@ -1205,6 +1265,9 @@ type ClientWithResponsesInterface interface {
 
 	// CheckItemWithResponse request
 	CheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*CheckItemResponse, error)
+
+	// RestoreItemWithResponse request
+	RestoreItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*RestoreItemResponse, error)
 
 	// UncheckItemWithResponse request
 	UncheckItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*UncheckItemResponse, error)
@@ -1521,6 +1584,37 @@ func (r CheckItemResponse) ContentType() string {
 	return ""
 }
 
+type RestoreItemResponse struct {
+	Body                          []byte
+	HTTPResponse                  *http.Response
+	JSON200                       *Item
+	ApplicationproblemJSONDefault *Problem
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreItemResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreItemResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RestoreItemResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type UncheckItemResponse struct {
 	Body                          []byte
 	HTTPResponse                  *http.Response
@@ -1703,6 +1797,15 @@ func (c *ClientWithResponses) CheckItemWithResponse(ctx context.Context, listId 
 		return nil, err
 	}
 	return ParseCheckItemResponse(rsp)
+}
+
+// RestoreItemWithResponse request returning *RestoreItemResponse
+func (c *ClientWithResponses) RestoreItemWithResponse(ctx context.Context, listId ListId, itemId ItemId, reqEditors ...RequestEditorFn) (*RestoreItemResponse, error) {
+	rsp, err := c.RestoreItem(ctx, listId, itemId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreItemResponse(rsp)
 }
 
 // UncheckItemWithResponse request returning *UncheckItemResponse
@@ -2015,6 +2118,39 @@ func ParseCheckItemResponse(rsp *http.Response) (*CheckItemResponse, error) {
 	}
 
 	response := &CheckItemResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Item
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRestoreItemResponse parses an HTTP response from a RestoreItemWithResponse call
+func ParseRestoreItemResponse(rsp *http.Response) (*RestoreItemResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreItemResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

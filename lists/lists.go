@@ -87,10 +87,11 @@ type Repository interface {
 	RenameList(ctx context.Context, id uuid.UUID, name string) (List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
 
-	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (Item, error)
+	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update ItemUpdate) (Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
+	RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
 	SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (Item, error)
 }
 

@@ -33,9 +33,10 @@ type fakeService struct {
 	getList     func(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	renameList  func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	deleteList  func(ctx context.Context, id uuid.UUID) error
-	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (lists.Item, error)
+	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error)
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
+	restoreItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
 	checkItem   func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
 	uncheckItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
 }
@@ -60,8 +61,8 @@ func (f *fakeService) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return f.deleteList(ctx, id)
 }
 
-func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (lists.Item, error) {
-	return f.addItem(ctx, listID, name, quantity, note)
+func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error) {
+	return f.addItem(ctx, listID, name, quantity, note, checked)
 }
 
 func (f *fakeService) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error) {
@@ -70,6 +71,10 @@ func (f *fakeService) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, 
 
 func (f *fakeService) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
 	return f.deleteItem(ctx, listID, itemID)
+}
+
+func (f *fakeService) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+	return f.restoreItem(ctx, listID, itemID)
 }
 
 func (f *fakeService) CheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
@@ -482,11 +487,11 @@ func TestGetListHappyPath(t *testing.T) {
 
 func TestAddItemHappyPath(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, note *string) (lists.Item, error) {
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, note *string, checked bool) (lists.Item, error) {
 		if lid != listID || name != "milk" || qty != 2 {
 			t.Errorf("service got lid=%v name=%q qty=%d", lid, name, qty)
 		}
-		return lists.Item{ID: uuid.New(), ListID: listID, Name: name, Quantity: qty, Note: note}, nil
+		return lists.Item{ID: uuid.New(), ListID: listID, Name: name, Quantity: qty, Note: note, Checked: checked}, nil
 	}}
 	srv := newServer(t, svc)
 
@@ -526,6 +531,80 @@ func TestCheckItemHappyPath(t *testing.T) {
 	}
 	if !got.Checked || got.CheckedAt == nil {
 		t.Errorf("got %+v, want checked", got)
+	}
+}
+
+func TestRestoreItemHappyPath(t *testing.T) {
+	listID, itemID := uuid.New(), uuid.New()
+	svc := &fakeService{restoreItem: func(_ context.Context, lid, iid uuid.UUID) (lists.Item, error) {
+		if lid != listID || iid != itemID {
+			t.Errorf("service got lid=%v iid=%v", lid, iid)
+		}
+		return lists.Item{ID: itemID, ListID: listID, Name: "milk", Quantity: 1}, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/restore", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var got v1.Item
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Id != itemID || got.Name != "milk" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestRestoreItemNotFound(t *testing.T) {
+	listID, itemID := uuid.New(), uuid.New()
+	svc := &fakeService{restoreItem: func(_ context.Context, _, _ uuid.UUID) (lists.Item, error) {
+		return lists.Item{}, lists.ErrNotFound
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/restore", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	var prob struct {
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&prob); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if prob.Type != "/problems/not-found" {
+		t.Errorf("type = %q, want /problems/not-found", prob.Type)
+	}
+}
+
+// TestAddItemChecked round-trips the checked flag: a create body with
+// checked=true reaches the service, and the created item reports checked.
+func TestAddItemChecked(t *testing.T) {
+	listID := uuid.New()
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, note *string, checked bool) (lists.Item, error) {
+		if !checked {
+			t.Errorf("service got checked=false, want true")
+		}
+		now := time.Now()
+		return lists.Item{ID: uuid.New(), ListID: lid, Name: name, Quantity: qty, Note: note, Checked: checked, CheckedAt: &now}, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items", `{"name":"milk","checked":true}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var got v1.Item
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !got.Checked || got.CheckedAt == nil {
+		t.Errorf("got %+v, want checked with CheckedAt", got)
 	}
 }
 

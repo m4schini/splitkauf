@@ -86,6 +86,34 @@ func TestCheckItemPublishesItemEvent(t *testing.T) {
 	}
 }
 
+// TestRestoreItemPublishesItemEvent asserts a successful restore emits the same
+// single {items, listId} reload hint the check/uncheck handlers do.
+func TestRestoreItemPublishesItemEvent(t *testing.T) {
+	listID, itemID := uuid.New(), uuid.New()
+	svc := &fakeService{restoreItem: func(_ context.Context, lid, iid uuid.UUID) (lists.Item, error) {
+		return lists.Item{ID: iid, ListID: lid, Name: "milk"}, nil
+	}}
+	pub := &capturingPublisher{}
+	srv := newServerWithEvents(t, svc, pub)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/restore", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	got := pub.captured()
+	if len(got) != 1 {
+		t.Fatalf("published %d events, want 1: %+v", len(got), got)
+	}
+	if got[0].Type != events.TypeItems {
+		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeItems)
+	}
+	if got[0].ListID != listID.String() {
+		t.Errorf("event listId = %q, want %q", got[0].ListID, listID.String())
+	}
+}
+
 // TestNoEventOnMutationError proves the publish is strictly after success: a
 // failing mutation (not-found) emits nothing.
 func TestNoEventOnMutationError(t *testing.T) {
@@ -196,10 +224,17 @@ func (s *statefulService) RenameList(context.Context, uuid.UUID, string) (lists.
 	return lists.List{}, nil
 }
 func (s *statefulService) DeleteList(context.Context, uuid.UUID) error { return nil }
-func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, *string) (lists.Item, error) {
+func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, *string, bool) (lists.Item, error) {
 	return lists.Item{}, nil
 }
 func (s *statefulService) DeleteItem(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (s *statefulService) RestoreItem(_ context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+	it, ok := s.get(itemID)
+	if !ok || it.ListID != listID {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	return it, nil
+}
 
 // TestSequentialUpdatesConvergeLWW pins US-S.3's field-edit rule: two sequential
 // updates to the same field converge to the LAST write, and each update emits an

@@ -68,9 +68,11 @@ func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
 }
 
 // AddItem validates the name, applies the quantity default, normalises the
-// note, and adds the item to the list. It returns ErrNotFound when the list
+// note, and adds the item to the list. When checked is true the item is created
+// already checked off (used when an offline check folds into a queued create);
+// the repository sets checkedAt at insert. It returns ErrNotFound when the list
 // does not exist.
-func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (Item, error) {
+func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (Item, error) {
 	clean, err := validateItemName(name)
 	if err != nil {
 		return Item{}, err
@@ -79,7 +81,7 @@ func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, qu
 	if err != nil {
 		return Item{}, err
 	}
-	return s.repo.AddItem(ctx, listID, clean, qty, normalizeNote(note))
+	return s.repo.AddItem(ctx, listID, clean, qty, normalizeNote(note), checked)
 }
 
 // UpdateItem applies a partial update to an item: only the fields present in
@@ -104,10 +106,18 @@ func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, upda
 	return s.repo.UpdateItem(ctx, listID, itemID, update)
 }
 
-// DeleteItem removes an item from a list. It returns ErrNotFound when the item
-// does not exist on the list.
+// DeleteItem removes an item from a list. The removal is a soft delete: the row
+// is kept with deleted_at set so the action replays offline and can be undone.
+// It returns ErrNotFound when the item does not exist (or is already deleted).
 func (s *Service) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
 	return s.repo.DeleteItem(ctx, listID, itemID)
+}
+
+// RestoreItem clears a soft delete, returning the restored item. It is
+// idempotent: restoring an item that is not deleted returns it unchanged. It
+// returns ErrNotFound when the item does not exist on the list.
+func (s *Service) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error) {
+	return s.repo.RestoreItem(ctx, listID, itemID)
 }
 
 // CheckItem marks an item as checked. It is an idempotent state transition:

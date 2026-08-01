@@ -96,7 +96,7 @@ func TestListNotFound(t *testing.T) {
 	if err := repo.DeleteList(ctx, uuid.New()); err != lists.ErrNotFound {
 		t.Errorf("DeleteList err = %v, want ErrNotFound", err)
 	}
-	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, nil); err != lists.ErrNotFound {
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, nil, false); err != lists.ErrNotFound {
 		t.Errorf("AddItem err = %v, want ErrNotFound", err)
 	}
 }
@@ -108,7 +108,7 @@ func TestDeleteListCascadesItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, nil); err != nil {
+	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, false); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 	if err := repo.DeleteList(ctx, list.ID); err != nil {
@@ -132,7 +132,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 	}
 
 	note := "whole"
-	item, err := repo.AddItem(ctx, list.ID, "milk", 2, &note)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 2, &note, false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -216,6 +216,155 @@ func TestItemNotFound(t *testing.T) {
 	if _, err := repo.SetItemChecked(ctx, list.ID, uuid.New(), true, nil); err != lists.ErrNotFound {
 		t.Errorf("SetItemChecked err = %v, want ErrNotFound", err)
 	}
+}
+
+// TestSoftDeleteAndRestore is the round trip: a delete hides the item from reads
+// and counts but keeps the row, and a restore brings it back with its state.
+func TestSoftDeleteAndRestore(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	list, err := repo.CreateList(ctx, "Shopping")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, list.ID, "milk", 3, nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	assertCounts(t, repo, list.ID, 1, 0)
+
+	// Soft delete: hidden from reads and counts.
+	if err := repo.DeleteItem(ctx, list.ID, item.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+	if _, err := repo.Item(ctx, list.ID, item.ID); err != lists.ErrNotFound {
+		t.Errorf("Item after soft delete err = %v, want ErrNotFound", err)
+	}
+	items, err := repo.ListItems(ctx, list.ID)
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("ListItems after soft delete = %d, want 0", len(items))
+	}
+	assertCounts(t, repo, list.ID, 0, 0)
+
+	// Deleting again is a no-op ErrNotFound (already deleted).
+	if err := repo.DeleteItem(ctx, list.ID, item.ID); err != lists.ErrNotFound {
+		t.Errorf("second DeleteItem err = %v, want ErrNotFound", err)
+	}
+
+	// Restore: back in reads and counts, state preserved.
+	restored, err := repo.RestoreItem(ctx, list.ID, item.ID)
+	if err != nil {
+		t.Fatalf("RestoreItem: %v", err)
+	}
+	if restored.ID != item.ID || restored.Name != "milk" || restored.Quantity != 3 {
+		t.Errorf("restored = %+v, want the original milk/3", restored)
+	}
+	if _, err := repo.Item(ctx, list.ID, item.ID); err != nil {
+		t.Errorf("Item after restore err = %v, want nil", err)
+	}
+	assertCounts(t, repo, list.ID, 1, 0)
+}
+
+// TestListWithAllItemsDeletedStillAppears pins the LEFT JOIN ON fix: a list whose
+// items are all soft-deleted (and an empty list) must still appear in Lists() and
+// List() with 0/0 counts — a WHERE deleted_at filter would drop them.
+func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	// A list whose only item is soft-deleted.
+	deletedList, err := repo.CreateList(ctx, "All deleted")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, deletedList.ID, "milk", 1, nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if err := repo.DeleteItem(ctx, deletedList.ID, item.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+
+	// An empty list (no items at all).
+	emptyList, err := repo.CreateList(ctx, "Empty")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+
+	// Both still resolve via List() with 0/0 counts.
+	for _, id := range []uuid.UUID{deletedList.ID, emptyList.ID} {
+		got, err := repo.List(ctx, id)
+		if err != nil {
+			t.Fatalf("List(%v) err = %v, want it to still appear", id, err)
+		}
+		if got.OpenItemCount != 0 || got.CheckedItemCount != 0 {
+			t.Errorf("List(%v) counts = %d/%d, want 0/0", id, got.OpenItemCount, got.CheckedItemCount)
+		}
+	}
+
+	// And both appear in Lists().
+	all, err := repo.Lists(ctx)
+	if err != nil {
+		t.Fatalf("Lists: %v", err)
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, l := range all {
+		seen[l.ID] = true
+	}
+	if !seen[deletedList.ID] {
+		t.Error("Lists() dropped the list whose items are all soft-deleted")
+	}
+	if !seen[emptyList.ID] {
+		t.Error("Lists() dropped the empty list")
+	}
+}
+
+// TestRestoreNeverDeletedIsIdempotent verifies restoring an item that was never
+// deleted succeeds and returns it unchanged, while a missing row is ErrNotFound.
+func TestRestoreNeverDeletedIsIdempotent(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	list, err := repo.CreateList(ctx, "Shopping")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+
+	restored, err := repo.RestoreItem(ctx, list.ID, item.ID)
+	if err != nil {
+		t.Fatalf("RestoreItem (never deleted): %v", err)
+	}
+	if restored.ID != item.ID {
+		t.Errorf("restored id = %v, want %v", restored.ID, item.ID)
+	}
+
+	if _, err := repo.RestoreItem(ctx, list.ID, uuid.New()); err != lists.ErrNotFound {
+		t.Errorf("RestoreItem(missing) err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestAddItemChecked verifies creating an item with checked=true stamps
+// checked_at and reflects the checked count.
+func TestAddItemChecked(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	list, err := repo.CreateList(ctx, "Shopping")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, true)
+	if err != nil {
+		t.Fatalf("AddItem(checked): %v", err)
+	}
+	if !item.Checked || item.CheckedAt == nil {
+		t.Errorf("checked item = %+v, want Checked with CheckedAt", item)
+	}
+	assertCounts(t, repo, list.ID, 0, 1)
 }
 
 func assertCounts(t *testing.T, repo *db.ListsRepository, id uuid.UUID, open, checked int) {

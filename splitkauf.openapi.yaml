@@ -261,6 +261,28 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /lists/{listId}/items/{itemId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+      - $ref: "#/components/parameters/ItemId"
+    post:
+      operationId: restoreItem
+      summary: Restore a deleted item
+      description: |
+        Restores a soft-deleted item to the list. Idempotent: restoring an item
+        that is not deleted is a no-op that returns the current state.
+      tags:
+        - lists
+      responses:
+        "200":
+          description: The restored item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Item"
+        default:
+          $ref: "#/components/responses/Problem"
+
 components:
   parameters:
     ListId:
@@ -513,6 +535,12 @@ components:
           type: string
           nullable: true
           description: An optional free-text note.
+        checked:
+          type: boolean
+          default: false
+          description: |
+            Whether the item is checked off at creation. Used when an offline
+            check folds into a still-queued create; defaults to false.
     UpdateItemRequest:
       type: object
       description: |

@@ -32,13 +32,16 @@ var _ lists.Repository = (*ListsRepository)(nil)
 
 // listSelect is the projection for a list together with its open/checked item
 // counts, derived by a left join over items. It is shared by the single-list
-// and all-lists reads so both compute counts identically.
+// and all-lists reads so both compute counts identically. The soft-delete
+// filter (deleted_at IS NULL) lives in the JOIN's ON clause, NOT a WHERE: a
+// WHERE would demote the LEFT JOIN to an inner join and drop lists whose items
+// are all deleted (and empty lists) from the results.
 const listSelect = `
 	SELECT l.id, l.name, l.created_at, l.updated_at,
 	       COALESCE(SUM(CASE WHEN i.checked = false THEN 1 ELSE 0 END), 0) AS open_count,
 	       COALESCE(SUM(CASE WHEN i.checked = true  THEN 1 ELSE 0 END), 0) AS checked_count
 	FROM lists l
-	LEFT JOIN items i ON i.list_id = l.id`
+	LEFT JOIN items i ON i.list_id = l.id AND i.deleted_at IS NULL`
 
 // itemColumns is the column list for an item row, ordered to match scanItem.
 const itemColumns = `id, list_id, name, quantity, note, checked, checked_at, created_at, updated_at`
@@ -100,7 +103,7 @@ func (r *ListsRepository) List(ctx context.Context, id uuid.UUID) (lists.List, e
 // does not distinguish a missing list from an empty one (an empty slice).
 func (r *ListsRepository) ListItems(ctx context.Context, listID uuid.UUID) ([]lists.Item, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+itemColumns+` FROM items WHERE list_id = $1 ORDER BY created_at, id`, listID)
+		`SELECT `+itemColumns+` FROM items WHERE list_id = $1 AND deleted_at IS NULL ORDER BY created_at, id`, listID)
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
@@ -150,16 +153,22 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 
 // AddItem inserts an item onto a list. A missing list surfaces as
 // lists.ErrNotFound (the FK insert finds no parent row).
-func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string) (lists.Item, error) {
+func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error) {
 	if err := r.requireList(ctx, listID); err != nil {
 		return lists.Item{}, err
 	}
 	now := time.Now()
+	// When the item is created already checked (an offline check folded into a
+	// queued create), stamp checked_at at insert; otherwise leave it NULL.
+	var checkedAt any
+	if checked {
+		checkedAt = now
+	}
 	row := r.db.QueryRowContext(ctx,
-		`INSERT INTO items (list_id, name, quantity, note, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $5)
+		`INSERT INTO items (list_id, name, quantity, note, checked, checked_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 		 RETURNING `+itemColumns,
-		listID, name, quantity, nullString(note), now)
+		listID, name, quantity, nullString(note), checked, checkedAt, now)
 
 	it, err := scanItem(row)
 	if err != nil {
@@ -171,7 +180,7 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 // Item returns a single item scoped to its list, or lists.ErrNotFound.
 func (r *ListsRepository) Item(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+itemColumns+` FROM items WHERE id = $1 AND list_id = $2`, itemID, listID)
+		`SELECT `+itemColumns+` FROM items WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL`, itemID, listID)
 
 	it, err := scanItem(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -207,7 +216,7 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 	}
 
 	query := fmt.Sprintf(
-		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d RETURNING %s`,
+		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d AND deleted_at IS NULL RETURNING %s`,
 		strings.Join(sets, ", "), next, next+1, itemColumns)
 	args = append(args, itemID, listID)
 
@@ -221,10 +230,14 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 	return it, nil
 }
 
-// DeleteItem removes an item from a list, or returns lists.ErrNotFound.
+// DeleteItem soft-deletes an item by stamping deleted_at: the row is kept so the
+// delete can be replayed offline and undone via RestoreItem. An already-deleted
+// or missing item yields lists.ErrNotFound (0 rows affected).
 func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
+	now := time.Now()
 	res, err := r.db.ExecContext(ctx,
-		`DELETE FROM items WHERE id = $1 AND list_id = $2`, itemID, listID)
+		`UPDATE items SET deleted_at = $3, updated_at = $3
+		 WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL`, itemID, listID, now)
 	if err != nil {
 		return fmt.Errorf("delete item: %w", err)
 	}
@@ -234,12 +247,32 @@ func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UU
 	return nil
 }
 
+// RestoreItem clears a soft delete and returns the restored item. It is
+// idempotent: restoring an item that is not deleted succeeds and returns it
+// unchanged. A missing row yields lists.ErrNotFound. It mirrors
+// SetItemChecked's write-and-return shape.
+func (r *ListsRepository) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+	row := r.db.QueryRowContext(ctx,
+		`UPDATE items SET deleted_at = NULL, updated_at = $3
+		 WHERE list_id = $1 AND id = $2 RETURNING `+itemColumns,
+		listID, itemID, time.Now())
+
+	it, err := scanItem(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("restore item: %w", err)
+	}
+	return it, nil
+}
+
 // SetItemChecked writes an item's checked state and checkedAt timestamp,
 // returning the updated row or lists.ErrNotFound.
 func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (lists.Item, error) {
 	row := r.db.QueryRowContext(ctx,
 		`UPDATE items SET checked = $3, checked_at = $4, updated_at = $5
-		 WHERE id = $1 AND list_id = $2 RETURNING `+itemColumns,
+		 WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL RETURNING `+itemColumns,
 		itemID, listID, checked, nullTime(checkedAt), time.Now())
 
 	it, err := scanItem(row)

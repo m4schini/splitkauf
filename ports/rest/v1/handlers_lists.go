@@ -112,7 +112,8 @@ func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if body.Quantity != nil {
 		quantity = int(*body.Quantity)
 	}
-	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, body.Note)
+	checked := body.Checked != nil && *body.Checked
+	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, body.Note, checked)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -166,6 +167,19 @@ func (v *V1) DeleteItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 	}
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// RestoreItem clears a soft-deleted item's deletion (idempotent), returning it
+// to the list. It maps ErrNotFound to a 404 and publishes an items reload hint,
+// exactly like the check/uncheck handlers.
+func (v *V1) RestoreItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
+	item, err := v.Service.RestoreItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
+	writeJSON(w, r, http.StatusOK, toItem(item))
 }
 
 // CheckItem marks an item as checked (idempotent).
