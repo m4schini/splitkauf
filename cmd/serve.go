@@ -138,9 +138,10 @@ func serve() error {
 	// HTTP server binds. On timeout auth.New returns the context error and serve
 	// fails fast with a clear message.
 	membersRepo := db.NewMemberRepository(conn)
+	usersRepo := db.NewUserRepository(conn)
 	discoveryCtx, cancelDiscovery := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelDiscovery()
-	authr, err := auth.New(discoveryCtx, config.C, sm, membersRepo)
+	authr, err := auth.New(discoveryCtx, config.C, sm, membersRepo, usersRepo)
 	if err != nil {
 		return fmt.Errorf("building authenticator: %w", err)
 	}

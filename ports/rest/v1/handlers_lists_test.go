@@ -98,7 +98,7 @@ func newServer(t *testing.T, svc v1.ListService) *httptest.Server {
 func newServerWithEvents(t *testing.T, svc v1.ListService, pub events.Publisher) *httptest.Server {
 	t.Helper()
 	sm := scs.New()
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
@@ -229,7 +229,7 @@ func TestOIDCUnauthenticated401(t *testing.T) {
 		t.Fatal("test config is not OIDC-enabled")
 	}
 
-	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (oidc): %v", err)
 	}
@@ -285,7 +285,7 @@ func TestOIDCHealthPublic(t *testing.T) {
 		t.Fatal("test config is not OIDC-enabled")
 	}
 
-	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (oidc): %v", err)
 	}

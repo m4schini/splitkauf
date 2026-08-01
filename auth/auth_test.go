@@ -99,7 +99,7 @@ func TestWithUserUserFromRoundTrip(t *testing.T) {
 
 func TestNewSelectsDevWhenOIDCDisabled(t *testing.T) {
 	cfg := &config.Config{} // no OIDC issuer/client → dev-auth
-	a, err := New(context.Background(), cfg, scs.New(), noopMembers{})
+	a, err := New(context.Background(), cfg, scs.New(), noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestNewSelectsOIDCWhenEnabled(t *testing.T) {
 		t.Fatal("IsOIDCEnabled = false for a complete OIDC config")
 	}
 
-	a, err := New(context.Background(), cfg, scs.New(), noopMembers{})
+	a, err := New(context.Background(), cfg, scs.New(), noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -22,6 +22,7 @@ import (
 
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/members"
+	"github.com/m4schini/splitkauf/users"
 )
 
 // User is the authenticated principal placed in the request context by an
@@ -69,13 +70,20 @@ func UserFrom(ctx context.Context) (User, bool) {
 	return u, ok
 }
 
-// New builds the Authenticator selected by cfg: the OIDC BFF authenticator when
-// cfg.IsOIDCEnabled() (discovering the provider via ctx), otherwise the dev-auth
-// authenticator. sm is the session manager used by the OIDC flow (ignored in
-// dev mode); repo receives the upsert of every account that signs in.
-func New(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, repo members.Repository) (Authenticator, error) {
-	if cfg.IsOIDCEnabled() {
-		return newOIDC(ctx, cfg, sm, repo)
+// New builds the Authenticator selected by cfg, applying the precedence
+// OIDC → password → dev-auth: the OIDC BFF authenticator when
+// cfg.IsOIDCEnabled() (discovering the provider via ctx), else the local
+// username/password authenticator when cfg.IsPasswordEnabled(), else dev-auth.
+// sm is the shared session manager (used by OIDC and password modes, ignored in
+// dev mode); membersRepo receives the upsert of every account that signs in;
+// usersRepo backs credential lookup in password mode (may be nil otherwise).
+func New(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, membersRepo members.Repository, usersRepo users.Repository) (Authenticator, error) {
+	switch {
+	case cfg.IsOIDCEnabled():
+		return newOIDC(ctx, cfg, sm, membersRepo)
+	case cfg.IsPasswordEnabled():
+		return newPassword(sm, usersRepo, membersRepo), nil
+	default:
+		return newDev(), nil
 	}
-	return newDev(), nil
 }

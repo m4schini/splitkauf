@@ -182,3 +182,36 @@ func TestConcurrentStaticRequestsDoNotCrash(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestAuthConfigEndpointReportsMode verifies the public auth-config endpoint
+// returns the resolved mode as JSON, without requiring a session (no
+// Vary: Cookie, since it bypasses the session middleware).
+func TestAuthConfigEndpointReportsMode(t *testing.T) {
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/auth/config")
+	if err != nil {
+		t.Fatalf("GET /api/auth/config: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", ct)
+	}
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding: %v", err)
+	}
+	// TestMain loads config with no OIDC/password env, so the mode is dev.
+	if body.Mode != "dev" {
+		t.Errorf("mode = %q, want dev", body.Mode)
+	}
+	if v := resp.Header.Get("Vary"); strings.Contains(v, "Cookie") {
+		t.Errorf("auth-config carries Vary: %q — it should bypass the session middleware", v)
+	}
+}

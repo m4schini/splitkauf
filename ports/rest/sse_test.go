@@ -28,7 +28,7 @@ import (
 func sseServer(t *testing.T, broker *events.Broker) *httptest.Server {
 	t.Helper()
 	sm := scs.New()
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSSERequiresAuth(t *testing.T) {
 	cfg.Auth.OIDC.ClientSecret = "client-secret"
 	cfg.Auth.OIDC.RedirectURL = "https://app.example.com/api/auth/callback"
 
-	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (oidc): %v", err)
 	}

@@ -25,7 +25,7 @@ import (
 func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
 	t.Helper()
 	sm := scs.New()
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{})
+	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
