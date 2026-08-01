@@ -514,3 +514,31 @@ input {
   padding: 8px;
   margin: 0;
 }
+
+/* --- Login form (US-A.6 password auth) ---------------------------------- */
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.login-form label {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.login-form input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 16px;
+}
+
+.login-form .primary-button {
+  margin-top: 8px;
+}

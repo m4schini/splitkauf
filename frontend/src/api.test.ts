@@ -6,12 +6,14 @@ import {
   createList,
   deleteItem,
   deleteList,
+  getAuthConfig,
   getList,
   getMe,
   isUnauthorized,
   listLists,
   login,
   logout,
+  passwordLogin,
   renameList,
   restoreItem,
   uncheckItem,
@@ -339,6 +341,24 @@ describe('endpoint helpers', () => {
     await expect(restoreItem('l1', 'i1')).resolves.toEqual(item)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/restore', {
       method: 'POST',
+    })
+  })
+
+  it('getAuthConfig fetches the auth mode', async () => {
+    const fetchMock = stubJson({ mode: 'password' })
+
+    await expect(getAuthConfig()).resolves.toEqual({ mode: 'password' })
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/config', undefined)
+  })
+
+  it('passwordLogin POSTs credentials and resolves on 204', async () => {
+    const fetchMock = stubNoContent()
+
+    await expect(passwordLogin('alex', 'correct horse')).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'alex', password: 'correct horse' }),
     })
   })
 })

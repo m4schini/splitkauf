@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getMe, isUnauthorized, login, logout } from './api'
+import { getAuthConfig, getMe, isUnauthorized, login, logout } from './api'
 import { ListsOverview } from './ListsOverview'
 import { ListDetail } from './ListDetail'
+import { LoginForm } from './LoginForm'
 import { OfflineIndicator } from './OfflineIndicator'
 import { randomId, subscribeSyncNotice } from './queries'
 
@@ -72,6 +73,7 @@ function SyncNotices({
 type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
 const meKey = ['me'] as const
+const authConfigKey = ['authConfig'] as const
 
 /**
  * Auth gate (US-A.2/A.4): resolves `GET /me` once and renders one of three
@@ -91,6 +93,15 @@ function App() {
     queryKey: meKey,
     queryFn: getMe,
     retry: false,
+  })
+  // The auth mode decides the signed-out UI (password form vs OIDC redirect).
+  // It's public and rarely changes, so cache it and never retry; an
+  // unresolved/failed lookup falls back to the OIDC redirect button below.
+  const { data: authConfig } = useQuery({
+    queryKey: authConfigKey,
+    queryFn: getAuthConfig,
+    retry: false,
+    staleTime: Infinity,
   })
 
   if (user) {
@@ -130,14 +141,20 @@ function App() {
             Loading…
           </p>
         )}
-        {unauthorized && (
-          <>
-            <p className="hint">Sign in to see your shopping lists.</p>
-            <button type="button" className="primary-button" onClick={() => login()}>
-              Log in
-            </button>
-          </>
-        )}
+        {unauthorized &&
+          (authConfig?.mode === 'password' ? (
+            <>
+              <p className="hint">Sign in to see your shopping lists.</p>
+              <LoginForm />
+            </>
+          ) : (
+            <>
+              <p className="hint">Sign in to see your shopping lists.</p>
+              <button type="button" className="primary-button" onClick={() => login()}>
+                Log in
+              </button>
+            </>
+          ))}
         {!isPending && error !== null && !unauthorized && (
           <p className="hint hint-error">Couldn't load your account.</p>
         )}

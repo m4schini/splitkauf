@@ -40,12 +40,15 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument()
   })
 
-  it('shows a log-in button and prompt on a 401, and never fetches lists', async () => {
+  it('shows the OIDC log-in button and prompt on a 401, and never fetches lists', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       if (String(input).includes('/api/v1/me')) {
         return Promise.resolve(
           problemResponse({ type: '/problems/unauthorized', title: 'Unauthorized', status: 401 }),
         )
+      }
+      if (String(input).includes('/api/auth/config')) {
+        return Promise.resolve(jsonResponse({ mode: 'oidc' }))
       }
       throw new Error(`unexpected fetch: ${String(input)}`)
     })
@@ -59,6 +62,30 @@ describe('App', () => {
       expect.stringContaining('/api/v1/lists'),
       expect.anything(),
     )
+  })
+
+  it('renders the username/password form on a 401 in password mode', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes('/api/v1/me')) {
+          return Promise.resolve(
+            problemResponse({ type: '/problems/unauthorized', title: 'Unauthorized', status: 401 }),
+          )
+        }
+        if (String(input).includes('/api/auth/config')) {
+          return Promise.resolve(jsonResponse({ mode: 'password' }))
+        }
+        throw new Error(`unexpected fetch: ${String(input)}`)
+      }),
+    )
+
+    render(<App />, { wrapper: withQueryClient() })
+
+    expect(await screen.findByLabelText('Username')).toBeInTheDocument()
+    const password = screen.getByLabelText('Password')
+    expect(password).toBeInTheDocument()
+    expect(password).toHaveAttribute('type', 'password')
   })
 
   it('shows the user name and a log-out button when signed in, and renders the lists UI', async () => {

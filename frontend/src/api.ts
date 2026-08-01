@@ -66,6 +66,18 @@ export function isUnauthorized(err: unknown): boolean {
   return problem.status === 401 || problem.type === unauthorizedProblemType
 }
 
+/** The server's active authentication mode, from GET /api/auth/config. */
+export type AuthMode = 'oidc' | 'password' | 'dev'
+
+/**
+ * GET /api/auth/config — the active auth mode, so the UI can render the right
+ * login affordance (a username/password form vs the OIDC redirect button). The
+ * endpoint is public and returns only the mode.
+ */
+export function getAuthConfig(): Promise<{ mode: AuthMode }> {
+  return apiFetch<{ mode: AuthMode }>('/api/auth/config')
+}
+
 /**
  * Starts the BFF login flow via a top-level navigation (not `fetch`) so the
  * browser follows the server's 302 to the IdP. `returnTo` defaults to the
@@ -74,6 +86,20 @@ export function isUnauthorized(err: unknown): boolean {
 export function login(returnTo?: string): void {
   const target = returnTo ?? window.location.pathname + window.location.search
   window.location.href = '/api/auth/login?return_to=' + encodeURIComponent(target)
+}
+
+/**
+ * POST /api/auth/login — submit username/password credentials (password auth
+ * mode). On success the server sets the HttpOnly session cookie and returns
+ * 204; on failure `apiFetch` throws the RFC 9457 `ProblemDetail` (a 401 for a
+ * wrong username or password — the two are indistinguishable by design).
+ */
+export function passwordLogin(username: string, password: string): Promise<void> {
+  return apiFetch<void>('/api/auth/login', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ username, password }),
+  })
 }
 
 /**
