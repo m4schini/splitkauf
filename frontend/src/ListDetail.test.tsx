@@ -179,12 +179,15 @@ describe('ListDetail', () => {
     expect(screen.queryByText('Done (1)')).not.toBeInTheDocument()
   })
 
-  it('removes an item immediately on remove and shows an undo snackbar', async () => {
+  it('removes an item immediately on remove (delete fires at once) and shows an undo snackbar', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(jsonResponse(baseList))),
-    )
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return Promise.resolve(noContentResponse())
+      }
+      return Promise.resolve(jsonResponse(baseList))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
       wrapper: withQueryClient(),
@@ -195,6 +198,118 @@ describe('ListDetail', () => {
 
     await waitFor(() => expect(screen.queryByText('Milk')).not.toBeInTheDocument())
     expect(screen.getByText('Removed "Milk" — Undo')).toBeInTheDocument()
+    // The delete fires immediately on removal, not after the undo window
+    // elapses (item delete is a server-backed soft delete, US-O.2 KD4).
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1', { method: 'DELETE' }),
+    )
+  })
+
+  it('undoing an item removal calls the restore endpoint (not a cancelled delete)', async () => {
+    const user = userEvent.setup()
+    // Mirrors the server's soft-delete/restore semantics: a background
+    // refetch (triggered by the delete mutation's onSettled invalidation)
+    // must not resurrect the item before the user clicks Undo.
+    let deleted = false
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        deleted = true
+        return Promise.resolve(noContentResponse())
+      }
+      if (init?.method === 'POST' && String(input).endsWith('/restore')) {
+        deleted = false
+        return Promise.resolve(jsonResponse(baseList.items[0]))
+      }
+      const items = deleted ? baseList.items.filter((i) => i.id !== 'i1') : baseList.items
+      return Promise.resolve(jsonResponse({ ...baseList, items }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Remove Milk' }))
+    await waitFor(() => expect(screen.queryByText('Milk')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/restore', {
+        method: 'POST',
+      }),
+    )
+    expect(await screen.findByText('Milk')).toBeInTheDocument()
+  })
+
+  it('recovers the item when a delete-triggered refetch races an in-flight restore', async () => {
+    const user = userEvent.setup()
+    // Mirrors the real race a reviewer found: the DELETE and the restore POST
+    // are both in flight at once, and the DELETE's onSettled-triggered GET
+    // can resolve while the restore POST is still pending server-side,
+    // clobbering the cache with a snapshot that's missing the item. The fix
+    // is (a) an upsert in useRestoreItem's onSuccess and (b) an onSettled
+    // invalidate on useRestoreItem itself, so the final state converges on
+    // the item being present regardless of interleaving.
+    let deleted = false
+    let resolveDelete!: () => void
+    let resolveRestore!: () => void
+    const deletePromise = new Promise<void>((resolve) => {
+      resolveDelete = resolve
+    })
+    const restorePromise = new Promise<void>((resolve) => {
+      resolveRestore = resolve
+    })
+
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'DELETE') {
+        return deletePromise.then(() => {
+          deleted = true
+          return noContentResponse()
+        })
+      }
+      if (init?.method === 'POST' && String(input).endsWith('/restore')) {
+        return restorePromise.then(() => {
+          deleted = false
+          return jsonResponse(baseList.items[0])
+        })
+      }
+      // GET refetch (triggered by either mutation's onSettled invalidate):
+      // reflects the soft-delete state at the moment it's called.
+      const items = deleted ? baseList.items.filter((i) => i.id !== 'i1') : baseList.items
+      return Promise.resolve(jsonResponse({ ...baseList, items }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Remove Milk' }))
+    await waitFor(() => expect(screen.queryByText('Milk')).not.toBeInTheDocument())
+
+    // Undo fires the restore POST while the DELETE is still unresolved.
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+
+    // Now let the DELETE resolve first: its onSettled invalidate refetches
+    // the list, which (since the restore hasn't landed server-side yet)
+    // comes back without the item.
+    resolveDelete()
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1', { method: 'DELETE' }),
+    )
+
+    // Finally the restore POST resolves; the item must reappear regardless
+    // of the delete's refetch having briefly dropped it from the cache.
+    resolveRestore()
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/restore', {
+        method: 'POST',
+      }),
+    )
+    expect(await screen.findByText('Milk')).toBeInTheDocument()
   })
 
   it('deleting the list shows an undo snackbar and eventually calls onDeleted', async () => {

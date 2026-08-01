@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { deleteItem as apiDeleteItem, type Item, type List } from './api'
+import { type Item, type List } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
 import {
@@ -8,13 +8,14 @@ import {
   listsKey,
   removeItemLocally,
   removeListLocally,
-  restoreItemLocally,
   restoreListLocally,
   useAddItem,
   useCheckItem,
+  useDeleteItemMutation,
   useDeleteListMutation,
   useListDetail,
   useRenameList,
+  useRestoreItem,
   useUncheckItem,
   useUpdateItem,
 } from './queries'
@@ -150,6 +151,8 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
   const uncheckItem = useUncheckItem(listId)
   const renameList = useRenameList(listId)
   const deleteListMutation = useDeleteListMutation()
+  const deleteItemMutation = useDeleteItemMutation(listId)
+  const restoreItemMutation = useRestoreItem(listId)
   const queryClient = useQueryClient()
   const { pending, schedule, undo } = useUndoQueue()
 
@@ -194,16 +197,19 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
   async function handleRemoveItem(item: Item) {
     await queryClient.cancelQueries({ queryKey: listKey(listId) })
     removeItemLocally(queryClient, listId, item)
+    // Item delete is a server-backed soft delete (US-O.2 Key Decision 4): the
+    // mutation fires immediately rather than waiting out the undo window, so
+    // it works offline like any other mutation. The undo snackbar's action
+    // restores it server-side via useRestoreItem rather than cancelling a
+    // deferred delete — the `commit` callback below is a no-op because the
+    // delete already happened.
+    deleteItemMutation.mutate(item.id)
     schedule(
       item.id,
       `Removed "${item.name}" — Undo`,
+      () => {},
       () => {
-        apiDeleteItem(listId, item.id).catch(() => {
-          queryClient.invalidateQueries({ queryKey: listKey(listId) })
-        })
-      },
-      () => {
-        restoreItemLocally(queryClient, listId, item)
+        restoreItemMutation.mutate(item)
       },
     )
   }

@@ -150,6 +150,7 @@ export interface AddItemRequest {
   name: string
   quantity?: number
   note?: string | null
+  checked?: boolean
 }
 
 export interface UpdateItemRequest {
@@ -231,4 +232,12 @@ export function checkItem(listId: string, itemId: string): Promise<Item> {
 /** POST /lists/{listId}/items/{itemId}/uncheck — return an item to the open list (US-L.8). */
 export function uncheckItem(listId: string, itemId: string): Promise<Item> {
   return apiFetch<Item>(`/api/v1/lists/${listId}/items/${itemId}/uncheck`, { method: 'POST' })
+}
+
+/**
+ * POST /lists/{listId}/items/{itemId}/restore — restore a soft-deleted item
+ * (US-L.6 undo). Idempotent: restoring an item that isn't deleted is a no-op.
+ */
+export function restoreItem(listId: string, itemId: string): Promise<Item> {
+  return apiFetch<Item>(`/api/v1/lists/${listId}/items/${itemId}/restore`, { method: 'POST' })
 }

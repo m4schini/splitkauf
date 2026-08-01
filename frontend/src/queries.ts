@@ -11,6 +11,7 @@ import {
   getList,
   listLists,
   renameList,
+  restoreItem as apiRestoreItem,
   uncheckItem,
   updateItem,
   type AddItemRequest,
@@ -239,6 +240,51 @@ export function useDeleteItemMutation(listId: string) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: listKey(listId) })
       queryClient.invalidateQueries({ queryKey: listsKey })
+    },
+  })
+}
+
+/**
+ * Restores a soft-deleted item server-side (US-L.6 undo), optimistically
+ * re-inserting it into the cache via `restoreItemLocally`. Unlike list delete,
+ * item delete already happened by the time this runs (see
+ * `useDeleteItemMutation`) — this mutation is the undo action itself, not a
+ * cancellation of a deferred delete.
+ */
+export function useRestoreItem(listId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (item: Item) => apiRestoreItem(listId, item.id),
+    onMutate: async (item: Item) => {
+      await queryClient.cancelQueries({ queryKey: listKey(listId) })
+      const previous = queryClient.getQueryData<ListWithItems>(listKey(listId))
+      restoreItemLocally(queryClient, listId, item)
+      return { previous }
+    },
+    onError: (_err, _item, context) => {
+      if (context?.previous) queryClient.setQueryData(listKey(listId), context.previous)
+    },
+    onSuccess: (restored) => {
+      queryClient.setQueryData<ListWithItems>(
+        listKey(listId),
+        (old) =>
+          old && {
+            ...old,
+            // Upsert rather than a pure replace: a concurrent delete-triggered
+            // refetch (see useDeleteItemMutation's onSettled) can land between
+            // this mutation's onMutate and onSuccess and drop the item from
+            // the cache entirely, so `restored.id` may no longer be present.
+            items: old.items.some((i) => i.id === restored.id)
+              ? old.items.map((i) => (i.id === restored.id ? restored : i))
+              : [...old.items, restored],
+          },
+      )
+    },
+    onSettled: () => {
+      // Final reconciliation with server truth: the delete mutation's own
+      // onSettled refetch can race this one and interleave in either order,
+      // so re-invalidate once this restore settles regardless of outcome.
+      queryClient.invalidateQueries({ queryKey: listKey(listId) })
     },
   })
 }

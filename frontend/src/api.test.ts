@@ -13,6 +13,7 @@ import {
   login,
   logout,
   renameList,
+  restoreItem,
   uncheckItem,
   updateItem,
   type Item,
@@ -312,6 +313,26 @@ describe('endpoint helpers', () => {
 
     await expect(uncheckItem('l1', 'i1')).resolves.toEqual(item)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/uncheck', {
+      method: 'POST',
+    })
+  })
+
+  it('restoreItem POSTs to the restore endpoint', async () => {
+    const item: Item = {
+      id: 'i1',
+      listId: 'l1',
+      name: 'Milk',
+      quantity: 1,
+      note: null,
+      checked: false,
+      checkedAt: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    }
+    const fetchMock = stubJson(item)
+
+    await expect(restoreItem('l1', 'i1')).resolves.toEqual(item)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/lists/l1/items/i1/restore', {
       method: 'POST',
     })
   })
