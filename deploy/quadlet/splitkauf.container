@@ -12,6 +12,11 @@ Exec=serve
 Network=splitkauf.network
 PublishPort=8080:8080
 EnvironmentFile=/etc/splitkauf/splitkauf.env
+# Let `podman auto-update` pull a newer :latest and restart this unit. Enable
+# the podman-auto-update.timer to run it periodically. Note: auto-update only
+# swaps the app image — it does not run migrations, so a release that ships new
+# migrations still needs `systemctl restart splitkauf-migrate.service` first.
+AutoUpdate=registry
 
 [Service]
 Restart=always

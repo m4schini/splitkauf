@@ -182,3 +182,15 @@ sudo systemctl restart splitkauf.service           # recreates the app on the pu
 ```
 
 For non-migration changes, restarting `splitkauf.service` alone is enough.
+
+The app unit sets `AutoUpdate=registry`, so `podman auto-update` will pull a
+newer `:latest` and restart it. Enable the periodic check with:
+
+```sh
+sudo systemctl enable --now podman-auto-update.timer
+```
+
+Auto-update only swaps the app image; it does **not** run migrations. For a
+release that ships new migrations, apply them first (restart
+`splitkauf-migrate.service`, or run the manual `migrate` command above) so the
+app never starts against an out-of-date schema.
