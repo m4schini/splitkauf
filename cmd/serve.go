@@ -50,20 +50,42 @@ type namedServer struct {
 	srv  *http.Server
 }
 
-// newSessionManager builds the scs session manager for the auth port. When the
-// database is reachable it persists sessions in Postgres (postgresstore, table
-// from migration 000003); otherwise it falls back to scs's default in-memory
-// store so dev/degraded still serves (sessions are then process-local and lost
-// on restart). The session cookie is HttpOnly, SameSite=Lax, and Secure per
-// config; it carries only the opaque session id.
-func newSessionManager(log *zap.Logger, conn *sql.DB, dbReachable bool) *scs.SessionManager {
+// sessionStore is the pure decision behind the session-store choice: given
+// whether OIDC is configured and whether the database was reachable at
+// startup, it decides whether to use the Postgres-backed store.
+//
+//   - (oidcEnabled=true,  dbReachable=true)  -> postgres (usePostgres=true, nil)
+//   - (oidcEnabled=true,  dbReachable=false) -> fatal: sessions must be
+//     durable in OIDC mode (amnesiac sessions would silently break login
+//     state — CSRF/PKCE state and the member's session are lost on any
+//     process restart or DB blip)
+//   - (oidcEnabled=false, dbReachable=true)  -> postgres (usePostgres=true, nil)
+//     (dev-auth mode with the DB up still gets durable sessions, same as
+//     OIDC mode)
+//   - (oidcEnabled=false, dbReachable=false) -> memory fallback
+//     (dev-auth mode; local development must keep serving with the DB down)
+//
+// Extracted as a pure function (no I/O) so the policy is unit-testable
+// without exercising serve() itself.
+func sessionStore(oidcEnabled, dbReachable bool) (usePostgres bool, err error) {
+	if oidcEnabled && !dbReachable {
+		return false, errors.New("sessions require a reachable database in OIDC mode")
+	}
+	return dbReachable, nil
+}
+
+// newSessionManager builds the scs session manager for the auth port. The
+// store choice is made ONCE here at startup, driven by sessionStore: in OIDC
+// mode a reachable database is required (see sessionStore) and startup fails
+// otherwise, so this is only ever called with usePostgres=true in that mode.
+// In dev-auth mode sessions persist to Postgres when the database is
+// reachable, and fall back to scs's default in-memory store when it is not,
+// so local development still serves; in that fallback case sessions are
+// process-local and lost on restart. The session cookie is HttpOnly,
+// SameSite=Lax, and Secure per config; it carries only the opaque session id.
+func newSessionManager(log *zap.Logger, conn *sql.DB, usePostgres bool) *scs.SessionManager {
 	sm := scs.New()
-	// The store choice is made ONCE here at startup: if the DB is unreachable now,
-	// the process runs with the in-memory store for its whole lifetime (it does
-	// not upgrade to Postgres if the DB later comes back). In that mode sessions
-	// are process-local and are lost on restart — an operational caveat, not a
-	// dev-only path.
-	if conn != nil && dbReachable {
+	if usePostgres {
 		sm.Store = postgresstore.New(conn)
 	} else {
 		log.Warn("database unavailable; using in-memory session store (sessions are process-local)")
@@ -94,10 +116,21 @@ func serve() error {
 	// it recovers.
 	service := lists.NewService(db.NewListsRepository(conn))
 
+	// Decide the session store before doing anything else network-facing: in
+	// OIDC mode a reachable database is required for durable sessions, so this
+	// gate must run BEFORE OIDC discovery below — an unreachable DB must fail
+	// fast without ever contacting the issuer. In dev-auth mode the in-memory
+	// fallback keeps local development serving with the DB down.
+	usePostgres, err := sessionStore(config.C.IsOIDCEnabled(), dbErr == nil)
+	if err != nil {
+		log.Error("cannot start in OIDC mode", zap.Error(err))
+		return err
+	}
+
 	// Session manager for the auth port: sessions persist to Postgres when the
 	// DB is reachable, and fall back to an in-memory store when it is not, so
 	// dev/degraded still serves. The cookie carries only an opaque session id.
-	sm := newSessionManager(log, conn, dbErr == nil)
+	sm := newSessionManager(log, conn, usePostgres)
 
 	// The authenticator runs the OIDC BFF flow when configured, else dev-auth.
 	// OIDC construction discovers the provider over the network, so bound it with

@@ -93,6 +93,27 @@ server-side session cookie. Keep it `true` in production/behind HTTPS
 (the default assumed above); only set it to `false` for plain-HTTP local
 testing, never on a real deployment.
 
+### Session store and database availability at startup
+
+In OIDC mode, sessions must persist to Postgres — an in-memory fallback would
+silently lose login state (CSRF/PKCE state, and every member's session) on
+any restart or brief database blip, and logins cannot complete without the
+members table anyway. Because of this, `serve` fails fast at startup when
+the database is unreachable and OIDC is configured: it logs
+`sessions require a reachable database in OIDC mode` and exits nonzero
+*before* contacting the OIDC issuer or binding the HTTP listener.
+
+The Quadlet unit sets `Restart=always`, so systemd/podman simply restarts the
+service on this exit; once the database (`splitkauf-db.service`, started
+first via `Requires=`/`After=`) becomes reachable, the next restart succeeds
+normally. No manual intervention is needed for a database that is merely
+starting up slowly — only for one that stays down.
+
+In dev-auth mode (no OIDC configured), the existing in-memory session-store
+fallback is kept: the process still starts with the database down so local
+development keeps working, with sessions held in process memory (lost on
+restart) until the database comes back.
+
 ### Setting up the Authentik provider
 
 Splitkauf's OIDC flow targets [Authentik](https://goauthentik.io/) as a
