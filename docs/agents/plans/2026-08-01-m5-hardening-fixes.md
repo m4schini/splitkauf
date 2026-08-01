@@ -109,17 +109,17 @@ ports/rest/problem/        registry: 400/401/404/405/500/503 (no 413)
 Dependencies: none
 
 **Tasks**:
-- [ ] `adapters/db/lists.go`: remove the `requireList` call from `AddItem`
+- [x] `adapters/db/lists.go`: remove the `requireList` call from `AddItem`
       (delete the helper if it has no other callers); on insert error,
       `errors.As(err, &pgErr)` with `*pgconn.PgError` and return
       `lists.ErrNotFound` for code `23503`; update the doc comment that
       currently (incorrectly) claims the FK path produces the domain error.
-- [ ] `adapters/db/lists_test.go`: integration test — `AddItem` to a
+- [x] `adapters/db/lists_test.go`: integration test — `AddItem` to a
       well-formed but nonexistent list ID returns `ErrNotFound` (this now
       exercises the FK path); existing add tests stay green.
 
 **Automated Verification**:
-- [ ] Integration tests pass against a disposable Postgres (schema ≥ v2);
+- [x] Integration tests pass against a disposable Postgres (schema ≥ v2);
       `go test -short ./...`, `make lint` green.
 
 ### Phase 2: US-Q.5 — request body limits + 413 problem type
@@ -127,40 +127,41 @@ Dependencies: none
 Dependencies: none
 
 **Tasks**:
-- [ ] `ports/rest/problem/problem.go`: register `PayloadTooLarge`
+- [x] `ports/rest/problem/problem.go`: register `PayloadTooLarge`
       (slug `payload-too-large`, status 413, description); map 413 in
       `FromStatus`; extend `problem_test.go`.
-- [ ] `ports/rest/middleware/maxbody.go`: `MaxBody(limit int64)` middleware —
+- [x] `ports/rest/middleware/maxbody.go`: `MaxBody(limit int64)` middleware —
       declared `Content-Length > limit` → `problem.Write` 413 and stop;
       otherwise `r.Body = http.MaxBytesReader(w, r.Body, limit)` and
       delegate. Comment the backstop-status caveat (Key Decision 2).
-- [ ] `ports/rest/server.go`: `apiRouter.Use(middleware.MaxBody(1 << 20))`
+- [x] `ports/rest/server.go`: `apiRouter.Use(middleware.MaxBody(1 << 20))`
       (before the generated group, alongside `Recover`).
-- [ ] Tests (`ports/rest` or `ports/rest/v1`): oversized `Content-Length` →
+- [x] Tests (`ports/rest` or `ports/rest/v1`): oversized `Content-Length` →
       413 problem with the right `type`; a body over the cap without a
       declared length is rejected (status 400 or 413, both problem+json);
       a normal-size POST still succeeds; drift test passes with the new type.
 
 **Automated Verification**:
-- [ ] `go test ./ports/...`, `make lint` green.
+- [x] `go test ./ports/...`, `make lint` green.
 
 ### Phase 3: US-Q.6 — session-store fail-fast in OIDC mode
 
 Dependencies: none
 
 **Tasks**:
-- [ ] `cmd/serve.go`: add `sessionStore(oidcEnabled, dbReachable bool)
+- [x] `cmd/serve.go`: add `sessionStore(oidcEnabled, dbReachable bool)
       (usePostgres bool, err error)` — `(true, true)` → postgres;
       `(true, false)` → error `sessions require a reachable database in OIDC
-      mode`; `(false, _)` → memory fallback allowed. `serve` returns the
+      mode`; `(false, dbReachable)` → postgres if reachable, else in-memory
+      fallback allowed. `serve` returns the
       error before binding; `newSessionManager` consumes the decision.
-- [ ] `cmd/serve_test.go` (new): table test for `sessionStore`.
-- [ ] `deploy/README.md`: document the fail-fast behavior and that the
+- [x] `cmd/serve_test.go` (new): table test for `sessionStore`.
+- [x] `deploy/README.md`: document the fail-fast behavior and that the
       restart policy (systemd/podman) handles a DB that comes up late.
 
 **Automated Verification**:
-- [ ] `go test ./cmd/...` passes; `make check` green.
-- [ ] Scripted behavior check without a live IdP (the DB gate must run before
+- [x] `go test ./cmd/...` passes; `make check` green.
+- [x] Scripted behavior check without a live IdP (the DB gate must run before
       OIDC discovery, so no issuer is ever contacted):
       `SPLITKAUF_DATABASE_PORT=1 SPLITKAUF_AUTH_OIDC_ISSUER=https://example.invalid SPLITKAUF_AUTH_OIDC_CLIENT_ID=x SPLITKAUF_AUTH_OIDC_CLIENT_SECRET=x SPLITKAUF_AUTH_OIDC_REDIRECT_URL=http://localhost/cb go run . serve; test $? -ne 0`
       and the output contains `sessions require a reachable database`;
@@ -169,7 +170,14 @@ Dependencies: none
 
 ## Implementation Notes
 
-During implementation, document user feedback, problems, and decisions here.
+- **Dev-auth durability preserved.** `sessionStore(oidcEnabled, dbReachable)`
+  returns: (true,true)->postgres; (true,false)->fatal error
+  "sessions require a reachable database in OIDC mode"; (false,true)->postgres;
+  (false,false)->in-memory. A first cut regressed dev-auth to always-in-memory;
+  review caught it. The "database unavailable" warning now fires only on the
+  (false,false) path.
+- All three fixes shipped one commit per story (US-Q.7 FK-mapping, US-Q.5 body
+  limits + 413 problem, US-Q.6 session fail-fast).
 
 ## References
 
