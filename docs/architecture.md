@@ -7,7 +7,7 @@ This is a living document. It describes both the **implemented** foundation and 
 - ✅ **Implemented** — exists in code today.
 - 🔜 **Planned** — decided in research, not yet built.
 
-Last updated: 2026-07-31.
+Last updated: 2026-08-01.
 
 ---
 
@@ -90,20 +90,43 @@ precache), oxlint + Prettier, Vitest + React Testing Library. Build output goes 
 
 **PWA / iOS** (from `docs/research/pwa-ios-support.md`):
 
-- ✅ Manifest (`display: standalone`), iOS meta tags, maskable icons.
+- ✅ Manifest (`display: standalone`, `theme_color`), iOS meta tags
+  (`apple-mobile-web-app-capable`/`-status-bar-style`/`-title`,
+  `viewport-fit=cover`), real icon artwork (`apple-touch-icon` 180px + 192/512
+  PNG + a 512 `maskable` entry). Verified against
+  `docs/agents/research/2026-07-21-pwa-ios-support.md` for M4 US-O.1 (install is
+  manual Share → Add to Home Screen; no `beforeinstallprompt` on Safari).
 - 🔜 Custom in-app install banner on iOS (no `beforeinstallprompt` on Safari):
   detect via `navigator.standalone === false`, show once, re-show after 7 days.
+  US-O.1 ships as **manifest verification only**; this banner stays deferred.
 - 🔜 Web Push via VAPID; on iOS only available after home-screen install, so request
   permission only in `display-mode: standalone` and after a user gesture.
-- 🔜 No Background Sync API on iOS — drain the offline queue on `visibilitychange` /
-  `online` events instead.
+- ✅ No Background Sync API on iOS — the offline outbox instead drains on
+  `online` / `visibilitychange` (and after cache restore), see the offline-first
+  data layer below.
 - Capacitor is explicitly **deferred** until notification reach becomes a blocker.
 
-**Offline-first data layer** 🔜 (from `docs/research/collaborative-lists.md`):
+**Offline-first data layer** ✅ (M4; a recorded **deviation** from the Dexie +
+custom `offline_queue` recommendation in `docs/research/collaborative-lists.md` §4):
 
-- Dexie.js (IndexedDB) as the local store plus a sync queue for offline mutations.
-- Network-first reads with Dexie fallback; optimistic UI via React Query
-  `onMutate`/`onError`.
+- The React Query cache is **persisted to IndexedDB**
+  (`PersistQueryClientProvider` + an async-storage-persister over `idb-keyval`,
+  `maxAge`/`gcTime` 7 days, a build-hash `buster`, cleared on logout) — every
+  visited view renders offline with no component changes.
+- Offline writes are React Query **paused mutations** (the outbox): mutations run
+  `networkMode: 'offlineFirst'` with a retry policy that pauses on network failure
+  and fails fast on 4xx problems; the persisted paused mutations are the outbox and
+  survive a reload via module-scope `setMutationDefaults`.
+- **Pending-create coalescing** (in place of ID remapping): an offline add mints a
+  temp UUID and registers its payload in a `pendingCreates` map; check/edit/delete
+  on a still-queued item fold into — or cancel — that one create, so replay never
+  references an ID the server has not seen.
+- Resume: `resumePausedMutations()` on `online` / `visibilitychange` and after
+  cache restore; a replay hitting 404 is dropped with a refetch and a quiet notice.
+  Convergence follows the LWW rules in §5.
+- **Deviation rationale**: the Dexie research pre-dates the React Query frontend;
+  reusing the existing optimistic `onMutate`/`onError` code as the source of truth
+  collapses local store + sync queue into one state layer (the mutation cache).
 
 **UX foundations** 🔜 (from
 `docs/agents/research/2026-07-31-mobile-first-shopping-list-ux.md`; binding for
@@ -157,17 +180,28 @@ Key decisions (from `docs/research/collaborative-lists.md`):
 
 ---
 
-## 5. Collaboration & Sync 🔜
+## 5. Collaboration & Sync ✅ / 🔜
 
 From `docs/research/collaborative-lists.md`:
 
-- **Conflict resolution**: last-write-wins per item, using the server-assigned
+- **Conflict resolution** ✅: last-write-wins per item, using the server-assigned
   `updated_at` as the authority. CRDTs (Yjs/Automerge) were evaluated and explicitly
   rejected as overkill for the shopping-list conflict profile.
-- **Server push**: **SSE** (not WebSocket) for list-change notifications. WebSocket is
-  reconsidered only if presence/live cursors are ever added.
-- **Offline queue**: mutations queued in Dexie while offline, replayed on
-  reconnect/foreground (see §3 for the iOS constraint).
+- **Server push** ✅: **SSE** (not WebSocket) for list-change notifications, with a
+  synthetic `reconnect` event that invalidates the cache. WebSocket is reconsidered
+  only if presence/live cursors are ever added.
+- **Offline queue** ✅ (M4): mutations are React Query **paused mutations** persisted
+  to IndexedDB, replayed via `resumePausedMutations()` on `online` /
+  `visibilitychange` and after cache restore — **not** the Dexie queue of the
+  research (see §3 for the layer and the recorded deviation, and for the iOS
+  Background-Sync constraint).
+- **Soft delete & restore** ✅ (M4): item deletes set `items.deleted_at` and keep the
+  row; every read and count filters `deleted_at IS NULL` (the count aggregates carry
+  the predicate in the `LEFT JOIN … ON` clause so empty / all-deleted lists still
+  appear). Undo is a server-backed restore —
+  `POST /api/v1/lists/{listId}/items/{itemId}/restore` clears `deleted_at`
+  (idempotent) — so undo is correct across devices and works offline like any other
+  mutation. **List** delete stays a hard cascade; no tombstone purge yet.
 
 ---
 
