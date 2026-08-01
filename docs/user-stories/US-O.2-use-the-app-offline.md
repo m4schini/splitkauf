@@ -15,3 +15,9 @@ connectivity.
   in the background; rollback (with notice) only on hard failure.
 - Offline/sync state is a quiet indicator, never a blocking spinner or modal
   (UX research §2).
+- Items created offline (not yet known to the server) carry a visible
+  "unsynced" badge, with a disclaimer that internet is needed before they can
+  sync.
+- Checking, editing, or deleting an item that was itself created offline works
+  fully: the changes merge into that item's still-queued create (a delete
+  cancels it) — the full core loop works on just-added items with no network.

@@ -3,7 +3,8 @@
 Derived from [`GOAL.md`](../../GOAL.md). One story per file, named
 `US-<area>.<n>-<slug>.md`. Story IDs are stable so plans and commits can reference
 them. Areas: **L** lists, **S** real-time sync, **O** offline/PWA,
-**A** authentication, **Q** API quality & operations.
+**A** authentication, **Q** API quality & operations, **B** branding & visual
+polish.
 
 Personas: **Member** — an authenticated user of the group's instance (single-tenant,
 everyone belongs to the group). **Operator** — the person self-hosting the instance.
@@ -63,7 +64,14 @@ of each other and may be built in either order (or in parallel).
 
 | # | Stories | Why here |
 |---|---------|----------|
-| 14 | [US-Q.4](US-Q.4-production-hardening.md) | Final pass once all capabilities exist. |
+| 14 | [US-Q.5](US-Q.5-request-body-limits.md), [US-Q.6](US-Q.6-durable-sessions.md), [US-Q.7](US-Q.7-concurrent-delete-correctness.md) | Targeted fixes for the deferred M1–M2 review findings; independent of each other. |
+| 15 | [US-Q.4](US-Q.4-production-hardening.md) | Final audit pass once all capabilities exist. |
+
+### M6 — Branding & quick-add polish
+
+| # | Stories | Why here |
+|---|---------|----------|
+| 16 | [US-B.1](US-B.1-app-icon.md), [US-B.2](US-B.2-green-accent.md), [US-L.9](US-L.9-quantity-and-unit.md) | Visual identity (real icon, icon-green accent) and the quantity/unit quick-add upgrade; independent of each other. Deliberately after M4/M5 so those plans stay as written — US-L.9 retrofits `unit` into the offline pending-create payload. |
 
 ## Out of scope
 
