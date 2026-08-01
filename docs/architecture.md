@@ -205,10 +205,28 @@ From `docs/research/collaborative-lists.md`:
 
 ---
 
-## 6. Authentication 🔜
+## 6. Authentication ✅
 
-From `docs/research/oidc-go-pwa-integration.md`. This is the largest unimplemented
-research area. **Decisions committed** (Postgres-only stack — no Redis):
+From `docs/research/oidc-go-pwa-integration.md`. **Decisions committed**
+(Postgres-only stack — no Redis):
+
+**Three auth modes**, selected from config with the precedence
+**OIDC → password → dev-auth** (`config.Mode()`):
+
+- **OIDC BFF** (✅ M2) — the confidential-client Authorization Code + PKCE flow
+  below, when the OIDC issuer/client are configured.
+- **Username/password** (✅ M7) — local accounts for instances without an
+  identity provider, enabled by `SPLITKAUF_AUTH_PASSWORD_ENABLED`. Accounts are
+  operator-provisioned via the `useradd` CLI (no public sign-up) and stored in a
+  `users` table (unique username + bcrypt `password_hash`). Login POSTs
+  credentials to `/api/auth/login`; on success it establishes the **same scs
+  session** the OIDC flow uses (subject = user id, no OAuth tokens), so
+  `RequireAuth`, logout, and durable Postgres sessions are identical across
+  modes. An unknown user and a wrong password return the same 401 and both run a
+  bcrypt comparison (dummy hash on miss) so timing/response can't enumerate
+  usernames. `GET /api/auth/config` reports the active mode so the SPA renders
+  the right login UI.
+- **Dev-auth** (✅ M1) — a single hardcoded user for local development.
 
 | Concern | Decision |
 |---------|----------|
@@ -218,8 +236,13 @@ research area. **Decisions committed** (Postgres-only stack — no Redis):
 | PKCE | S256 mandatory on every authorization request (RFC 9700). |
 | Roles | **Database table**, not IdP claims — the IdP only authenticates; splitkauf owns authorization (list membership, roles). |
 
-Endpoints to add: `GET /api/auth/login`, `GET /api/auth/callback`,
-`POST /api/auth/logout`, `GET /api/me`.
+Endpoints: `GET /api/auth/login` (OIDC redirect / password GET → home),
+`POST /api/auth/login` (password credentials), `GET /api/auth/callback` (OIDC),
+`POST /api/auth/logout`, `GET /api/auth/config` (public mode discovery),
+`GET /api/v1/me`.
+
+The OIDC flow follows the sequence below; the password flow is a single
+credential POST that yields the same session cookie.
 
 ```mermaid
 sequenceDiagram

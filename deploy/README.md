@@ -34,8 +34,14 @@ systemd-managed containers on a single server.
    SPLITKAUF_DATABASE_NAME=splitkauf
    SPLITKAUF_DATABASE_SSL_MODE=disable
 
+   # Auth mode (precedence OIDC > password > dev — see "Authentication" below).
+   # For local username/password accounts instead of OIDC, leave the OIDC vars
+   # unset and set:
+   #   SPLITKAUF_AUTH_PASSWORD_ENABLED=true
+   # then provision accounts with `useradd` (see "Password authentication").
+   #
    # OIDC login (Authentik). Leave all SPLITKAUF_AUTH_OIDC_* vars unset to run
-   # with dev-auth instead — see "Authentication" below.
+   # with password or dev-auth instead.
    SPLITKAUF_APP_BASE_URL=https://splitkauf.example.com
    SPLITKAUF_AUTH_OIDC_ISSUER=https://authentik.example.com/application/o/splitkauf/
    SPLITKAUF_AUTH_OIDC_CLIENT_ID=change-me
@@ -71,16 +77,42 @@ systemd-managed containers on a single server.
 
 ## Authentication
 
-Splitkauf selects its auth mode automatically from config — there is no
-explicit mode toggle:
+Splitkauf selects its auth mode automatically from config, applying the
+precedence **OIDC → password → dev-auth**:
 
 - If `SPLITKAUF_AUTH_OIDC_ISSUER`, `SPLITKAUF_AUTH_OIDC_CLIENT_ID`, and
   `SPLITKAUF_AUTH_OIDC_CLIENT_SECRET` are **all** set, the backend runs the
   OIDC BFF (backend-for-frontend) flow against that provider.
-- If any of those three are unset, the backend falls back to dev-auth (a
-  single hardcoded dev user, the same as local development). This is only
-  suitable for local/test deployments — do not leave OIDC unset on a
-  production host.
+- Else, if `SPLITKAUF_AUTH_PASSWORD_ENABLED=true`, the backend runs local
+  username/password authentication (see "Password authentication" below) —
+  the option for a self-hosted instance without an identity provider.
+- Else, the backend falls back to dev-auth (a single hardcoded dev user, the
+  same as local development). This is only suitable for local/test
+  deployments — do not leave both OIDC and password unset on a production host.
+
+### Password authentication
+
+Set `SPLITKAUF_AUTH_PASSWORD_ENABLED=true` (and leave the OIDC vars unset) to
+run local accounts. There is **no public sign-up**: the operator provisions
+every account with the `useradd` command, which stores only a bcrypt hash.
+
+```sh
+# Interactive (prompts for the password, twice, with no echo):
+sudo podman run --rm -it \
+    --network splitkauf.network \
+    --env-file /etc/splitkauf/splitkauf.env \
+    ghcr.io/m4schini/splitkauf:latest useradd alex
+
+# Non-interactive (e.g. from a secret store), password on stdin:
+printf '%s' "$PASSWORD" | sudo podman run --rm -i \
+    --network splitkauf.network \
+    --env-file /etc/splitkauf/splitkauf.env \
+    ghcr.io/m4schini/splitkauf:latest useradd alex --password-stdin
+```
+
+A wrong username and a wrong password are rejected identically (same 401), so
+the login page never reveals which usernames exist. Keep
+`SPLITKAUF_AUTH_SESSION_COOKIE_SECURE=true` behind HTTPS, exactly as for OIDC.
 
 `SPLITKAUF_AUTH_OIDC_REDIRECT_URL` and
 `SPLITKAUF_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL` are required for the OIDC flow
