@@ -1,7 +1,9 @@
 [Unit]
 Description=Splitkauf application server
-Requires=splitkauf-db.service
-After=splitkauf-db.service
+# Start only after migrations have applied; splitkauf-migrate in turn requires
+# the (healthy) database, so this transitively depends on both.
+Requires=splitkauf-migrate.service
+After=splitkauf-migrate.service
 
 [Container]
 Image=ghcr.io/m4schini/splitkauf:latest

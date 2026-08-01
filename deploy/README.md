@@ -62,7 +62,7 @@ systemd-managed containers on a single server.
    ```sh
    sudo systemctl daemon-reload
    sudo systemctl start splitkauf.service
-   sudo systemctl status splitkauf.service splitkauf-db.service
+   sudo systemctl status splitkauf.service splitkauf-migrate.service splitkauf-db.service
    ```
 
    Enable both on boot with `sudo systemctl enable splitkauf.service
@@ -149,9 +149,18 @@ the app locally.
 
 ## Running migrations
 
-Migrations are applied via a one-shot `migrate` invocation of the same
-application image, connected to the same network and database as the running
-stack:
+Migrations run automatically as a one-shot unit, `splitkauf-migrate.service`
+(from `splitkauf-migrate.container`): it applies every embedded up-migration
+with the same application image and exits. `splitkauf.service`
+`Requires=`/`After=` it, so `serve` only starts once the schema is current,
+and the migrate unit itself waits for the database to be **healthy** —
+`splitkauf-db` sets `Notify=healthy`, which requires **podman >= 5.0**.
+
+So on a supported host, `systemctl start splitkauf.service` brings up the whole
+stack in order (database → migrations → app) with no manual step.
+
+On podman < 5.0 the health-gated ordering is unavailable; apply migrations
+by hand before the first start and after each deploy that ships new ones:
 
 ```sh
 sudo podman run --rm \
@@ -160,18 +169,16 @@ sudo podman run --rm \
     ghcr.io/m4schini/splitkauf:latest migrate
 ```
 
-Run this once after installing and after every deployment that ships new
-migrations, before (re)starting `splitkauf.service`.
-
 ## Updating
 
-Pulling a new image and restarting the service is sufficient for
-non-migration changes:
+Pull the new image and restart. Because the migrate unit uses
+`RemainAfterExit=yes` it does not re-run on its own, so restart it explicitly
+to apply any new migrations before the app comes back up:
 
 ```sh
 sudo podman pull ghcr.io/m4schini/splitkauf:latest
-sudo systemctl restart splitkauf.service
+sudo systemctl restart splitkauf-migrate.service   # re-applies migrations (a no-op when there are none)
+sudo systemctl restart splitkauf.service           # recreates the app on the pulled image
 ```
 
-For changes that include new migrations, run the one-shot `migrate` command
-above before restarting.
+For non-migration changes, restarting `splitkauf.service` alone is enough.

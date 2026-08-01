@@ -1,0 +1,26 @@
+[Unit]
+Description=Splitkauf database migrations (one-shot)
+# Runs after the database is healthy (splitkauf-db uses Notify=healthy). The
+# app unit Requires=/After= this one, so serve only starts once the schema is
+# up to date.
+Requires=splitkauf-db.service
+After=splitkauf-db.service
+
+[Container]
+Image=ghcr.io/m4schini/splitkauf:latest
+ContainerName=splitkauf-migrate
+# Apply all embedded up-migrations, then exit. Reuses the app's env file for
+# the SPLITKAUF_DATABASE_* connection settings (OIDC vars, if present, are
+# ignored by the migrate command).
+Exec=migrate
+Network=splitkauf.network
+EnvironmentFile=/etc/splitkauf/splitkauf.env
+
+[Service]
+# One-shot: run to completion and stay "active (exited)" so the app's
+# Requires=/After= is satisfied without keeping a container running.
+Type=oneshot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

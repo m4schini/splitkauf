@@ -11,6 +11,10 @@ HealthCmd=pg_isready -U splitkauf -d splitkauf
 HealthInterval=5s
 HealthTimeout=5s
 HealthRetries=5
+# Report the service ready to systemd only once the container is healthy, so
+# units ordered After= this one (migrations, the app) wait for a reachable
+# database rather than merely a started one. Requires podman >= 5.0.
+Notify=healthy
 
 [Service]
 Restart=always
