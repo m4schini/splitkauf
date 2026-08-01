@@ -2,6 +2,8 @@
 // centralises the single error path: on a problem+json error it throws the
 // parsed `ProblemDetail`, so callers handle one typed shape.
 
+import { queryClient, persister } from './queryClient'
+
 /** A field-level validation error, per the RFC 9457 `errors` extension. */
 export interface FieldError {
   detail: string
@@ -79,8 +81,18 @@ export function login(returnTo?: string): void {
  * so the browser follows the server's redirect and the session cookie is
  * cleared. An XHR POST would not follow a cross-origin redirect to the IdP's
  * RP-initiated logout endpoint the way a real navigation does.
+ *
+ * Before navigating away, the persisted React Query cache is cleared (both
+ * in-memory and in IndexedDB) so a shared device never renders the next
+ * signed-in member's lists from a stale, still-persisted cache (US-O.2 Key
+ * Decision 1). The IndexedDB removal is awaited before the navigation is
+ * kicked off — an unawaited `del` transaction can be aborted by the page
+ * unload, leaving the previous member's cache behind on a shared device.
  */
-export function logout(): void {
+export async function logout(): Promise<void> {
+  queryClient.clear()
+  await persister.removeClient()
+
   const form = document.createElement('form')
   form.method = 'POST'
   form.action = '/api/auth/logout'

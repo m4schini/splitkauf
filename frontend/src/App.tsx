@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getMe, isUnauthorized, login, logout } from './api'
 import { ListsOverview } from './ListsOverview'
 import { ListDetail } from './ListDetail'
+import { OfflineIndicator } from './OfflineIndicator'
 
 type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
@@ -30,6 +31,7 @@ function App() {
   if (user) {
     return (
       <>
+        <OfflineIndicator />
         <div className="screen-header account-bar">
           <span className="account-bar-name">{user.name}</span>
           <button type="button" className="secondary-button" onClick={() => logout()}>

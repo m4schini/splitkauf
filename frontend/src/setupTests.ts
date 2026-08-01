@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom/vitest'
+// jsdom has no IndexedDB implementation. `queryClient.ts`'s persister (and
+// `idb-keyval` underneath it) touch IndexedDB as soon as `logout()` clears
+// the persisted store, so any test that exercises that path needs a real-ish
+// IndexedDB available globally.
+import 'fake-indexeddb/auto'
 
 /**
  * jsdom has no EventSource implementation. Views use `live.ts`'s shared

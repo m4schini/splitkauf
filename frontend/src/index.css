@@ -406,6 +406,18 @@ input {
   min-height: 36px;
 }
 
+/* --- Offline indicator: quiet banner, no blocking spinner/modal --------- */
+
+.offline-indicator {
+  margin: 0;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
 .api-status {
   color: var(--fg-muted);
   font-size: 12px;

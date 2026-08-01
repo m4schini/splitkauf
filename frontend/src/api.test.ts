@@ -21,6 +21,7 @@ import {
   type ProblemDetail,
   type User,
 } from './api'
+import { persister, queryClient } from './queryClient'
 
 function mockResponse(body: unknown, init: { status: number; contentType: string }): Response {
   return {
@@ -376,15 +377,38 @@ describe('logout', () => {
     document.body.innerHTML = ''
   })
 
-  it('submits a top-level POST form to /api/auth/logout', () => {
+  it('submits a top-level POST form to /api/auth/logout', async () => {
     const submit = vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {})
 
-    logout()
+    await logout()
 
     const form = document.querySelector('form')
     expect(form).not.toBeNull()
     expect(form?.method).toBe('post')
     expect(form?.action).toContain('/api/auth/logout')
     expect(submit).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the in-memory query cache and removes the persisted store before navigating away', async () => {
+    const order: string[] = []
+    vi.spyOn(HTMLFormElement.prototype, 'submit').mockImplementation(() => {
+      order.push('submit')
+    })
+    queryClient.setQueryData(['me'], { id: 'u1', name: 'Dev User' })
+    const clearSpy = vi.spyOn(queryClient, 'clear')
+    // Resolve on a later microtask so an unawaited removeClient would let
+    // submit run first — the ordering assertion below then catches the bug.
+    const removeClientSpy = vi.spyOn(persister, 'removeClient').mockImplementation(async () => {
+      await Promise.resolve()
+      order.push('removeClient')
+    })
+
+    await logout()
+
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+    expect(queryClient.getQueryData(['me'])).toBeUndefined()
+    expect(removeClientSpy).toHaveBeenCalledTimes(1)
+    // The persisted store must be gone before the navigation is kicked off.
+    expect(order).toEqual(['removeClient', 'submit'])
   })
 })
