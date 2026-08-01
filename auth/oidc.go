@@ -78,6 +78,19 @@ func newOIDC(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, re
 		return nil, fmt.Errorf("reading provider metadata: %w", err)
 	}
 
+	logger := telemetry.Logger("auth", "oidc")
+	logger.Info("OIDC authenticator initialized",
+		zap.String("issuer", cfg.Auth.OIDC.Issuer),
+		zap.String("client_id", cfg.Auth.OIDC.ClientID),
+		zap.String("redirect_url", cfg.Auth.OIDC.RedirectURL),
+		zap.String("auth_endpoint", provider.Endpoint().AuthURL),
+		zap.String("token_endpoint", provider.Endpoint().TokenURL),
+		zap.Bool("end_session_endpoint_advertised", meta.EndSessionEndpoint != ""),
+		zap.String("session_cookie_name", sm.Cookie.Name),
+		zap.Bool("session_cookie_secure", sm.Cookie.Secure),
+		zap.String("session_cookie_samesite", sameSiteString(sm.Cookie.SameSite)),
+	)
+
 	return &oidcAuthenticator{
 		oauth2Config:          oauth2Config,
 		verifier:              provider.Verifier(&oidc.Config{ClientID: cfg.Auth.OIDC.ClientID}),
@@ -86,7 +99,7 @@ func newOIDC(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, re
 		clientID:              cfg.Auth.OIDC.ClientID,
 		endSessionEndpoint:    meta.EndSessionEndpoint,
 		postLogoutRedirectURL: cfg.Auth.OIDC.PostLogoutRedirectURL,
-		logger:                telemetry.Logger("auth", "oidc"),
+		logger:                logger,
 	}, nil
 }
 
@@ -97,13 +110,20 @@ func newOIDC(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, re
 func (a *oidcAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	a.logger.Info("login: starting authorization code flow",
+		zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+		zap.String("raw_return_to", r.URL.Query().Get("return_to")),
+	)
+
 	state, err := randomToken()
 	if err != nil {
+		a.logger.Error("login: generating state failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "generating login state"))
 		return
 	}
 	nonce, err := randomToken()
 	if err != nil {
+		a.logger.Error("login: generating nonce failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "generating login nonce"))
 		return
 	}
@@ -119,6 +139,13 @@ func (a *oidcAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 		oauth2.S256ChallengeOption(verifier),
 		oidc.Nonce(nonce),
 	)
+	a.logger.Info("login: session primed, redirecting to identity provider",
+		zap.String("return_to", returnTo),
+		zap.String("redirect_uri", a.oauth2Config.RedirectURL),
+	)
+	// The full authorization URL (carries state/nonce/PKCE challenge, all
+	// single-use and non-secret) is logged at debug for deep troubleshooting.
+	a.logger.Debug("login: authorization URL", zap.String("auth_url", authURL))
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
@@ -129,9 +156,24 @@ func (a *oidcAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	a.logger.Info("callback: received from identity provider",
+		zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+		zap.Bool("has_state_param", r.URL.Query().Get("state") != ""),
+		zap.Bool("has_code_param", r.URL.Query().Get("code") != ""),
+		zap.String("provider_error", r.URL.Query().Get("error")),
+	)
+
 	wantState := a.sm.GetString(ctx, stateKey)
 	gotState := r.URL.Query().Get("state")
 	if wantState == "" || subtle.ConstantTimeCompare([]byte(wantState), []byte(gotState)) != 1 {
+		// A missing session-side state almost always means the pre-login session
+		// cookie set by Login was not sent back on the callback (cookie/domain/
+		// SameSite/Secure problem, or a session store that lost the entry).
+		a.logger.Warn("callback: state validation failed",
+			zap.Bool("session_state_present", wantState != ""),
+			zap.Bool("query_state_present", gotState != ""),
+			zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+		)
 		problem.Write(w, r, problem.New(problem.Validation, "invalid or missing state parameter"))
 		return
 	}
@@ -151,6 +193,10 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		a.logger.Warn("callback: missing authorization code",
+			zap.String("provider_error", r.URL.Query().Get("error")),
+			zap.String("provider_error_description", r.URL.Query().Get("error_description")),
+		)
 		problem.Write(w, r, problem.New(problem.Validation, "missing authorization code"))
 		return
 	}
@@ -174,6 +220,10 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if nonce == "" || subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(nonce)) != 1 {
+		a.logger.Warn("callback: ID token nonce mismatch",
+			zap.Bool("session_nonce_present", nonce != ""),
+			zap.Bool("token_nonce_present", idToken.Nonce != ""),
+		)
 		problem.Write(w, r, problem.New(problem.Unauthorized, "ID token nonce mismatch"))
 		return
 	}
@@ -223,6 +273,14 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.logger.Info("callback: login complete, session established",
+		zap.String("subject", idToken.Subject),
+		zap.String("email", claims.Email),
+		zap.String("name", name),
+		zap.Time("access_token_expiry", token.Expiry),
+		zap.Bool("has_refresh_token", token.RefreshToken != ""),
+		zap.String("return_to", returnTo),
+	)
 	http.Redirect(w, r, returnTo, http.StatusFound)
 }
 
@@ -275,11 +333,25 @@ func (a *oidcAuthenticator) RequireAuth(next http.Handler) http.Handler {
 
 		data, ok := getSessionData(ctx, a.sm)
 		if !ok {
+			// The 401 the browser sees on GET /api/v1/me. Whether the request
+			// carried a session cookie tells the two failure modes apart: no
+			// cookie -> the browser isn't sending it (cookie Secure/SameSite/
+			// domain/path, or it was never set); cookie present but no data ->
+			// the server-side session store has no matching session (e.g. an
+			// in-memory store after a restart, or an expired/destroyed session).
+			a.logger.Info("requireauth: no active session, returning 401",
+				zap.String("path", r.URL.Path),
+				zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+			)
 			problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
 			return
 		}
 
 		if time.Until(data.Expiry) < refreshThreshold {
+			a.logger.Debug("requireauth: access token near expiry, refreshing",
+				zap.String("subject", data.Subject),
+				zap.Time("expiry", data.Expiry),
+			)
 			refreshed, err := a.refresh(ctx, data)
 			if err != nil {
 				if isInvalidGrant(err) {
@@ -287,6 +359,9 @@ func (a *oidcAuthenticator) RequireAuth(next http.Handler) http.Handler {
 					if derr := a.sm.Destroy(ctx); derr != nil {
 						a.logger.Error("destroying session after invalid_grant", zap.Error(derr))
 					}
+					a.logger.Info("requireauth: refresh token invalid, session destroyed -> 401",
+						zap.String("subject", data.Subject),
+					)
 					problem.Write(w, r, problem.New(problem.Unauthorized, "session expired, please sign in again"))
 					return
 				}
@@ -299,6 +374,10 @@ func (a *oidcAuthenticator) RequireAuth(next http.Handler) http.Handler {
 		}
 
 		u := User{ID: subjectUUID(data.Subject), Name: data.Name, Email: data.Email}
+		a.logger.Debug("requireauth: authenticated",
+			zap.String("path", r.URL.Path),
+			zap.String("subject", data.Subject),
+		)
 		next.ServeHTTP(w, r.WithContext(WithUser(ctx, u)))
 	})
 }
@@ -354,4 +433,30 @@ func isInvalidGrant(err error) bool {
 // account always maps to the same User.ID (used as the API's user id).
 func subjectUUID(subject string) uuid.UUID {
 	return uuid.NewSHA1(subjectNamespace, []byte(subject))
+}
+
+// hasSessionCookie reports whether the request carries the scs session cookie.
+// It only checks presence (not validity), for diagnostic logging of the login
+// flow — a missing cookie on the callback or an API request is the usual cause
+// of a lost session.
+func (a *oidcAuthenticator) hasSessionCookie(r *http.Request) bool {
+	_, err := r.Cookie(a.sm.Cookie.Name)
+	return err == nil
+}
+
+// sameSiteString renders an http.SameSite mode for logging (the type has no
+// String method of its own).
+func sameSiteString(s http.SameSite) string {
+	switch s {
+	case http.SameSiteDefaultMode:
+		return "default"
+	case http.SameSiteLaxMode:
+		return "lax"
+	case http.SameSiteStrictMode:
+		return "strict"
+	case http.SameSiteNoneMode:
+		return "none"
+	default:
+		return "unknown"
+	}
 }
