@@ -73,6 +73,13 @@ of each other and may be built in either order (or in parallel).
 |---|---------|----------|
 | 16 | [US-B.1](US-B.1-app-icon.md), [US-B.2](US-B.2-green-accent.md), [US-L.9](US-L.9-quantity-and-unit.md) | Visual identity (real icon, icon-green accent) and the quantity/unit quick-add upgrade; independent of each other. Deliberately after M4/M5 so those plans stay as written — US-L.9 retrofits `unit` into the offline pending-create payload. |
 
+### M7 — Username/password auth
+
+| # | Stories | Why here |
+|---|---------|----------|
+| 17 | [US-A.7](US-A.7-operator-provisions-accounts.md) | Operator-provisioned accounts (CLI) — the account store must exist before anyone can log in. |
+| 18 | [US-A.6](US-A.6-log-in-with-username-password.md) | Password login as an alternative to OIDC for instances without an identity provider; reuses the M2 session layer. |
+
 ## Out of scope
 
 No stories exist — and none should be written — for GOAL.md's non-goals: native
