@@ -188,12 +188,12 @@ undo:        POST /items/{id}/restore → deleted_at cleared (offline-capable)
 
 Dependencies: none
 
-- [ ] `database/migrations/000004_soft_delete_items.up.sql`:
+- [x] `database/migrations/000004_soft_delete_items.up.sql`:
       `ALTER TABLE items ADD COLUMN deleted_at TIMESTAMPTZ;`
-- [ ] `000004_soft_delete_items.down.sql`: drop the column.
+- [x] `000004_soft_delete_items.down.sql`: drop the column.
 
 **Automated Verification**:
-- [ ] `go build ./...` (migration embeds); `go run . migrate` applies to
+- [x] `go build ./...` (migration embeds); `go run . migrate` applies to
       version 4 against a disposable Postgres and the down migration reverts.
 
 ### Phase 2: Backend — soft delete, restore, checked-on-create
@@ -204,16 +204,16 @@ Spec-first: the restore operation and `AddItemRequest.checked`, then domain,
 repository, handlers, events.
 
 **Tasks**:
-- [ ] Spec: add `POST /lists/{listId}/items/{itemId}/restore`
+- [x] Spec: add `POST /lists/{listId}/items/{itemId}/restore`
       (operationId `restoreItem`, 200 → `Item`, `default` Problem) and
       optional `checked` (boolean, default false) to `AddItemRequest`;
       `make generate`.
-- [ ] `lists/lists.go`: add `RestoreItem` to `Repository`; extend `AddItem`
+- [x] `lists/lists.go`: add `RestoreItem` to `Repository`; extend `AddItem`
       signature with `checked bool`.
-- [ ] `lists/service.go`: `Service.RestoreItem` (delegates, returns the item);
+- [x] `lists/service.go`: `Service.RestoreItem` (delegates, returns the item);
       `AddItem` passes `checked` through (sets `CheckedAt` server-side when
       true). Update `lists/service_test.go` + fake repo.
-- [ ] `adapters/db/lists.go`: `DeleteItem` →
+- [x] `adapters/db/lists.go`: `DeleteItem` →
       `UPDATE items SET deleted_at = now(), updated_at = now() WHERE … AND deleted_at IS NULL`
       (0 rows → `ErrNotFound`); `RestoreItem` →
       `UPDATE items SET deleted_at = NULL, updated_at = now() WHERE list_id=$1 AND id=$2 RETURNING …`
@@ -225,19 +225,19 @@ repository, handlers, events.
       a WHERE filter would turn the left join inner and drop lists whose
       items are all deleted (and empty lists). `AddItem` writes
       `checked`/`checked_at`.
-- [ ] `adapters/db/lists_test.go`: delete-then-restore round trip; deleted
+- [x] `adapters/db/lists_test.go`: delete-then-restore round trip; deleted
       items excluded from reads and counts; a list whose items are ALL
       soft-deleted still appears in `Lists()`/`List()` with 0/0 counts;
       restore of a never-deleted item is idempotent; add with `checked=true`
       sets `checked_at`.
-- [ ] `ports/rest/v1/handlers_lists.go`: implement `RestoreItem` (maps errors
+- [x] `ports/rest/v1/handlers_lists.go`: implement `RestoreItem` (maps errors
       like check/uncheck, publishes `{items, listId}`); `AddItem` passes
       `checked`.
-- [ ] Handler tests: restore happy path + 404; restore publishes an event;
+- [x] Handler tests: restore happy path + 404; restore publishes an event;
       create-with-checked round trip.
 
 **Automated Verification**:
-- [ ] `make generate` clean; `go test ./...` passes; integration tests pass
+- [x] `make generate` clean; `go test ./...` passes; integration tests pass
       against the disposable Postgres; `make lint` green.
 
 ### Phase 3: Frontend — server-backed item undo via restore
@@ -245,20 +245,20 @@ repository, handlers, events.
 Dependencies: Phase 2
 
 **Tasks**:
-- [ ] `frontend/src/api.ts`: `restoreItem(listId, itemId)` helper; add
+- [x] `frontend/src/api.ts`: `restoreItem(listId, itemId)` helper; add
       `checked?: boolean` to the `AddItemRequest` type.
-- [ ] `frontend/src/queries.ts`: `useRestoreItem(listId)` with optimistic
+- [x] `frontend/src/queries.ts`: `useRestoreItem(listId)` with optimistic
       re-insert (`restoreItemLocally` already exists); item delete becomes an
       immediate `useDeleteItemMutation` call.
-- [ ] `frontend/src/ListDetail.tsx`: item removal fires the delete mutation at
+- [x] `frontend/src/ListDetail.tsx`: item removal fires the delete mutation at
       once; the undo snackbar action calls `useRestoreItem` instead of
       cancelling a deferred delete. `useUndoQueue` keeps only the list path
       (rename/trim accordingly).
-- [ ] Component tests: remove-then-undo now asserts a restore call (not a
+- [x] Component tests: remove-then-undo now asserts a restore call (not a
       cancelled delete); list-delete undo tests unchanged.
 
 **Automated Verification**:
-- [ ] `make frontend-check` green.
+- [x] `make frontend-check` green.
 
 ### Phase 4: Frontend — persisted cache + offline indicator
 
@@ -266,68 +266,68 @@ Dependencies: none (parallel-safe with Phases 1–3, same files as Phase 5 so
 implemented sequentially before it)
 
 **Tasks**:
-- [ ] Add deps: `@tanstack/react-query-persist-client`,
+- [x] Add deps: `@tanstack/react-query-persist-client`,
       `@tanstack/query-async-storage-persister`, `idb-keyval`.
-- [ ] `frontend/src/main.tsx`: swap `QueryClientProvider` for
+- [x] `frontend/src/main.tsx`: swap `QueryClientProvider` for
       `PersistQueryClientProvider` (async IDB persister, `maxAge` 7 days,
       `buster` from the Vite build hash/env); raise default query
       `gcTime` to 7 days.
-- [ ] `frontend/src/api.ts` `logout()`: clear the persisted client +
+- [x] `frontend/src/api.ts` `logout()`: clear the persisted client +
       `queryClient.clear()` before submitting the logout form.
-- [ ] `frontend/src/OfflineIndicator.tsx`: quiet banner ("Offline — changes
+- [x] `frontend/src/OfflineIndicator.tsx`: quiet banner ("Offline — changes
       sync when you're back online") driven by `onlineManager.subscribe`;
       mounted in `App.tsx`; AA contrast in both themes; no interaction cost.
-- [ ] Tests: indicator renders on simulated offline; persister smoke test
+- [x] Tests: indicator renders on simulated offline; persister smoke test
       (cache round-trips through a fake async storage); logout clears storage.
 
 **Automated Verification**:
-- [ ] `make frontend-check` green.
+- [x] `make frontend-check` green.
 
 ### Phase 5: Frontend — offline mutation outbox with pending-create coalescing
 
 Dependencies: Phases 2, 3, 4
 
 **Tasks**:
-- [ ] `frontend/src/queries.ts`: give every mutation a stable `mutationKey`
+- [x] `frontend/src/queries.ts`: give every mutation a stable `mutationKey`
       and register `setMutationDefaults` (module scope) so persisted paused
       mutations resume after a reload; set mutation
       `networkMode: 'offlineFirst'` **plus the retry policy from Key
       Decision 2** (pause on network failure, fail fast on 4xx problems);
       persist mutations in the provider's `dehydrateOptions`.
-- [ ] `frontend/src/pendingCreates.ts`: `register(tempId, payload)`,
+- [x] `frontend/src/pendingCreates.ts`: `register(tempId, payload)`,
       `update(tempId, patch)`, `take(tempId)`, `has(tempId)`; the add-item
       default `mutationFn` reads its payload from here at execution time.
-- [ ] Add-item flow: offline add mints a temp UUID, registers the payload,
+- [x] Add-item flow: offline add mints a temp UUID, registers the payload,
       patches the cache (existing optimistic code); on success, replace the
       temp item with the server item in both `listKey` and `listsKey` caches.
-- [ ] Coalescing: `useUpdateItem`/`useCheckItem`/`useUncheckItem`/
+- [x] Coalescing: `useUpdateItem`/`useCheckItem`/`useUncheckItem`/
       `useDeleteItemMutation` short-circuit when the target is a pending temp
       ID — patch the cache + `pendingCreates` only (check/uncheck set
       `checked` in the payload; delete removes the map entry and the paused
       create from the mutation cache).
-- [ ] Resume triggers: `resumePausedMutations()` on `online`,
+- [x] Resume triggers: `resumePausedMutations()` on `online`,
       `visibilitychange` (document visible), and in the provider's
       `onSuccess` after cache restore; the SSE `reconnect` invalidation stays
       as-is.
-- [ ] Replay-404 policy: mutation `onError` with a 404 problem does not
+- [x] Replay-404 policy: mutation `onError` with a 404 problem does not
       re-queue — invalidate the affected keys and enqueue a quiet snackbar
       ("Some offline changes couldn't sync"); other errors keep the existing
       rollback behavior.
-- [ ] Unsynced badge: item rows whose ID is in `pendingCreates` render a
+- [x] Unsynced badge: item rows whose ID is in `pendingCreates` render a
       badge + the needs-internet disclaimer text (visible label, AA contrast
       both themes, ≥8px from adjacent controls).
-- [ ] Tests: coalescing unit tests (edit/check fold into payload; delete
+- [x] Tests: coalescing unit tests (edit/check fold into payload; delete
       cancels); temp→server item cache replacement; replay-404 drop + notice;
       badge rendering; resume-on-online.
 
 **Automated Verification**:
-- [ ] `make frontend-check` green (all suites).
+- [x] `make frontend-check` green (all suites).
 
 **Manual Verification**:
-- [ ] DevTools offline: browse both views from cache; add "milk", check it,
+- [x] DevTools offline: browse both views from cache; add "milk", check it,
       edit it — one queued create carrying the merged state; go online —
       single POST replays, badge clears.
-- [ ] Two devices: delete a list on one while the other holds a queued item
+- [x] Two devices: delete a list on one while the other holds a queued item
       edit offline; on reconnect the edit drops with the quiet notice.
 
 ### Phase 6: US-O.1 — iOS install verification
@@ -336,25 +336,42 @@ Dependencies: Phases 1–5 (verify the final M4 build; deviation from the
 README's O.1-first order, recorded here)
 
 **Tasks**:
-- [ ] Verify the manifest/icon/meta setup against
+- [x] Verify the manifest/icon/meta setup against
       `docs/agents/research/2026-07-21-pwa-ios-support.md` (apple-touch-icon
       180px, `apple-mobile-web-app-*` tags, `viewport-fit=cover`, maskable
       icons) — fix anything found.
-- [ ] Update `docs/architecture.md` §3/§5: offline layer (React Query persist
+- [x] Update `docs/architecture.md` §3/§5: offline layer (React Query persist
       — recorded deviation from the Dexie research), soft-delete model, and
       restore endpoint; move implemented 🔜 items to ✅.
 
 **Automated Verification**:
-- [ ] `make check` green from a clean tree; `make dist` builds.
+- [x] `make check` green from a clean tree; `make dist` builds.
 
 **Manual Verification**:
 - [ ] (User) Install from iOS Safari on a real device: home-screen icon,
       title, standalone launch; then run the offline core loop once in-store
-      or with airplane mode.
+      or with airplane mode. — deferred (manual, user)
 
 ## Implementation Notes
 
-During implementation, document user feedback, problems, and decisions here.
+- **Offline outbox refactor (post-review hardening).** The `pendingCreates`
+  in-memory map (Key Decision 3) was replaced during review with the RQ
+  mutation cache as the single source of truth: offline adds mint `temp-<uuid>`
+  ids; a check/edit/delete on a still-queued create folds by merging into the
+  paused mutation's persisted `state.variables.payload` (reload-safe), and the
+  create's `onSuccess` reconciles `temp -> real` id in the cache and any queued
+  follow-up mutations. This closed data-loss bugs an in-memory map couldn't.
+- **Fold predicate.** A just-added offline create is RQ `status:'pending'`
+  (retry backoff), not yet `isPaused`, so the foldable check is
+  `tempId match && (isPaused || !onlineManager.isOnline())` — folds when
+  offline, falls through to a normal mutation when the create is online/in-flight.
+- **Crash-safety.** `randomId()` falls back to `Math.random` when
+  `crypto.randomUUID` is unavailable (non-secure context), and toast ids use it too.
+- **US-O.1.** Manifest/icon/meta verified iOS-compliant (apple-touch-icon 180,
+  apple-mobile-web-app-* tags, viewport-fit=cover, maskable, standalone); the
+  custom install banner remains a deferred architecture item.
+- **Logout** awaits `persister.removeClient()` before navigating so a shared
+  device can't restore the previous member's cache.
 
 ## References
 
