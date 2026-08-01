@@ -11,8 +11,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/m4schini/splitkauf/lists"
 )
+
+// pgErrForeignKeyViolation is the Postgres SQLSTATE for a foreign-key
+// violation. AddItem maps it to lists.ErrNotFound.
+const pgErrForeignKeyViolation = "23503"
 
 // ListsRepository is the Postgres implementation of lists.Repository over a
 // *sql.DB. It uses plain parameterised SQL (no ORM) and maps the driver's
@@ -151,12 +156,12 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// AddItem inserts an item onto a list. A missing list surfaces as
-// lists.ErrNotFound (the FK insert finds no parent row).
+// AddItem inserts an item onto a list. It does not pre-check that the list
+// exists: a missing list is detected by the insert's own foreign-key
+// violation (SQLSTATE 23503), which is mapped to lists.ErrNotFound below.
+// Pre-checking would open a TOCTOU race against a concurrent DeleteList
+// between the check and the insert.
 func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error) {
-	if err := r.requireList(ctx, listID); err != nil {
-		return lists.Item{}, err
-	}
 	now := time.Now()
 	// When the item is created already checked (an offline check folded into a
 	// queued create), stamp checked_at at insert; otherwise leave it NULL.
@@ -172,6 +177,10 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 
 	it, err := scanItem(row)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgErrForeignKeyViolation {
+			return lists.Item{}, lists.ErrNotFound
+		}
 		return lists.Item{}, fmt.Errorf("add item: %w", err)
 	}
 	return it, nil
@@ -283,20 +292,6 @@ func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uui
 		return lists.Item{}, fmt.Errorf("set item checked: %w", err)
 	}
 	return it, nil
-}
-
-// requireList returns lists.ErrNotFound when no list with the given id exists.
-// It gives AddItem a clean domain error rather than a raw FK-violation.
-func (r *ListsRepository) requireList(ctx context.Context, id uuid.UUID) error {
-	var exists bool
-	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM lists WHERE id = $1)`, id).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("check list exists: %w", err)
-	}
-	if !exists {
-		return lists.ErrNotFound
-	}
-	return nil
 }
 
 // scanner abstracts *sql.Row and *sql.Rows so scanList/scanItem serve both the

@@ -367,6 +367,19 @@ func TestAddItemChecked(t *testing.T) {
 	assertCounts(t, repo, list.ID, 0, 1)
 }
 
+// TestAddItemNonexistentListReturnsNotFound pins the FK-violation mapping in
+// AddItem: adding an item to a well-formed but nonexistent list id must
+// surface as lists.ErrNotFound (mapped from the insert's foreign-key
+// violation), not a raw driver/500 error. AddItem no longer pre-checks list
+// existence, so this exercises the FK path directly.
+func TestAddItemNonexistentListReturnsNotFound(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, nil, false); err != lists.ErrNotFound {
+		t.Errorf("AddItem to nonexistent list err = %v, want ErrNotFound", err)
+	}
+}
+
 func assertCounts(t *testing.T, repo *db.ListsRepository, id uuid.UUID, open, checked int) {
 	t.Helper()
 	l, err := repo.List(context.Background(), id)
