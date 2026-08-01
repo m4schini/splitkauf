@@ -4,10 +4,12 @@ package rest_test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/m4schini/splitkauf/config"
@@ -121,4 +123,62 @@ func TestPanicReturnsInternalProblemWithoutLeaking(t *testing.T) {
 	if strings.Contains(p.Detail, "boom") || strings.Contains(p.Detail, "must never leak") {
 		t.Errorf("detail leaks panic message: %q", p.Detail)
 	}
+}
+
+// TestStaticAssetsBypassSessionMiddleware pins that static frontend assets are
+// served OUTSIDE the scs session middleware: scs adds `Vary: Cookie` to every
+// response it wraps, so its absence on a static asset proves the bypass. The
+// JSON API still runs through the session (health carries Vary: Cookie).
+func TestStaticAssetsBypassSessionMiddleware(t *testing.T) {
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	defer srv.Close()
+
+	staticResp, err := http.Get(srv.URL + "/manifest.webmanifest")
+	if err != nil {
+		t.Fatalf("GET /manifest.webmanifest: %v", err)
+	}
+	staticResp.Body.Close()
+	if staticResp.StatusCode != http.StatusOK {
+		t.Fatalf("static status = %d, want 200", staticResp.StatusCode)
+	}
+	if v := staticResp.Header.Get("Vary"); strings.Contains(v, "Cookie") {
+		t.Errorf("static response has Vary: %q — assets must bypass the session middleware", v)
+	}
+	if c := staticResp.Header.Get("Set-Cookie"); c != "" {
+		t.Errorf("static response set a cookie %q — assets must bypass the session middleware", c)
+	}
+
+	apiResp, err := http.Get(srv.URL + "/api/v1/health")
+	if err != nil {
+		t.Fatalf("GET /api/v1/health: %v", err)
+	}
+	apiResp.Body.Close()
+	if v := apiResp.Header.Get("Vary"); !strings.Contains(v, "Cookie") {
+		t.Errorf("API response Vary = %q, want it to contain Cookie (session middleware still applies)", v)
+	}
+}
+
+// TestConcurrentStaticRequestsDoNotCrash hammers the embedded file server with
+// parallel requests (as the PWA service worker's precache does). Before static
+// serving was moved out of scs.LoadAndSave, this raced on the response header
+// map and killed the process with a fatal "concurrent map writes".
+func TestConcurrentStaticRequestsDoNotCrash(t *testing.T) {
+	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	defer srv.Close()
+
+	const n = 100
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			resp, err := http.Get(srv.URL + "/manifest.webmanifest")
+			if err != nil {
+				return
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+		}()
+	}
+	wg.Wait()
 }

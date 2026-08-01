@@ -4,6 +4,7 @@ package rest
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
@@ -90,10 +91,29 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// path not matched above (api-catalog, openapi spec, docs, or /api/v1).
 	r.NotFound(web.Handler().ServeHTTP)
 
-	// LoadAndSave wraps the ENTIRE handler (outermost) so the session is loaded
-	// before, and saved after, every route — including /api/auth/* and the
-	// generated /api/v1 chain. It sets Vary: Cookie on responses.
-	return sm.LoadAndSave(r)
+	// Only the BFF auth endpoints and the JSON API read or write the session,
+	// so only those run through LoadAndSave. Static frontend assets and docs
+	// are served WITHOUT it: wrapping the embedded file server in scs's
+	// response writer churns Set-Cookie / Vary: Cookie on every asset and —
+	// under the service worker's parallel precache fetches — races on the
+	// response header map (a fatal "concurrent map writes"). Session-scoped
+	// requests still get the full load/save; everything else bypasses it.
+	sessioned := sm.LoadAndSave(r)
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if needsSession(req.URL.Path) {
+			sessioned.ServeHTTP(w, req)
+			return
+		}
+		r.ServeHTTP(w, req)
+	})
+}
+
+// needsSession reports whether a request path is served through the session
+// middleware: the BFF auth endpoints (/api/auth/*) and the JSON API (/api/v1).
+// Static frontend assets, the OpenAPI docs, and problem pages do not touch the
+// session and are served without it.
+func needsSession(p string) bool {
+	return strings.HasPrefix(p, "/api/auth/") || p == "/api/v1" || strings.HasPrefix(p, "/api/v1/")
 }
 
 // publicHealth wraps the RequireAuth middleware so that GET /api/v1/health stays
