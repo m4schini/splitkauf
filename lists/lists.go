@@ -20,6 +20,26 @@ import (
 // to avoid unbounded storage. It is a domain rule, independent of the database.
 const maxNameLength = 200
 
+// defaultUnit is the unit assigned when none is supplied. It is rendered bare
+// ("Stück") in the UI and is the schema/DB default for the unit column.
+const defaultUnit = "amount"
+
+// units is the canonical, curated German/European grocery unit set. It is the
+// single source of truth for the valid unit tokens: the OpenAPI Unit enum and
+// the items.unit CHECK constraint mirror it, and a drift test pins the spec to
+// it so the three never diverge. Order matches the spec enum.
+var units = []string{
+	"amount", "g", "kg", "ml", "l", "pack", "bottle", "can", "jar", "cup", "bunch", "bag",
+}
+
+// Units returns the canonical list of valid unit tokens (a fresh copy so callers
+// cannot mutate the source of truth).
+func Units() []string {
+	out := make([]string, len(units))
+	copy(out, units)
+	return out
+}
+
 // ErrNotFound is returned when a requested list or item does not exist. The
 // REST layer maps it to an RFC 9457 not-found problem.
 var ErrNotFound = errors.New("resource not found")
@@ -58,6 +78,7 @@ type Item struct {
 	ListID    uuid.UUID
 	Name      string
 	Quantity  int
+	Unit      string
 	Note      *string
 	Checked   bool
 	CheckedAt *time.Time
@@ -71,6 +92,7 @@ type Item struct {
 type ItemUpdate struct {
 	Name     *string
 	Quantity *int
+	Unit     *string
 	NoteSet  bool
 	Note     *string
 }
@@ -87,7 +109,7 @@ type Repository interface {
 	RenameList(ctx context.Context, id uuid.UUID, name string) (List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
 
-	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (Item, error)
+	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update ItemUpdate) (Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
@@ -129,6 +151,21 @@ func normalizeQuantity(q int) (int, error) {
 		return 0, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
 	}
 	return q, nil
+}
+
+// validateUnit normalises and validates a unit token. An empty string defaults
+// to "amount"; any value not in Units() is a ValidationError on the "unit"
+// field. The returned value is always one of the canonical tokens.
+func validateUnit(u string) (string, error) {
+	if u == "" {
+		return defaultUnit, nil
+	}
+	for _, valid := range units {
+		if u == valid {
+			return u, nil
+		}
+	}
+	return "", &ValidationError{Field: "unit", Message: "unit is not a recognised value"}
 }
 
 // note trims an optional note. A nil pointer, or one that trims to empty, is

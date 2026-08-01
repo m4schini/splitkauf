@@ -18,6 +18,54 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for Unit.
+const (
+	Amount Unit = "amount"
+	Bag    Unit = "bag"
+	Bottle Unit = "bottle"
+	Bunch  Unit = "bunch"
+	Can    Unit = "can"
+	Cup    Unit = "cup"
+	G      Unit = "g"
+	Jar    Unit = "jar"
+	Kg     Unit = "kg"
+	L      Unit = "l"
+	Ml     Unit = "ml"
+	Pack   Unit = "pack"
+)
+
+// Valid indicates whether the value is a known member of the Unit enum.
+func (e Unit) Valid() bool {
+	switch e {
+	case Amount:
+		return true
+	case Bag:
+		return true
+	case Bottle:
+		return true
+	case Bunch:
+		return true
+	case Can:
+		return true
+	case Cup:
+		return true
+	case G:
+		return true
+	case Jar:
+		return true
+	case Kg:
+		return true
+	case L:
+		return true
+	case Ml:
+		return true
+	case Pack:
+		return true
+	default:
+		return false
+	}
+}
+
 // AddItemRequest Request body for adding an item to a list.
 type AddItemRequest struct {
 	// Checked Whether the item is checked off at creation. Used when an offline
@@ -32,6 +80,12 @@ type AddItemRequest struct {
 
 	// Quantity How many to buy. Defaults to 1.
 	Quantity *int32 `json:"quantity,omitempty"`
+
+	// Unit The unit an item's quantity is measured in. A curated German/European
+	// grocery set. "amount" is the default and is rendered bare (Stück).
+	// This enum is the single source of truth mirrored by the domain
+	// (lists.Units) and the items.unit CHECK constraint.
+	Unit *Unit `json:"unit,omitempty"`
 }
 
 // CreateListRequest Request body for creating a list.
@@ -90,6 +144,12 @@ type Item struct {
 
 	// Quantity How many to buy. Defaults to 1.
 	Quantity int32 `json:"quantity"`
+
+	// Unit The unit an item's quantity is measured in. A curated German/European
+	// grocery set. "amount" is the default and is rendered bare (Stück).
+	// This enum is the single source of truth mirrored by the domain
+	// (lists.Units) and the items.unit CHECK constraint.
+	Unit Unit `json:"unit"`
 
 	// UpdatedAt When the item was last modified.
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -170,6 +230,12 @@ type RenameListRequest struct {
 	Name string `json:"name"`
 }
 
+// Unit The unit an item's quantity is measured in. A curated German/European
+// grocery set. "amount" is the default and is rendered bare (Stück).
+// This enum is the single source of truth mirrored by the domain
+// (lists.Units) and the items.unit CHECK constraint.
+type Unit string
+
 // UpdateItemRequest Request body for updating an item. Only the fields present are changed.
 type UpdateItemRequest struct {
 	// Name A new name for the item.
@@ -180,6 +246,12 @@ type UpdateItemRequest struct {
 
 	// Quantity A new quantity for the item.
 	Quantity *int32 `json:"quantity,omitempty"`
+
+	// Unit The unit an item's quantity is measured in. A curated German/European
+	// grocery set. "amount" is the default and is rendered bare (Stück).
+	// This enum is the single source of truth mirrored by the domain
+	// (lists.Units) and the items.unit CHECK constraint.
+	Unit *Unit `json:"unit,omitempty"`
 }
 
 // User An authenticated user.

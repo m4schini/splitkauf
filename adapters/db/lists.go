@@ -49,7 +49,7 @@ const listSelect = `
 	LEFT JOIN items i ON i.list_id = l.id AND i.deleted_at IS NULL`
 
 // itemColumns is the column list for an item row, ordered to match scanItem.
-const itemColumns = `id, list_id, name, quantity, note, checked, checked_at, created_at, updated_at`
+const itemColumns = `id, list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at`
 
 // CreateList inserts a new, empty list and returns it with zero counts.
 func (r *ListsRepository) CreateList(ctx context.Context, name string) (lists.List, error) {
@@ -161,7 +161,7 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 // violation (SQLSTATE 23503), which is mapped to lists.ErrNotFound below.
 // Pre-checking would open a TOCTOU race against a concurrent DeleteList
 // between the check and the insert.
-func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error) {
+func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
 	now := time.Now()
 	// When the item is created already checked (an offline check folded into a
 	// queued create), stamp checked_at at insert; otherwise leave it NULL.
@@ -170,10 +170,10 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 		checkedAt = now
 	}
 	row := r.db.QueryRowContext(ctx,
-		`INSERT INTO items (list_id, name, quantity, note, checked, checked_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
 		 RETURNING `+itemColumns,
-		listID, name, quantity, nullString(note), checked, checkedAt, now)
+		listID, name, quantity, unit, nullString(note), checked, checkedAt, now)
 
 	it, err := scanItem(row)
 	if err != nil {
@@ -216,6 +216,11 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 	if update.Quantity != nil {
 		sets = append(sets, fmt.Sprintf("quantity = $%d", next))
 		args = append(args, *update.Quantity)
+		next++
+	}
+	if update.Unit != nil {
+		sets = append(sets, fmt.Sprintf("unit = $%d", next))
+		args = append(args, *update.Unit)
 		next++
 	}
 	if update.NoteSet {
@@ -320,7 +325,7 @@ func scanItem(s scanner) (lists.Item, error) {
 		note      sql.NullString
 		checkedAt sql.NullTime
 	)
-	if err := s.Scan(&it.ID, &it.ListID, &it.Name, &it.Quantity, &note, &it.Checked, &checkedAt, &it.CreatedAt, &it.UpdatedAt); err != nil {
+	if err := s.Scan(&it.ID, &it.ListID, &it.Name, &it.Quantity, &it.Unit, &note, &it.Checked, &checkedAt, &it.CreatedAt, &it.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return lists.Item{}, err
 		}

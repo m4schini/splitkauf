@@ -111,12 +111,12 @@ func (r *fakeRepo) DeleteList(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *fakeRepo) AddItem(_ context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (Item, error) {
+func (r *fakeRepo) AddItem(_ context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error) {
 	if _, ok := r.lists[listID]; !ok {
 		return Item{}, ErrNotFound
 	}
 	it := &Item{
-		ID: uuid.New(), ListID: listID, Name: name, Quantity: quantity, Note: note,
+		ID: uuid.New(), ListID: listID, Name: name, Quantity: quantity, Unit: unit, Note: note,
 		Checked: checked, CreatedAt: r.clock, UpdatedAt: r.clock,
 	}
 	if checked {
@@ -145,6 +145,9 @@ func (r *fakeRepo) UpdateItem(_ context.Context, listID, itemID uuid.UUID, updat
 	}
 	if update.Quantity != nil {
 		it.Quantity = *update.Quantity
+	}
+	if update.Unit != nil {
+		it.Unit = *update.Unit
 	}
 	if update.NoteSet {
 		it.Note = update.Note
@@ -229,7 +232,7 @@ func TestListsAndGetList(t *testing.T) {
 	ctx := context.Background()
 
 	l, _ := svc.CreateList(ctx, "Groceries")
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", 0, nil, false); err != nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", nil, false); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 
@@ -279,7 +282,7 @@ func TestDeleteList(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 2, nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 2, "", nil, false)
 
 	if err := svc.DeleteList(ctx, l.ID); err != nil {
 		t.Fatalf("DeleteList: %v", err)
@@ -298,21 +301,21 @@ func TestAddItem(t *testing.T) {
 	l, _ := svc.CreateList(ctx, "Groceries")
 
 	// name validation
-	if _, err := svc.AddItem(ctx, l.ID, " ", 1, nil, false); err == nil {
+	if _, err := svc.AddItem(ctx, l.ID, " ", 1, "", nil, false); err == nil {
 		t.Fatal("expected name validation error")
 	} else {
 		assertValidationError(t, err, "name")
 	}
 
 	// quantity validation
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", -1, nil, false); err == nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", -1, "", nil, false); err == nil {
 		t.Fatal("expected quantity validation error")
 	} else {
 		assertValidationError(t, err, "quantity")
 	}
 
 	// default quantity + note normalisation (blank note -> nil)
-	it, err := svc.AddItem(ctx, l.ID, "Milk", 0, ptr("   "), false)
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", ptr("   "), false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -324,7 +327,7 @@ func TestAddItem(t *testing.T) {
 	}
 
 	// explicit quantity + real note
-	it2, err := svc.AddItem(ctx, l.ID, "Eggs", 12, ptr("free range"), false)
+	it2, err := svc.AddItem(ctx, l.ID, "Eggs", 12, "", ptr("free range"), false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -333,7 +336,7 @@ func TestAddItem(t *testing.T) {
 	}
 
 	// unknown list
-	if _, err := svc.AddItem(ctx, uuid.New(), "X", 1, nil, false); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.AddItem(ctx, uuid.New(), "X", 1, "", nil, false); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -342,7 +345,7 @@ func TestUpdateItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, ptr("2%"), false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", ptr("2%"), false)
 
 	// invalid name
 	if _, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Name: ptr("")}); err == nil {
@@ -388,7 +391,7 @@ func TestDeleteItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
 		t.Fatalf("DeleteItem: %v", err)
@@ -404,7 +407,7 @@ func TestRestoreItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
 		t.Fatalf("DeleteItem: %v", err)
@@ -434,7 +437,7 @@ func TestAddItemChecked(t *testing.T) {
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
 
-	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, nil, true)
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, true)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -447,7 +450,7 @@ func TestCheckUncheckItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries")
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	checked, err := svc.CheckItem(ctx, l.ID, it.ID)
 	if err != nil {
@@ -489,5 +492,130 @@ func TestValidationErrorMessage(t *testing.T) {
 	err := &ValidationError{Field: "name", Message: "boom"}
 	if err.Error() != "boom" {
 		t.Fatalf("unexpected message: %q", err.Error())
+	}
+}
+
+// TestUnitsIsSourceOfTruth pins the canonical token list and that Units returns
+// a copy callers cannot mutate.
+func TestUnitsIsSourceOfTruth(t *testing.T) {
+	want := []string{"amount", "g", "kg", "ml", "l", "pack", "bottle", "can", "jar", "cup", "bunch", "bag"}
+	got := Units()
+	if len(got) != len(want) {
+		t.Fatalf("Units() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Units()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+	// Mutating the returned slice must not affect the source of truth.
+	got[0] = "mutated"
+	if Units()[0] != "amount" {
+		t.Fatal("Units() returned a slice aliasing the internal source of truth")
+	}
+}
+
+// TestAddItemUnit covers the unit path on add: empty defaults to "amount", a
+// valid token is kept, and an unrecognised token is a validation error on the
+// "unit" field.
+func TestAddItemUnit(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	l, _ := svc.CreateList(ctx, "Groceries")
+
+	// empty -> default amount
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if it.Unit != "amount" {
+		t.Fatalf("default unit = %q, want amount", it.Unit)
+	}
+
+	// valid token kept
+	it2, err := svc.AddItem(ctx, l.ID, "Milk", 2, "l", nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if it2.Unit != "l" {
+		t.Fatalf("unit = %q, want l", it2.Unit)
+	}
+
+	// invalid token -> validation error
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "furlong", nil, false); err == nil {
+		t.Fatal("expected unit validation error")
+	} else {
+		assertValidationError(t, err, "unit")
+	}
+}
+
+// TestUpdateItemUnit covers the unit path on update: a valid token is written,
+// an unrecognised token is rejected on the "unit" field, and an absent unit
+// leaves the item's unit unchanged.
+func TestUpdateItemUnit(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	l, _ := svc.CreateList(ctx, "Groceries")
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
+
+	// valid change
+	got, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Unit: ptr("kg")})
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if got.Unit != "kg" {
+		t.Fatalf("unit = %q, want kg", got.Unit)
+	}
+
+	// invalid token
+	if _, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Unit: ptr("furlong")}); err == nil {
+		t.Fatal("expected unit validation error")
+	} else {
+		assertValidationError(t, err, "unit")
+	}
+
+	// absent unit leaves it unchanged
+	got2, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Name: ptr("Whole Milk")})
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if got2.Unit != "kg" {
+		t.Fatalf("unit = %q, want kg (unchanged)", got2.Unit)
+	}
+}
+
+// TestUnitPreservedThroughStateChanges verifies check/uncheck/restore never
+// clobber an item's unit.
+func TestUnitPreservedThroughStateChanges(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	l, _ := svc.CreateList(ctx, "Groceries")
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
+
+	checked, err := svc.CheckItem(ctx, l.ID, it.ID)
+	if err != nil {
+		t.Fatalf("CheckItem: %v", err)
+	}
+	if checked.Unit != "l" {
+		t.Fatalf("checked unit = %q, want l", checked.Unit)
+	}
+
+	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID)
+	if err != nil {
+		t.Fatalf("UncheckItem: %v", err)
+	}
+	if unchecked.Unit != "l" {
+		t.Fatalf("unchecked unit = %q, want l", unchecked.Unit)
+	}
+
+	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+	restored, err := svc.RestoreItem(ctx, l.ID, it.ID)
+	if err != nil {
+		t.Fatalf("RestoreItem: %v", err)
+	}
+	if restored.Unit != "l" {
+		t.Fatalf("restored unit = %q, want l", restored.Unit)
 	}
 }

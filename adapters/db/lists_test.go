@@ -96,7 +96,7 @@ func TestListNotFound(t *testing.T) {
 	if err := repo.DeleteList(ctx, uuid.New()); err != lists.ErrNotFound {
 		t.Errorf("DeleteList err = %v, want ErrNotFound", err)
 	}
-	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, nil, false); err != lists.ErrNotFound {
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false); err != lists.ErrNotFound {
 		t.Errorf("AddItem err = %v, want ErrNotFound", err)
 	}
 }
@@ -108,7 +108,7 @@ func TestDeleteListCascadesItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, false); err != nil {
+	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 	if err := repo.DeleteList(ctx, list.ID); err != nil {
@@ -132,7 +132,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 	}
 
 	note := "whole"
-	item, err := repo.AddItem(ctx, list.ID, "milk", 2, &note, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "amount", &note, false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestSoftDeleteAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 3, nil, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 3, "amount", nil, false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, deletedList.ID, "milk", 1, nil, false)
+	item, err := repo.AddItem(ctx, deletedList.ID, "milk", 1, "amount", nil, false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestRestoreNeverDeletedIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -357,7 +357,7 @@ func TestAddItemChecked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 1, nil, true)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, true)
 	if err != nil {
 		t.Fatalf("AddItem(checked): %v", err)
 	}
@@ -375,8 +375,85 @@ func TestAddItemChecked(t *testing.T) {
 func TestAddItemNonexistentListReturnsNotFound(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, nil, false); err != lists.ErrNotFound {
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false); err != lists.ErrNotFound {
 		t.Errorf("AddItem to nonexistent list err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestItemUnitRoundTrip pins the items.unit column end to end: a non-default
+// unit survives insert and read, the domain default ("amount") round-trips, an
+// UpdateItem changes the unit, and the state transitions (check/uncheck/delete
+// -> restore) preserve it rather than clobbering it.
+func TestItemUnitRoundTrip(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	list, err := repo.CreateList(ctx, "Shopping")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+
+	// Add-with-unit round trip.
+	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "l", nil, false)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if item.Unit != "l" {
+		t.Errorf("unit = %q, want l", item.Unit)
+	}
+	got, err := repo.Item(ctx, list.ID, item.ID)
+	if err != nil {
+		t.Fatalf("Item: %v", err)
+	}
+	if got.Unit != "l" {
+		t.Errorf("read unit = %q, want l", got.Unit)
+	}
+
+	// Default "amount" round-trips (the value the service supplies when omitted).
+	plain, err := repo.AddItem(ctx, list.ID, "eggs", 1, "amount", nil, false)
+	if err != nil {
+		t.Fatalf("AddItem(amount): %v", err)
+	}
+	if plain.Unit != "amount" {
+		t.Errorf("unit = %q, want amount", plain.Unit)
+	}
+
+	// UpdateItem changes the unit.
+	newUnit := "kg"
+	updated, err := repo.UpdateItem(ctx, list.ID, item.ID, lists.ItemUpdate{Unit: &newUnit})
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if updated.Unit != "kg" {
+		t.Errorf("updated unit = %q, want kg", updated.Unit)
+	}
+
+	// check / uncheck preserve the unit.
+	now := item.CreatedAt
+	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now)
+	if err != nil {
+		t.Fatalf("SetItemChecked(true): %v", err)
+	}
+	if checked.Unit != "kg" {
+		t.Errorf("checked unit = %q, want kg (preserved)", checked.Unit)
+	}
+	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil)
+	if err != nil {
+		t.Fatalf("SetItemChecked(false): %v", err)
+	}
+	if unchecked.Unit != "kg" {
+		t.Errorf("unchecked unit = %q, want kg (preserved)", unchecked.Unit)
+	}
+
+	// delete -> restore preserves the unit.
+	if err := repo.DeleteItem(ctx, list.ID, item.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+	restored, err := repo.RestoreItem(ctx, list.ID, item.ID)
+	if err != nil {
+		t.Fatalf("RestoreItem: %v", err)
+	}
+	if restored.Unit != "kg" {
+		t.Errorf("restored unit = %q, want kg (preserved)", restored.Unit)
 	}
 }
 

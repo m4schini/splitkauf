@@ -112,8 +112,12 @@ func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if body.Quantity != nil {
 		quantity = int(*body.Quantity)
 	}
+	unit := ""
+	if body.Unit != nil {
+		unit = string(*body.Unit)
+	}
 	checked := body.Checked != nil && *body.Checked
-	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, body.Note, checked)
+	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, unit, body.Note, checked)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -144,6 +148,10 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 	if body.Quantity != nil {
 		q := int(*body.Quantity)
 		update.Quantity = &q
+	}
+	if body.Unit != nil {
+		u := string(*body.Unit)
+		update.Unit = &u
 	}
 	if _, present := keys["note"]; present {
 		update.NoteSet = true
@@ -300,6 +308,7 @@ func toItem(it lists.Item) Item {
 		ListId:    openapi_types.UUID(it.ListID),
 		Name:      it.Name,
 		Quantity:  toInt32(it.Quantity),
+		Unit:      Unit(it.Unit),
 		Note:      it.Note,
 		Checked:   it.Checked,
 		CheckedAt: it.CheckedAt,

@@ -224,7 +224,7 @@ func (s *statefulService) RenameList(context.Context, uuid.UUID, string) (lists.
 	return lists.List{}, nil
 }
 func (s *statefulService) DeleteList(context.Context, uuid.UUID) error { return nil }
-func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, *string, bool) (lists.Item, error) {
+func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, string, *string, bool) (lists.Item, error) {
 	return lists.Item{}, nil
 }
 func (s *statefulService) DeleteItem(context.Context, uuid.UUID, uuid.UUID) error { return nil }

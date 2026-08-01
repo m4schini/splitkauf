@@ -33,7 +33,7 @@ type fakeService struct {
 	getList     func(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	renameList  func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	deleteList  func(ctx context.Context, id uuid.UUID) error
-	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error)
+	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
 	restoreItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
@@ -61,8 +61,8 @@ func (f *fakeService) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return f.deleteList(ctx, id)
 }
 
-func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (lists.Item, error) {
-	return f.addItem(ctx, listID, name, quantity, note, checked)
+func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
+	return f.addItem(ctx, listID, name, quantity, unit, note, checked)
 }
 
 func (f *fakeService) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error) {
@@ -487,15 +487,15 @@ func TestGetListHappyPath(t *testing.T) {
 
 func TestAddItemHappyPath(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, note *string, checked bool) (lists.Item, error) {
-		if lid != listID || name != "milk" || qty != 2 {
-			t.Errorf("service got lid=%v name=%q qty=%d", lid, name, qty)
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool) (lists.Item, error) {
+		if lid != listID || name != "milk" || qty != 2 || unit != "l" {
+			t.Errorf("service got lid=%v name=%q qty=%d unit=%q", lid, name, qty, unit)
 		}
-		return lists.Item{ID: uuid.New(), ListID: listID, Name: name, Quantity: qty, Note: note, Checked: checked}, nil
+		return lists.Item{ID: uuid.New(), ListID: listID, Name: name, Quantity: qty, Unit: unit, Note: note, Checked: checked}, nil
 	}}
 	srv := newServer(t, svc)
 
-	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items", `{"name":"milk","quantity":2}`)
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items", `{"name":"milk","quantity":2,"unit":"l"}`)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
@@ -504,8 +504,72 @@ func TestAddItemHappyPath(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if got.Name != "milk" || got.Quantity != 2 {
+	if got.Name != "milk" || got.Quantity != 2 || got.Unit != v1.L {
 		t.Errorf("got %+v", got)
+	}
+}
+
+// TestAddItemInvalidUnit400 pins that an unrecognised unit token is rejected by
+// the OpenAPI enum validator before the handler runs, yielding a 400
+// application/problem+json validation problem. The service is never called.
+func TestAddItemInvalidUnit400(t *testing.T) {
+	listID := uuid.New()
+	svc := &fakeService{addItem: func(_ context.Context, _ uuid.UUID, _ string, _ int, _ string, _ *string, _ bool) (lists.Item, error) {
+		t.Fatal("service should not be called for an invalid unit")
+		return lists.Item{}, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items", `{"name":"milk","unit":"furlong"}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("content-type = %q, want application/problem+json", ct)
+	}
+	var prob struct {
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&prob); err != nil {
+		t.Fatalf("decode problem: %v", err)
+	}
+	if prob.Type != "/problems/validation" {
+		t.Errorf("type = %q, want /problems/validation", prob.Type)
+	}
+}
+
+// TestUpdateItemUnit maps a unit through the PATCH handler both directions: the
+// request unit reaches the service's ItemUpdate, and the returned item's unit
+// is serialised back.
+func TestUpdateItemUnit(t *testing.T) {
+	listID, itemID := uuid.New(), uuid.New()
+	svc := &fakeService{updateItem: func(_ context.Context, _, _ uuid.UUID, up lists.ItemUpdate) (lists.Item, error) {
+		if up.Unit == nil || *up.Unit != "kg" {
+			t.Errorf("service got unit = %v, want kg", up.Unit)
+		}
+		return lists.Item{ID: itemID, ListID: listID, Name: "milk", Quantity: 1, Unit: *up.Unit}, nil
+	}}
+	srv := newServer(t, svc)
+
+	req, _ := http.NewRequest(http.MethodPatch, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String(),
+		bytes.NewBufferString(`{"unit":"kg"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var got v1.Item
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Unit != v1.Kg {
+		t.Errorf("unit = %q, want kg", got.Unit)
 	}
 }
 
@@ -585,12 +649,12 @@ func TestRestoreItemNotFound(t *testing.T) {
 // checked=true reaches the service, and the created item reports checked.
 func TestAddItemChecked(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, note *string, checked bool) (lists.Item, error) {
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool) (lists.Item, error) {
 		if !checked {
 			t.Errorf("service got checked=false, want true")
 		}
 		now := time.Now()
-		return lists.Item{ID: uuid.New(), ListID: lid, Name: name, Quantity: qty, Note: note, Checked: checked, CheckedAt: &now}, nil
+		return lists.Item{ID: uuid.New(), ListID: lid, Name: name, Quantity: qty, Unit: unit, Note: note, Checked: checked, CheckedAt: &now}, nil
 	}}
 	srv := newServer(t, svc)
 

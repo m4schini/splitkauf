@@ -313,6 +313,27 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    Unit:
+      type: string
+      default: amount
+      description: |
+        The unit an item's quantity is measured in. A curated German/European
+        grocery set. "amount" is the default and is rendered bare (Stück).
+        This enum is the single source of truth mirrored by the domain
+        (lists.Units) and the items.unit CHECK constraint.
+      enum:
+        - amount
+        - g
+        - kg
+        - ml
+        - l
+        - pack
+        - bottle
+        - can
+        - jar
+        - cup
+        - bunch
+        - bag
     ProblemDetail:
       type: object
       description: |
@@ -454,6 +475,7 @@ components:
         - listId
         - name
         - quantity
+        - unit
         - checked
         - createdAt
         - updatedAt
@@ -475,6 +497,8 @@ components:
           default: 1
           minimum: 1
           description: How many to buy. Defaults to 1.
+        unit:
+          $ref: "#/components/schemas/Unit"
         note:
           type: string
           nullable: true
@@ -531,6 +555,8 @@ components:
           default: 1
           minimum: 1
           description: How many to buy. Defaults to 1.
+        unit:
+          $ref: "#/components/schemas/Unit"
         note:
           type: string
           nullable: true
@@ -555,6 +581,8 @@ components:
           format: int32
           minimum: 1
           description: A new quantity for the item.
+        unit:
+          $ref: "#/components/schemas/Unit"
         note:
           type: string
           nullable: true

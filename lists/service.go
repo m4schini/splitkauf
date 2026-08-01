@@ -67,12 +67,13 @@ func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return s.repo.DeleteList(ctx, id)
 }
 
-// AddItem validates the name, applies the quantity default, normalises the
-// note, and adds the item to the list. When checked is true the item is created
+// AddItem validates the name, applies the quantity default, validates the unit
+// (empty defaults to "amount"), normalises the note, and adds the item to the
+// list. When checked is true the item is created
 // already checked off (used when an offline check folds into a queued create);
 // the repository sets checkedAt at insert. It returns ErrNotFound when the list
 // does not exist.
-func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, note *string, checked bool) (Item, error) {
+func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error) {
 	clean, err := validateItemName(name)
 	if err != nil {
 		return Item{}, err
@@ -81,7 +82,11 @@ func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, qu
 	if err != nil {
 		return Item{}, err
 	}
-	return s.repo.AddItem(ctx, listID, clean, qty, normalizeNote(note), checked)
+	u, err := validateUnit(unit)
+	if err != nil {
+		return Item{}, err
+	}
+	return s.repo.AddItem(ctx, listID, clean, qty, u, normalizeNote(note), checked)
 }
 
 // UpdateItem applies a partial update to an item: only the fields present in
@@ -99,6 +104,13 @@ func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, upda
 		if *update.Quantity < 1 {
 			return Item{}, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
 		}
+	}
+	if update.Unit != nil {
+		u, err := validateUnit(*update.Unit)
+		if err != nil {
+			return Item{}, err
+		}
+		update.Unit = &u
 	}
 	if update.NoteSet {
 		update.Note = normalizeNote(update.Note)
