@@ -133,9 +133,9 @@ func TestStaticAssetsBypassSessionMiddleware(t *testing.T) {
 	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
 	defer srv.Close()
 
-	staticResp, err := http.Get(srv.URL + "/manifest.webmanifest")
+	staticResp, err := http.Get(srv.URL + "/some-spa-route")
 	if err != nil {
-		t.Fatalf("GET /manifest.webmanifest: %v", err)
+		t.Fatalf("GET /some-spa-route: %v", err)
 	}
 	staticResp.Body.Close()
 	if staticResp.StatusCode != http.StatusOK {
@@ -172,7 +172,7 @@ func TestConcurrentStaticRequestsDoNotCrash(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			resp, err := http.Get(srv.URL + "/manifest.webmanifest")
+			resp, err := http.Get(srv.URL + "/some-spa-route")
 			if err != nil {
 				return
 			}
