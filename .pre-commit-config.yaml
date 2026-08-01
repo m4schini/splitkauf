@@ -20,6 +20,10 @@ repos:
       - id: check-yaml
         args: [--allow-multiple-documents, --unsafe]
       - id: check-added-large-files
+        # frontend/src/assets/appicon.png is the losslessly-optimized 1024px
+        # icon source (~613 KiB); it stays above the 500 KB default cap even
+        # after oxipng -o max, so raise the limit to accommodate it.
+        args: [--maxkb=1024]
       - id: check-merge-conflict
       - id: detect-private-key
       - id: check-json
