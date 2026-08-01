@@ -124,63 +124,64 @@ CSS changes have no runtime surface.
 Dependencies: none
 
 **Tasks**:
-- [ ] Losslessly optimize `frontend/src/assets/appicon.png`; if still
+- [x] Losslessly optimize `frontend/src/assets/appicon.png`; if still
       >500 KB, add `args: [--maxkb=1024]` to `check-added-large-files` in
       `.pre-commit-config.yaml` with a comment naming the file.
-- [ ] `hack/generate-icons.mjs`: render `icon-192.png`, `icon-512.png`,
+- [x] `hack/generate-icons.mjs`: render `icon-192.png`, `icon-512.png`,
       `icon-180.png` (direct resizes) and `icon-512-maskable.png` (artwork
       at ~80% composited on the icon green) into `frontend/public/icons/`;
       render a 48px `favicon.png` (and drop `favicon.svg`, updating the
       `index.html` link).
-- [ ] Run it; replace the placeholder PNGs; update `frontend/index.html`
+- [x] Run it; replace the placeholder PNGs; update `frontend/index.html`
       favicon link if the filename changed.
-- [ ] Test: extend the frontend build check — assert the built
+- [x] Test: extend the frontend build check — assert the built
       `manifest.webmanifest` still lists the three icons and the files are
       non-placeholder (size > a few KB each).
 
 **Automated Verification**:
-- [ ] `make frontend-check` and `make dist` green;
+- [x] `make frontend-check` and `make dist` green;
       `pre-commit run --all-files` passes with the committed source PNG.
 
 **Manual Verification**:
 - [ ] (User) Install on iOS Safari and Android: home screen shows the real
       icon, uncropped in Android mask shapes; tab shows the new favicon.
+      — deferred (manual, user)
 
 ### Phase 2: US-B.2 — icon-green accent, both themes
 
 Dependencies: none (visually reviewed together with Phase 1)
 
 **Tasks**:
-- [ ] Derive the light-theme accent (dark green, white-text ≥4.5:1) and
+- [x] Derive the light-theme accent (dark green, white-text ≥4.5:1) and
       dark-theme accent (light green on `#16171d` ≥4.5:1); compute and
       record every accent pairing's ratio (button text, focus ring vs bg,
       checkbox vs row bg, link vs bg) in this plan's Implementation Notes.
-- [ ] `frontend/src/index.css`: swap the accent custom properties in `:root`
+- [x] `frontend/src/index.css`: swap the accent custom properties in `:root`
       and the dark block; verify checked/muted text still ≥4.5:1.
-- [ ] `frontend/vite.config.ts`: manifest `theme_color` → the light accent;
+- [x] `frontend/vite.config.ts`: manifest `theme_color` → the light accent;
       update the `index.html` `theme-color` meta if present.
-- [ ] Tests: a small unit test computes the contrast of the CSS token pairs
+- [x] Tests: a small unit test computes the contrast of the CSS token pairs
       (parse the custom properties, assert ≥4.5:1 / ≥3:1) so regressions
       fail CI rather than an audit.
 
 **Automated Verification**:
-- [ ] `make frontend-check` green incl. the new contrast test.
+- [x] `make frontend-check` green incl. the new contrast test.
 
 **Manual Verification**:
 - [ ] (User) Flip system light/dark: accent reads clearly in both; checked
-      items and buttons remain legible.
+      items and buttons remain legible. — deferred (manual, user)
 
 ### Phase 3: Migration 000005 — items.unit (own commit)
 
 Dependencies: none
 
-- [ ] `database/migrations/000005_item_unit.up.sql`:
+- [x] `database/migrations/000005_item_unit.up.sql`:
       `ALTER TABLE items ADD COLUMN unit TEXT NOT NULL DEFAULT 'amount'`
       + `CHECK (unit IN ('amount','g','kg','ml','l','pack','bottle','can','jar','cup','bunch','bag'))`.
-- [ ] `000005_item_unit.down.sql`: drop the column.
+- [x] `000005_item_unit.down.sql`: drop the column.
 
 **Automated Verification**:
-- [ ] `go build ./...`; migrate up to version 5 and down against a
+- [x] `go build ./...`; migrate up to version 5 and down against a
       disposable Postgres.
 
 ### Phase 4: US-L.9 backend — unit through spec, domain, repo, handlers
@@ -188,23 +189,23 @@ Dependencies: none
 Dependencies: Phase 3
 
 **Tasks**:
-- [ ] Spec: `Unit` enum schema (twelve tokens, default `amount`); `Item`
+- [x] Spec: `Unit` enum schema (twelve tokens, default `amount`); `Item`
       gains required `unit`; `AddItemRequest`/`UpdateItemRequest` gain
       optional `unit`; `make generate`.
-- [ ] `lists/lists.go`: `Units()` canonical token slice; `validateUnit`
+- [x] `lists/lists.go`: `Units()` canonical token slice; `validateUnit`
       (empty → `amount`); `Item.Unit`, `ItemUpdate.Unit *string`; drift test
       asserting the spec enum equals `Units()` (parse the embedded spec via
       `v1.GetSwagger()`).
-- [ ] `lists/service.go` + tests: unit validation on add/update; unit
+- [x] `lists/service.go` + tests: unit validation on add/update; unit
       preserved through check/uncheck/restore.
-- [ ] `adapters/db/lists.go` + integration tests: read/write `unit`
+- [x] `adapters/db/lists.go` + integration tests: read/write `unit`
       everywhere items are scanned; update `AddItem`/`UpdateItem`.
-- [ ] `ports/rest/v1/handlers_lists.go` + tests: map `unit` both directions;
+- [x] `ports/rest/v1/handlers_lists.go` + tests: map `unit` both directions;
       invalid unit → 400 validation problem (via the OpenAPI enum for free —
       add a request test pinning it).
 
 **Automated Verification**:
-- [ ] `make generate` clean; `go test ./...` + integration tests green;
+- [x] `make generate` clean; `go test ./...` + integration tests green;
       `make lint` green.
 
 ### Phase 5: US-L.9 frontend — quick-add controls and display
@@ -212,33 +213,48 @@ Dependencies: Phase 3
 Dependencies: Phase 4 (and M4's Phase 5 for the payload retrofit)
 
 **Tasks**:
-- [ ] `frontend/src/api.ts`: `Unit` union type + `unit` on the item/request
+- [x] `frontend/src/api.ts`: `Unit` union type + `unit` on the item/request
       types; German display labels map (`amount` → bare number, `pack` →
       "Packung", …).
-- [ ] `ListDetail.tsx` quick-add: quantity stepper (−/+, min 1, ≥44px
+- [x] `ListDetail.tsx` quick-add: quantity stepper (−/+, min 1, ≥44px
       targets, 8px gaps) and unit `<select>` (labeled, not
       placeholder-as-label) beside the name input; reset to 1 × amount after
       each add; focus/keyboard behavior of chained adds unchanged (existing
       test must stay green).
-- [ ] Item rows + edit form: render "2 l" / "500 g" / bare amount; edit form
+- [x] Item rows + edit form: render "2 l" / "500 g" / bare amount; edit form
       gains the unit selector.
-- [ ] Offline retrofit: `pendingCreates` payload and the add-item
+- [x] Offline retrofit: `pendingCreates` payload and the add-item
       `mutationFn` carry `unit` (skip with a note if M4 is not yet
       implemented).
-- [ ] Tests: add-with-quantity/unit round trip; bare-amount rendering;
+- [x] Tests: add-with-quantity/unit round trip; bare-amount rendering;
       stepper bounds; unit preserved through the optimistic check flow.
 
 **Automated Verification**:
-- [ ] `make frontend-check` green; `make check` green from a clean tree.
+- [x] `make frontend-check` green; `make check` green from a clean tree.
 
 **Manual Verification**:
 - [ ] (User) One-handed on a phone: add "Milk, 2, l" in one gesture chain;
       row shows "2 l"; plain name-only adds feel as fast as before.
+      — deferred (manual, user)
 
 ## Implementation Notes
 
-During implementation, document user feedback, problems, and decisions here
-(including the computed contrast ratios from Phase 2).
+- **Accent contrast (US-B.2), computed and enforced by `accentContrast.test.ts`:**
+  light accent `#2e7d43`, dark accent `#7abf7e`.
+  | Pairing | Light | Dark | Threshold |
+  |---|---|---|---|
+  | contrast text on accent (button, .unsynced-tag) | 5.08:1 | 8.16:1 | 4.5 |
+  | focus ring vs bg | 5.08:1 | 8.16:1 | 3.0 |
+  | accent (checkbox) vs elevated row bg | 4.55:1 | 7.31:1 | 3.0 |
+  | muted/checked text vs bg | 7.73:1 | 7.59:1 | 4.5 |
+  Manifest `theme_color` = `#2e7d43`.
+- **US-B.1 icons:** `appicon.png` optimized to ~613 KiB (pre-commit
+  `check-added-large-files` raised to `--maxkb=1024`); the PWA manifest icon
+  list was factored into `frontend/src/pwaManifestIcons.ts` (imported by both
+  vite.config and a build-free icon test).
+- **US-L.9 offline retrofit:** since M4 Ph5 removed the `pendingCreates` map,
+  `unit` rides in the add mutation's `variables.payload` (which replays
+  offline) — no separate payload-module retrofit was needed.
 
 ## References
 
