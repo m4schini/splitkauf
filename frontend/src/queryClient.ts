@@ -43,3 +43,26 @@ export const persister = createAsyncStoragePersister({
  * concern.
  */
 export const cacheBuster = import.meta.env.VITE_BUILD_ID ?? 'dev'
+
+/**
+ * Replays the persisted paused-mutation outbox (US-O.3). Called when the app
+ * regains connectivity (`online`) or is brought back to the foreground
+ * (`visibilitychange` → visible, the iOS-friendly substitute for the absent
+ * Background Sync API), and after the cache is restored on startup (wired in
+ * `main.tsx`). Reads `queryClient.resumePausedMutations` at call time so tests
+ * can spy on it.
+ */
+function resumePausedMutations(): void {
+  void queryClient.resumePausedMutations()
+}
+
+/** Registers the outbox resume triggers. Idempotent-enough for a singleton. */
+export function registerResumeTriggers(): void {
+  if (typeof window === 'undefined') return
+  window.addEventListener('online', resumePausedMutations)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resumePausedMutations()
+  })
+}
+
+registerResumeTriggers()

@@ -263,6 +263,35 @@ input {
   padding: 0 12px;
 }
 
+/* --- Unsynced badge: offline-created items awaiting sync (US-O.2 §6) ------
+   A visible text label (never color-only), AA contrast in both themes, on its
+   own row with >=8px between the tag and its disclaimer and away from the
+   Edit/Remove controls. Purely informational — no touch target introduced. */
+.unsynced-badge {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.unsynced-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+
+.unsynced-note {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
 /* --- Buttons: >=44x44 targets, >=8px spacing, visible (not gesture-only) - */
 
 .icon-button,

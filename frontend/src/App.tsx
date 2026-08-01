@@ -1,9 +1,73 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getMe, isUnauthorized, login, logout } from './api'
 import { ListsOverview } from './ListsOverview'
 import { ListDetail } from './ListDetail'
 import { OfflineIndicator } from './OfflineIndicator'
+import { randomId, subscribeSyncNotice } from './queries'
+
+const SYNC_NOTICE_MS = 6000
+
+interface SyncNotice {
+  id: string
+  message: string
+}
+
+/**
+ * Quiet, auto-dismissing notices for offline changes the outbox had to drop
+ * (US-O.3 replay-404): a queued mutation that hits a 404 on replay is not
+ * re-queued — the affected keys refetch and this surfaces a passive toast.
+ * Not a blocking modal, and not undoable — a Dismiss action only.
+ */
+function useSyncNotices() {
+  const [notices, setNotices] = useState<SyncNotice[]>([])
+  useEffect(() => {
+    // Track the auto-dismiss timers so they can be cleared on unmount (a late
+    // setNotices after unmount would otherwise warn / leak).
+    const timers = new Set<ReturnType<typeof setTimeout>>()
+    // TODO(US-O.3): debounce/aggregate a flood of notices when many mutations
+    // fail to sync at once, rather than stacking one auto-dismissing toast each.
+    const unsubscribe = subscribeSyncNotice((message) => {
+      // randomId() (not bare crypto.randomUUID) so this can't throw in a
+      // non-secure context — it fires inside the mutation onError path.
+      const id = randomId()
+      setNotices((current) => [...current, { id, message }])
+      const timer = setTimeout(() => {
+        timers.delete(timer)
+        setNotices((current) => current.filter((n) => n.id !== id))
+      }, SYNC_NOTICE_MS)
+      timers.add(timer)
+    })
+    return () => {
+      unsubscribe()
+      timers.forEach(clearTimeout)
+    }
+  }, [])
+  const dismiss = (id: string) => setNotices((current) => current.filter((n) => n.id !== id))
+  return { notices, dismiss }
+}
+
+function SyncNotices({
+  notices,
+  onDismiss,
+}: {
+  notices: SyncNotice[]
+  onDismiss: (id: string) => void
+}) {
+  if (notices.length === 0) return null
+  return (
+    <div className="snackbar-stack" role="status" aria-live="polite">
+      {notices.map((notice) => (
+        <div className="snackbar" key={notice.id}>
+          <span>{notice.message}</span>
+          <button type="button" className="snackbar-undo" onClick={() => onDismiss(notice.id)}>
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
@@ -18,6 +82,7 @@ const meKey = ['me'] as const
  */
 function App() {
   const [view, setView] = useState<View>({ screen: 'overview' })
+  const { notices, dismiss } = useSyncNotices()
   const {
     data: user,
     error,
@@ -47,6 +112,7 @@ function App() {
             onDeleted={() => setView({ screen: 'overview' })}
           />
         )}
+        <SyncNotices notices={notices} onDismiss={dismiss} />
       </>
     )
   }

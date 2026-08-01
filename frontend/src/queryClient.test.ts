@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister'
 import {
   persistQueryClientRestore,
   persistQueryClientSave,
 } from '@tanstack/query-persist-client-core'
+import { queryClient } from './queryClient'
 
 /**
  * Persister smoke test (US-O.2 Key Decision 1): a fake async storage stands
@@ -66,5 +67,22 @@ describe('IndexedDB-style persister', () => {
     await persistQueryClientRestore({ queryClient: reader, persister, buster: 'new-build' })
 
     expect(reader.getQueryData(['lists'])).toBeUndefined()
+  })
+})
+
+describe('outbox resume triggers (US-O.3)', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('resumes paused mutations when the window fires an "online" event', () => {
+    const resume = vi.spyOn(queryClient, 'resumePausedMutations').mockResolvedValue(undefined)
+    window.dispatchEvent(new Event('online'))
+    expect(resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('resumes paused mutations when the document becomes visible', () => {
+    const resume = vi.spyOn(queryClient, 'resumePausedMutations').mockResolvedValue(undefined)
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(resume).toHaveBeenCalledTimes(1)
   })
 })

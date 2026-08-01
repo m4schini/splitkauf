@@ -21,6 +21,15 @@ import {
 } from './queries'
 import { useLiveEvents } from './live'
 
+/**
+ * An unsynced create keeps its `temp-` prefixed id (minted by `randomId`) until
+ * its POST succeeds and reconciles to the server id — a marker that survives a
+ * reload, since the persisted temp item keeps its temp id.
+ */
+function isUnsynced(id: string): boolean {
+  return id.startsWith('temp-')
+}
+
 interface ListDetailProps {
   listId: string
   onBack: () => void
@@ -29,6 +38,7 @@ interface ListDetailProps {
 
 interface ItemRowProps {
   item: Item
+  unsynced: boolean
   onToggle: (item: Item) => void
   onEdit: (item: Item) => void
   onRemove: (item: Item) => void
@@ -39,6 +49,7 @@ interface ItemRowProps {
 
 function ItemRow({
   item,
+  unsynced,
   onToggle,
   onEdit,
   onRemove,
@@ -110,6 +121,12 @@ function ItemRow({
           <span className="item-name">{item.name}</span>
           {item.quantity > 1 && <span className="item-qty"> ×{item.quantity}</span>}
           {item.note && <span className="item-note">{item.note}</span>}
+          {unsynced && (
+            <span className="unsynced-badge">
+              <span className="unsynced-tag">Unsynced</span>
+              <span className="unsynced-note">Needs internet to save</span>
+            </span>
+          )}
         </span>
       </label>
       <div className="item-row-actions">
@@ -196,6 +213,11 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
 
   async function handleRemoveItem(item: Item) {
     await queryClient.cancelQueries({ queryKey: listKey(listId) })
+    // A still-queued offline create is cancelled outright by the delete
+    // mutation (US-O.2 Key Decision 3) — undo therefore re-adds it as a fresh
+    // create rather than calling the server-side restore on an id the server
+    // never saw.
+    const wasPendingCreate = isUnsynced(item.id)
     removeItemLocally(queryClient, listId, item)
     // Item delete is a server-backed soft delete (US-O.2 Key Decision 4): the
     // mutation fires immediately rather than waiting out the undo window, so
@@ -209,7 +231,16 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
       `Removed "${item.name}" — Undo`,
       () => {},
       () => {
-        restoreItemMutation.mutate(item)
+        if (wasPendingCreate) {
+          addItem.mutate({
+            name: item.name,
+            quantity: item.quantity,
+            note: item.note ?? null,
+            checked: item.checked,
+          })
+        } else {
+          restoreItemMutation.mutate(item)
+        }
       },
     )
   }
@@ -345,6 +376,7 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
               <ItemRow
                 key={item.id}
                 item={item}
+                unsynced={isUnsynced(item.id)}
                 onToggle={handleToggle}
                 onEdit={(i) => setEditingItemId(i.id)}
                 onRemove={handleRemoveItem}
@@ -372,6 +404,7 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
                 <ItemRow
                   key={item.id}
                   item={item}
+                  unsynced={isUnsynced(item.id)}
                   onToggle={handleToggle}
                   onEdit={(i) => setEditingItemId(i.id)}
                   onRemove={handleRemoveItem}
