@@ -42,8 +42,16 @@ type AppConfig struct {
 // the server-side session settings. When no OIDC issuer/client is configured,
 // the backend falls back to dev-auth.
 type AuthConfig struct {
-	OIDC    OIDCConfig    `mapstructure:"oidc"`
-	Session SessionConfig `mapstructure:"session"`
+	OIDC     OIDCConfig     `mapstructure:"oidc"`
+	Password PasswordConfig `mapstructure:"password"`
+	Session  SessionConfig  `mapstructure:"session"`
+}
+
+// PasswordConfig holds the local username/password auth settings. Enabled is
+// off by default; when set (and OIDC is not configured) the backend runs the
+// operator-provisioned password flow instead of dev-auth.
+type PasswordConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // OIDCConfig holds the confidential-client OIDC parameters. All fields are
@@ -70,6 +78,37 @@ func (c *Config) IsOIDCEnabled() bool {
 	return c.Auth.OIDC.Issuer != "" &&
 		c.Auth.OIDC.ClientID != "" &&
 		c.Auth.OIDC.ClientSecret != ""
+}
+
+// IsPasswordEnabled reports whether local username/password auth is turned on
+// (SPLITKAUF_AUTH_PASSWORD_ENABLED). It is independent of OIDC; the selection
+// precedence (OIDC → password → dev-auth) is applied by the auth layer, so a
+// deployment that sets both keeps OIDC.
+func (c *Config) IsPasswordEnabled() bool {
+	return c.Auth.Password.Enabled
+}
+
+// AuthMode names the active authentication mode for the public auth-config
+// endpoint the frontend reads to choose its login UI.
+type AuthMode string
+
+const (
+	AuthModeOIDC     AuthMode = "oidc"
+	AuthModePassword AuthMode = "password"
+	AuthModeDev      AuthMode = "dev"
+)
+
+// Mode returns the resolved authentication mode from config precedence:
+// OIDC when configured, else password when enabled, else dev-auth.
+func (c *Config) Mode() AuthMode {
+	switch {
+	case c.IsOIDCEnabled():
+		return AuthModeOIDC
+	case c.IsPasswordEnabled():
+		return AuthModePassword
+	default:
+		return AuthModeDev
+	}
 }
 
 type ServerConfig struct {

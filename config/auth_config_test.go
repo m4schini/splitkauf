@@ -100,3 +100,31 @@ func TestIsOIDCEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestModePrecedence(t *testing.T) {
+	oidc := OIDCConfig{Issuer: "https://idp", ClientID: "c", ClientSecret: "s"}
+	tests := []struct {
+		name     string
+		oidc     OIDCConfig
+		password bool
+		want     AuthMode
+	}{
+		{"oidc wins over password", oidc, true, AuthModeOIDC},
+		{"oidc only", oidc, false, AuthModeOIDC},
+		{"password when oidc unset", OIDCConfig{}, true, AuthModePassword},
+		{"dev when neither", OIDCConfig{}, false, AuthModeDev},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := validBase()
+			c.Auth.OIDC = tt.oidc
+			c.Auth.Password.Enabled = tt.password
+			if got := c.Mode(); got != tt.want {
+				t.Errorf("Mode() = %q, want %q", got, tt.want)
+			}
+			if got := c.IsPasswordEnabled(); got != tt.password {
+				t.Errorf("IsPasswordEnabled() = %v, want %v", got, tt.password)
+			}
+		})
+	}
+}

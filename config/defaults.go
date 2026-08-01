@@ -42,6 +42,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.oidc.redirect_url", "")
 	v.SetDefault("auth.oidc.post_logout_redirect_url", "")
 
+	// Auth — password (local accounts; off unless explicitly enabled)
+	v.SetDefault("auth.password.enabled", false)
+
 	// Auth — session
 	v.SetDefault("auth.session.lifetime", 168*time.Hour)
 	v.SetDefault("auth.session.cookie_secure", true)
