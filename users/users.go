@@ -75,11 +75,12 @@ type Repository interface {
 	GetByUsername(ctx context.Context, username string) (User, string, error)
 }
 
-// ValidatePassword reports whether plain is an acceptable password to hash. It
-// enforces the min length and bcrypt's 72-byte ceiling (measured in bytes, the
-// unit bcrypt truncates on).
+// ValidatePassword reports whether plain is an acceptable password to hash. The
+// minimum is measured in characters (runes) so a short multibyte password can't
+// slip past a byte-length check; the maximum is bcrypt's 72-byte ceiling
+// (measured in bytes, the unit bcrypt actually truncates on).
 func ValidatePassword(plain string) error {
-	if len(plain) < MinPasswordLen && utf8.RuneCountInString(plain) < MinPasswordLen {
+	if utf8.RuneCountInString(plain) < MinPasswordLen {
 		return ErrPasswordTooShort
 	}
 	if len(plain) > MaxPasswordLen {

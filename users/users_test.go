@@ -20,6 +20,8 @@ func TestValidatePassword(t *testing.T) {
 		{"minimum length exactly", "12345678", nil},
 		{"too short", "short", users.ErrPasswordTooShort},
 		{"empty", "", users.ErrPasswordTooShort},
+		{"short multibyte counted as runes", "你好吗", users.ErrPasswordTooShort},
+		{"eight multibyte runes ok", "你好吗你好吗你好", nil},
 		{"too long", strings.Repeat("a", users.MaxPasswordLen+1), users.ErrPasswordTooLong},
 		{"max length exactly", strings.Repeat("a", users.MaxPasswordLen), nil},
 	}
