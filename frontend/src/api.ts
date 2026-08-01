@@ -120,12 +120,58 @@ export interface List {
   updatedAt: string
 }
 
+/**
+ * A grocery unit token (mirrors the `Unit` enum in splitkauf.openapi.yaml and
+ * `lists.Units()`). `amount` is the default and is rendered bare (just the
+ * number) in item rows; the rest carry a short German label (see `unitLabels`).
+ */
+export type Unit =
+  'amount' | 'g' | 'kg' | 'ml' | 'l' | 'pack' | 'bottle' | 'can' | 'jar' | 'cup' | 'bunch' | 'bag'
+
+/** The canonical unit tokens in display order (for building the selector). */
+export const units: Unit[] = [
+  'amount',
+  'g',
+  'kg',
+  'ml',
+  'l',
+  'pack',
+  'bottle',
+  'can',
+  'jar',
+  'cup',
+  'bunch',
+  'bag',
+]
+
+/**
+ * German display labels for each unit. `amount` maps to "Stück", but item rows
+ * render `amount` bare (just the quantity) — the label is used for the unit
+ * selector's option text. Singular labels are used for every quantity; no
+ * pluralization (US-L.9 keeps this deliberately simple).
+ */
+export const unitLabels: Record<Unit, string> = {
+  amount: 'Stück',
+  g: 'g',
+  kg: 'kg',
+  ml: 'ml',
+  l: 'l',
+  pack: 'Packung',
+  bottle: 'Flasche',
+  can: 'Dose',
+  jar: 'Glas',
+  cup: 'Becher',
+  bunch: 'Bund',
+  bag: 'Beutel',
+}
+
 /** A single item on a shopping list. */
 export interface Item {
   id: string
   listId: string
   name: string
   quantity: number
+  unit: Unit
   note?: string | null
   checked: boolean
   checkedAt?: string | null
@@ -149,6 +195,7 @@ export interface RenameListRequest {
 export interface AddItemRequest {
   name: string
   quantity?: number
+  unit?: Unit
   note?: string | null
   checked?: boolean
 }
@@ -156,6 +203,7 @@ export interface AddItemRequest {
 export interface UpdateItemRequest {
   name?: string
   quantity?: number
+  unit?: Unit
   note?: string | null
 }
 

@@ -42,6 +42,7 @@ const baseList: ListWithItems = {
       listId: 'l1',
       name: 'Milk',
       quantity: 1,
+      unit: 'amount',
       note: null,
       checked: false,
       checkedAt: null,
@@ -53,6 +54,7 @@ const baseList: ListWithItems = {
       listId: 'l1',
       name: 'Bread',
       quantity: 1,
+      unit: 'amount',
       note: null,
       checked: true,
       checkedAt: '2026-01-01T00:00:00Z',
@@ -93,6 +95,7 @@ describe('ListDetail', () => {
                 listId: 'l1',
                 name: body.name,
                 quantity: 1,
+                unit: 'amount',
                 note: null,
                 checked: false,
                 checkedAt: null,
@@ -310,6 +313,164 @@ describe('ListDetail', () => {
       }),
     )
     expect(await screen.findByText('Milk')).toBeInTheDocument()
+  })
+
+  it('adds an item with a quantity and unit and shows "2 l" optimistically', async () => {
+    const user = userEvent.setup()
+    let postedBody: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST' && String(input).endsWith('/items')) {
+          postedBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(
+            jsonResponse(
+              {
+                id: 'new-item',
+                listId: 'l1',
+                name: postedBody.name,
+                quantity: postedBody.quantity,
+                unit: postedBody.unit,
+                note: null,
+                checked: false,
+                checkedAt: null,
+                createdAt: '2026-01-01T00:00:00Z',
+                updatedAt: '2026-01-01T00:00:00Z',
+              },
+              201,
+            ),
+          )
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    const input = await screen.findByLabelText('Add item')
+    await user.type(input, 'Juice')
+    // Bump the quantity to 2 and pick litres.
+    await user.click(screen.getByRole('button', { name: 'Increase quantity' }))
+    await user.selectOptions(screen.getByLabelText('Unit'), 'l')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    // Optimistic row shows quantity + label before the POST resolves.
+    expect(await screen.findByText('2 l')).toBeInTheDocument()
+    expect(postedBody).toMatchObject({ name: 'Juice', quantity: 2, unit: 'l' })
+    // The additive controls reset to 1 × amount for the next add.
+    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+    expect(screen.getByLabelText('Unit')).toHaveValue('amount')
+  })
+
+  it('renders a bare number for the amount unit (no "Stück")', async () => {
+    const list: ListWithItems = {
+      ...baseList,
+      items: [{ ...baseList.items[0], quantity: 3, unit: 'amount' }],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(list))),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    const qty = screen.getByText('3')
+    expect(qty).toHaveClass('item-qty')
+    // The row shows the bare number only — the "Stück" label is never appended
+    // (it exists solely as a unit-selector option).
+    expect(screen.getByText('Milk').closest('.item-text')).not.toHaveTextContent('Stück')
+  })
+
+  it('does not let the quantity stepper go below 1', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(baseList))),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    const decrease = screen.getByRole('button', { name: 'Decrease quantity' })
+    // Disabled at the minimum; clicking it can't drop below 1.
+    expect(decrease).toBeDisabled()
+    await user.click(decrease)
+    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+
+    await user.click(screen.getByRole('button', { name: 'Increase quantity' }))
+    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('2')
+    expect(decrease).toBeEnabled()
+    await user.click(decrease)
+    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+    expect(decrease).toBeDisabled()
+  })
+
+  it('preserves an item unit through the optimistic check flow', async () => {
+    const user = userEvent.setup()
+    const list: ListWithItems = {
+      ...baseList,
+      openItemCount: 1,
+      checkedItemCount: 0,
+      items: [{ ...baseList.items[0], quantity: 2, unit: 'l', checked: false }],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).endsWith('/check')) {
+          return Promise.resolve(
+            jsonResponse({ ...list.items[0], checked: true, checkedAt: '2026-01-01T00:00:00Z' }),
+          )
+        }
+        return Promise.resolve(jsonResponse(list))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    expect(screen.getByText('2 l')).toBeInTheDocument()
+    await user.click(screen.getByRole('checkbox', { name: /Milk/ }))
+
+    await waitFor(() => expect(screen.getByText('Done (1)')).toBeInTheDocument())
+    // The unit survives the check (optimistic toggle preserves the field).
+    expect(screen.getByText('2 l')).toBeInTheDocument()
+  })
+
+  it('editing an item can change its unit', async () => {
+    const user = userEvent.setup()
+    let patchBody: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'PATCH' && /\/items\/i1$/.test(String(input))) {
+          patchBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(jsonResponse({ ...baseList.items[0], ...patchBody }))
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Edit Milk' }))
+    await user.selectOptions(screen.getByLabelText('Unit', { selector: '#edit-unit-i1' }), 'l')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(patchBody).toMatchObject({ unit: 'l' }))
+    // The row now renders the new unit ("1 l" — quantity unchanged).
+    expect(await screen.findByText('1 l')).toBeInTheDocument()
   })
 
   it('deleting the list shows an undo snackbar and eventually calls onDeleted', async () => {

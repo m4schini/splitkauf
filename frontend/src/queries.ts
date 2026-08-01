@@ -314,6 +314,7 @@ function buildAddItemDefaults(
         listId,
         name: payload.name,
         quantity: payload.quantity ?? 1,
+        unit: payload.unit ?? 'amount',
         note: payload.note ?? null,
         checked,
         checkedAt: checked ? nowIso() : null,

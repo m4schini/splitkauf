@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { type Item, type List } from './api'
+import { type Item, type List, type Unit, unitLabels, units } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
 import {
@@ -30,6 +30,20 @@ function isUnsynced(id: string): boolean {
   return id.startsWith('temp-')
 }
 
+/**
+ * The compact quantity+unit label shown next to an item's name. For the default
+ * `amount` unit it renders the bare number ("3") and is omitted entirely for a
+ * single item, so a plain name-only add stays uncluttered. For every other unit
+ * the quantity and German label are shown ("2 l", "500 g", "2 Packung").
+ * Returns null when there is nothing worth showing.
+ */
+function formatQuantity(quantity: number, unit: Unit): string | null {
+  if (unit === 'amount') {
+    return quantity > 1 ? String(quantity) : null
+  }
+  return `${quantity} ${unitLabels[unit]}`
+}
+
 interface ListDetailProps {
   listId: string
   onBack: () => void
@@ -43,7 +57,7 @@ interface ItemRowProps {
   onEdit: (item: Item) => void
   onRemove: (item: Item) => void
   editing: boolean
-  onSaveEdit: (name: string, quantity: number, note: string) => void
+  onSaveEdit: (name: string, quantity: number, unit: Unit, note: string) => void
   onCancelEdit: () => void
 }
 
@@ -59,6 +73,7 @@ function ItemRow({
 }: ItemRowProps) {
   const [name, setName] = useState(item.name)
   const [quantity, setQuantity] = useState(item.quantity)
+  const [unit, setUnit] = useState<Unit>(item.unit)
   const [note, setNote] = useState(item.note ?? '')
 
   if (editing) {
@@ -68,7 +83,7 @@ function ItemRow({
           className="item-edit-form"
           onSubmit={(e) => {
             e.preventDefault()
-            onSaveEdit(name, quantity, note)
+            onSaveEdit(name, quantity, unit, note)
           }}
         >
           <label htmlFor={`edit-name-${item.id}`}>Item name</label>
@@ -87,6 +102,18 @@ function ItemRow({
             value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value) || 1)}
           />
+          <label htmlFor={`edit-unit-${item.id}`}>Unit</label>
+          <select
+            id={`edit-unit-${item.id}`}
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as Unit)}
+          >
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {unitLabels[u]}
+              </option>
+            ))}
+          </select>
           <label htmlFor={`edit-note-${item.id}`}>Note</label>
           <input
             id={`edit-note-${item.id}`}
@@ -119,7 +146,9 @@ function ItemRow({
         />
         <span className="item-text">
           <span className="item-name">{item.name}</span>
-          {item.quantity > 1 && <span className="item-qty"> ×{item.quantity}</span>}
+          {formatQuantity(item.quantity, item.unit) && (
+            <span className="item-qty">{formatQuantity(item.quantity, item.unit)}</span>
+          )}
           {item.note && <span className="item-note">{item.note}</span>}
           {unsynced && (
             <span className="unsynced-badge">
@@ -187,6 +216,8 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
   })
 
   const [itemName, setItemName] = useState('')
+  const [itemQuantity, setItemQuantity] = useState(1)
+  const [itemUnit, setItemUnit] = useState<Unit>('amount')
   const itemInputRef = useRef<HTMLInputElement>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
@@ -196,8 +227,12 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
     e.preventDefault()
     const trimmed = itemName.trim()
     if (!trimmed) return
-    addItem.mutate({ name: trimmed })
+    addItem.mutate({ name: trimmed, quantity: itemQuantity, unit: itemUnit })
     setItemName('')
+    // Reset the additive controls so the next add defaults to 1 × amount — the
+    // name-only quick-add stays exactly as fast (these never need touching).
+    setItemQuantity(1)
+    setItemUnit('amount')
     // Keep focus + keyboard open so "milk↵ eggs↵ bread↵" chains without
     // the user re-tapping the field.
     itemInputRef.current?.focus()
@@ -381,10 +416,10 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
                 onEdit={(i) => setEditingItemId(i.id)}
                 onRemove={handleRemoveItem}
                 editing={editingItemId === item.id}
-                onSaveEdit={(name, quantity, note) => {
+                onSaveEdit={(name, quantity, unit, note) => {
                   updateItem.mutate({
                     itemId: item.id,
-                    body: { name, quantity, note: note || null },
+                    body: { name, quantity, unit, note: note || null },
                   })
                   setEditingItemId(null)
                 }}
@@ -409,10 +444,10 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
                   onEdit={(i) => setEditingItemId(i.id)}
                   onRemove={handleRemoveItem}
                   editing={editingItemId === item.id}
-                  onSaveEdit={(name, quantity, note) => {
+                  onSaveEdit={(name, quantity, unit, note) => {
                     updateItem.mutate({
                       itemId: item.id,
-                      body: { name, quantity, note: note || null },
+                      body: { name, quantity, unit, note: note || null },
                     })
                     setEditingItemId(null)
                   }}
@@ -439,6 +474,47 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
           <button type="submit" className="primary-button">
             Add
           </button>
+        </div>
+        <div className="quick-add-controls">
+          {/* Additive quantity/unit controls (US-L.9): they never take focus
+              from the name input, so name-only chained adds are unaffected. */}
+          <div className="stepper" role="group" aria-label="Quantity">
+            <button
+              type="button"
+              className="stepper-button"
+              aria-label="Decrease quantity"
+              onClick={() => setItemQuantity((q) => Math.max(1, q - 1))}
+              disabled={itemQuantity <= 1}
+            >
+              −
+            </button>
+            <span className="stepper-value" aria-live="polite" data-testid="quick-add-quantity">
+              {itemQuantity}
+            </span>
+            <button
+              type="button"
+              className="stepper-button"
+              aria-label="Increase quantity"
+              onClick={() => setItemQuantity((q) => q + 1)}
+            >
+              +
+            </button>
+          </div>
+          <label className="quick-add-unit-label" htmlFor="new-item-unit">
+            Unit
+          </label>
+          <select
+            id="new-item-unit"
+            className="quick-add-unit"
+            value={itemUnit}
+            onChange={(e) => setItemUnit(e.target.value as Unit)}
+          >
+            {units.map((u) => (
+              <option key={u} value={u}>
+                {unitLabels[u]}
+              </option>
+            ))}
+          </select>
         </div>
       </form>
 

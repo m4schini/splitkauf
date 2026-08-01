@@ -368,6 +368,65 @@ input {
   font-size: 16px;
 }
 
+/* Additive quantity/unit controls sit on their own row under the name input so
+   they never crowd the name-only fast path (US-L.9 / UX §6). */
+.quick-add-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper-button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stepper-button:hover:not(:disabled) {
+  background: var(--bg-elevated-hover);
+}
+
+.stepper-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.stepper-value {
+  min-width: 24px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--fg);
+}
+
+.quick-add-unit-label {
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.quick-add-unit {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 16px;
+}
+
 /* --- Inline edit / rename forms ------------------------------------------ */
 
 .item-edit-form,
@@ -386,6 +445,7 @@ input {
 }
 
 .item-edit-form input,
+.item-edit-form select,
 .rename-form input {
   min-height: 44px;
   padding: 8px 12px;
