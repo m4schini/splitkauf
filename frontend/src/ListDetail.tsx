@@ -11,6 +11,7 @@ import {
   restoreListLocally,
   useAddItem,
   useCheckItem,
+  useCopyList,
   useDeleteItemMutation,
   useDeleteListMutation,
   useListDetail,
@@ -48,6 +49,8 @@ interface ListDetailProps {
   listId: string
   onBack: () => void
   onDeleted: () => void
+  /** Navigates into a freshly created copy of this list (US-L.10). */
+  onCopied: (listId: string) => void
 }
 
 interface ItemRowProps {
@@ -188,14 +191,15 @@ function ItemRow({
   )
 }
 
-/** List detail: open/done item sections, bottom quick-add, rename & delete list. */
-export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
+/** List detail: open/done item sections, bottom quick-add, copy/rename/delete list. */
+export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailProps) {
   const { data: list, isLoading, isError } = useListDetail(listId)
   const addItem = useAddItem(listId)
   const updateItem = useUpdateItem(listId)
   const checkItem = useCheckItem(listId)
   const uncheckItem = useUncheckItem(listId)
   const renameList = useRenameList(listId)
+  const copyList = useCopyList(listId)
   const deleteListMutation = useDeleteListMutation()
   const deleteItemMutation = useDeleteItemMutation(listId)
   const restoreItemMutation = useRestoreItem(listId)
@@ -312,6 +316,13 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
     )
   }
 
+  // Copy is online-only (US-L.10): it is never queued, so a failure (typically
+  // being offline) surfaces as the inline hint below the header rather than
+  // blocking the screen. A retry clears the error via the mutation's own state.
+  function handleCopyList() {
+    copyList.mutate(undefined, { onSuccess: (created) => onCopied(created.id) })
+  }
+
   function startRename() {
     setNameDraft(list?.name ?? '')
     setRenaming(true)
@@ -384,6 +395,15 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
           <button
             type="button"
             className="icon-button"
+            onClick={handleCopyList}
+            aria-label="Copy list"
+            disabled={copyList.isPending}
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            className="icon-button"
             onClick={startRename}
             aria-label="Rename list"
           >
@@ -399,6 +419,8 @@ export function ListDetail({ listId, onBack, onDeleted }: ListDetailProps) {
           </button>
         </div>
       </header>
+
+      {copyList.isError && <p className="hint hint-error">Couldn't copy the list.</p>}
 
       <div className="scroll-area">
         <section aria-labelledby="open-heading">

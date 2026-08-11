@@ -121,6 +121,7 @@ function App() {
             listId={view.listId}
             onBack={() => setView({ screen: 'overview' })}
             onDeleted={() => setView({ screen: 'overview' })}
+            onCopied={(copyId) => setView({ screen: 'list', listId: copyId })}
           />
         )}
         <SyncNotices notices={notices} onDismiss={dismiss} />

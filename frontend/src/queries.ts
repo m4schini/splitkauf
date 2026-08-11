@@ -23,6 +23,7 @@ import {
 import {
   addItem,
   checkItem,
+  copyList,
   createList,
   deleteItem as apiDeleteItem,
   deleteList as apiDeleteList,
@@ -601,6 +602,32 @@ export function useRenameList(listId: string) {
     ...mutation,
     mutate: (name: string) => mutation.mutate({ listId, name }),
   }
+}
+
+/**
+ * Copies a list server-side (US-L.10). Deliberately NOT part of the offline
+ * outbox: it has no `mutationKey` and no `registerMutationDefaults` entry, so
+ * it is never queued, persisted, or replayed — navigating into the copy needs
+ * the real server id, which an offline copy could not provide.
+ *
+ * `networkMode: 'offlineFirst'` with no retry is what makes an offline tap
+ * *fail* rather than pause: the default 'online' mode would park the mutation
+ * as pending-forever while offline, leaving the button spinning with nothing to
+ * show the user. Here the fetch runs, fails, and the caller renders its hint.
+ */
+export function useCopyList(listId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    networkMode,
+    retry: 0,
+    mutationFn: () => copyList(listId),
+    onSuccess: (created) => {
+      // The overview lists newest first, so the copy belongs at the top; the
+      // invalidate then reconciles counts and ordering with server truth.
+      queryClient.setQueryData<List[]>(listsKey, (old) => [created, ...(old ?? [])])
+      queryClient.invalidateQueries({ queryKey: listsKey })
+    },
+  })
 }
 
 /** Deletes a list. Call after the undo window elapses (see useUndoableDelete). */

@@ -71,7 +71,7 @@ describe('ListDetail', () => {
       vi.fn(() => Promise.resolve(jsonResponse(baseList))),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -110,7 +110,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -141,7 +141,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -170,7 +170,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -192,7 +192,7 @@ describe('ListDetail', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -228,7 +228,7 @@ describe('ListDetail', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -285,7 +285,7 @@ describe('ListDetail', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -345,7 +345,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -374,7 +374,7 @@ describe('ListDetail', () => {
       vi.fn(() => Promise.resolve(jsonResponse(list))),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -393,7 +393,7 @@ describe('ListDetail', () => {
       vi.fn(() => Promise.resolve(jsonResponse(baseList))),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -432,7 +432,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -459,7 +459,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 
@@ -471,6 +471,104 @@ describe('ListDetail', () => {
     await waitFor(() => expect(patchBody).toMatchObject({ unit: 'l' }))
     // The row now renders the new unit ("1 l" — quantity unchanged).
     expect(await screen.findByText('1 l')).toBeInTheDocument()
+  })
+
+  it('copying the list posts to the copy endpoint and navigates into the copy', async () => {
+    const user = userEvent.setup()
+    const onCopied = vi.fn()
+    const copy = {
+      id: 'l2',
+      name: 'Groceries (copy)',
+      openItemCount: 2,
+      checkedItemCount: 0,
+      createdAt: '2026-01-02T00:00:00Z',
+      updatedAt: '2026-01-02T00:00:00Z',
+    }
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') return Promise.resolve(jsonResponse(copy, 201))
+      return Promise.resolve(jsonResponse(baseList))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={onCopied} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Copy list' }))
+
+    await waitFor(() => expect(onCopied).toHaveBeenCalledWith('l2'))
+
+    const [url, init] = fetchMock.mock.calls.find(([, i]) => i?.method === 'POST')!
+    expect(url).toBe('/api/v1/lists/l1/copy')
+    // No body (and therefore no content type): that's how the server is asked
+    // to derive the "«Name» (copy)" name.
+    expect(init?.body).toBeUndefined()
+  })
+
+  it('shows a hint and stays put when the copy fails (e.g. offline)', async () => {
+    const user = userEvent.setup()
+    const onCopied = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST') return Promise.reject(new TypeError('Failed to fetch'))
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={onCopied} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Copy list' }))
+
+    expect(await screen.findByText("Couldn't copy the list.")).toBeInTheDocument()
+    expect(onCopied).not.toHaveBeenCalled()
+    // Non-blocking: the list itself is still on screen and usable.
+    expect(screen.getByText('Milk')).toBeInTheDocument()
+  })
+
+  it('disables the copy button while the copy is in flight', async () => {
+    const user = userEvent.setup()
+    let resolveCopy: ((value: Response) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          return new Promise<Response>((resolve) => {
+            resolveCopy = resolve
+          })
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    const button = screen.getByRole('button', { name: 'Copy list' })
+    await user.click(button)
+
+    await waitFor(() => expect(button).toBeDisabled())
+
+    resolveCopy?.(
+      jsonResponse(
+        {
+          id: 'l2',
+          name: 'Groceries (copy)',
+          openItemCount: 2,
+          checkedItemCount: 0,
+          createdAt: '2026-01-02T00:00:00Z',
+          updatedAt: '2026-01-02T00:00:00Z',
+        },
+        201,
+      ),
+    )
+    await waitFor(() => expect(button).toBeEnabled())
   })
 
   it('deleting the list shows an undo snackbar and eventually calls onDeleted', async () => {
@@ -487,7 +585,7 @@ describe('ListDetail', () => {
       }),
     )
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={onDeleted} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={onDeleted} onCopied={() => {}} />, {
       wrapper: withQueryClient(),
     })
 

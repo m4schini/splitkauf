@@ -133,7 +133,7 @@ describe('offline outbox — pending-create coalescing (US-O.2 KD3)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = offlineClient()
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(client),
     })
     await screen.findByText('Milk')
@@ -192,7 +192,7 @@ describe('offline outbox — pending-create coalescing (US-O.2 KD3)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = offlineClient()
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(client),
     })
     await screen.findByText('Milk')
@@ -240,7 +240,7 @@ describe('offline outbox — pending-create coalescing (US-O.2 KD3)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = offlineClient()
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(client),
     })
     await screen.findByText('Milk')
@@ -279,7 +279,7 @@ describe('offline outbox — pending-create coalescing (US-O.2 KD3)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = offlineClient()
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(client),
     })
     await screen.findByText('Milk')
@@ -310,7 +310,7 @@ describe('offline outbox — badge & replay-404 (US-O.2/O.3)', () => {
       'fetch',
       vi.fn(() => Promise.resolve(jsonResponse(baseList))),
     )
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(offlineClient()),
     })
     await screen.findByText('Milk')
@@ -331,7 +331,7 @@ describe('offline outbox — badge & replay-404 (US-O.2/O.3)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(offlineClient()),
     })
     await screen.findByText('Milk')
@@ -357,7 +357,7 @@ describe('offline outbox — badge & replay-404 (US-O.2/O.3)', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(offlineClient()),
     })
     await screen.findByText('Milk')
@@ -378,9 +378,12 @@ describe('offline outbox — badge & replay-404 (US-O.2/O.3)', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = offlineClient()
-    const { unmount } = render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
-      wrapper: wrapper(client),
-    })
+    const { unmount } = render(
+      <ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />,
+      {
+        wrapper: wrapper(client),
+      },
+    )
     await screen.findByText('Milk')
 
     onlineManager.setOnline(false)
@@ -391,7 +394,7 @@ describe('offline outbox — badge & replay-404 (US-O.2/O.3)', () => {
     // Reload: the persisted temp item keeps its temp id, so the badge survives.
     unmount()
     const reloaded = reload(client)
-    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} />, {
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
       wrapper: wrapper(reloaded),
     })
     expect(await screen.findByText('Eggs')).toBeInTheDocument()

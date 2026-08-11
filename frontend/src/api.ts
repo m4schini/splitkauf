@@ -218,6 +218,14 @@ export interface RenameListRequest {
   name: string
 }
 
+/**
+ * Optional body for a list copy. Omitting `name` (or the body entirely) lets
+ * the server name the copy "«Original name» (copy)".
+ */
+export interface CopyListRequest {
+  name?: string
+}
+
 export interface AddItemRequest {
   name: string
   quantity?: number
@@ -273,6 +281,20 @@ export function renameList(listId: string, body: RenameListRequest): Promise<Lis
 /** DELETE /lists/{listId} — delete a list and all of its items (US-L.3). */
 export function deleteList(listId: string): Promise<void> {
   return apiFetch<void>(`/api/v1/lists/${listId}`, { method: 'DELETE' })
+}
+
+/**
+ * POST /lists/{listId}/copy — copy a list, every item unchecked (US-L.10).
+ *
+ * The body is optional and is sent only when a name is supplied: the request
+ * validator rejects a non-empty body that lacks the JSON content type, and a
+ * body-less request is exactly how the server is told to derive the name.
+ */
+export function copyList(listId: string, body?: CopyListRequest): Promise<List> {
+  return apiFetch<List>(`/api/v1/lists/${listId}/copy`, {
+    method: 'POST',
+    ...(body ? { headers: jsonHeaders, body: JSON.stringify(body) } : {}),
+  })
 }
 
 /** POST /lists/{listId}/items — add an item to a list (US-L.4). */

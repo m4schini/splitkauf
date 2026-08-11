@@ -80,6 +80,12 @@ of each other and may be built in either order (or in parallel).
 | 17 | [US-A.7](US-A.7-operator-provisions-accounts.md) | Operator-provisioned accounts (CLI) — the account store must exist before anyone can log in. |
 | 18 | [US-A.6](US-A.6-log-in-with-username-password.md) | Password login as an alternative to OIDC for instances without an identity provider; reuses the M2 session layer. |
 
+### M8 — List reuse
+
+| # | Stories | Why here |
+|---|---------|----------|
+| 19 | [US-L.10](US-L.10-copy-a-list.md) | Copying a list with every item unchecked turns a finished shop into the next one's starting point; builds on the M1 list/item CRUD and the M3 live-update hints. |
+
 ## Out of scope
 
 No stories exist — and none should be written — for GOAL.md's non-goals: native
