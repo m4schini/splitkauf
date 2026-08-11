@@ -61,6 +61,25 @@ func (s *Service) RenameList(ctx context.Context, id uuid.UUID, name string) (Li
 	return s.repo.RenameList(ctx, id, clean)
 }
 
+// CopyList creates a new list holding a copy of every non-deleted item of the
+// source list, each reset to unchecked. An empty name means "derive one": the
+// copy is named "«source name» (copy)". A supplied name is validated like any
+// other list name. It returns ErrNotFound when the source does not exist.
+func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string) (List, error) {
+	source, err := s.repo.List(ctx, id)
+	if err != nil {
+		return List{}, err
+	}
+	clean := copyListName(source.Name)
+	if name != "" {
+		clean, err = validateListName(name)
+		if err != nil {
+			return List{}, err
+		}
+	}
+	return s.repo.CopyList(ctx, id, clean)
+}
+
 // DeleteList deletes a list and (via the repository's cascade) all its items.
 // It returns ErrNotFound when the list does not exist.
 func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {

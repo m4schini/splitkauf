@@ -151,6 +151,36 @@ paths:
         default:
           $ref: "#/components/responses/Problem"
 
+  /lists/{listId}/copy:
+    parameters:
+      - $ref: "#/components/parameters/ListId"
+    post:
+      operationId: copyList
+      summary: Copy a list
+      description: |
+        Creates a new list containing every non-deleted item of the source list
+        (open and checked alike), each reset to unchecked. Name, quantity, unit,
+        and note are preserved, as is the source's display order. The request
+        body is optional: when no name is supplied the copy is named
+        "«Original name» (copy)", trimmed to fit the 200-character name limit.
+      tags:
+        - lists
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CopyListRequest"
+      responses:
+        "201":
+          description: The created copy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/List"
+        default:
+          $ref: "#/components/responses/Problem"
+
   /lists/{listId}/items:
     parameters:
       - $ref: "#/components/parameters/ListId"
@@ -539,6 +569,16 @@ components:
           type: string
           minLength: 1
           description: The new name for the list.
+    CopyListRequest:
+      type: object
+      description: |
+        Optional request body for copying a list. When omitted (or when `name`
+        is absent) the server names the copy "«Original name» (copy)".
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: The name for the copy.
     AddItemRequest:
       type: object
       description: Request body for adding an item to a list.

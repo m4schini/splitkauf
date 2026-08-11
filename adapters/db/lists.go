@@ -156,6 +156,74 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// CopyList creates a new list named name holding a copy of every non-deleted
+// item of the source list, each reset to unchecked. It is the repository's only
+// transactional method: the list row and its items are written together so a
+// failure never leaves a half-populated copy behind.
+//
+// The source row is re-read inside the transaction with FOR KEY SHARE. That
+// both provides the not-found guard and locks the row, so a concurrent
+// DeleteList cannot commit between the guard and the item copy (which would
+// otherwise yield a silently empty copy).
+//
+// Copied items are stamped with staggered created_at values (one microsecond
+// apart, in the source's display order): item order everywhere is
+// ORDER BY created_at, id, so a single shared timestamp would leave the copy's
+// order to the UUID tie-break, while reusing the source timestamps would make
+// the copied items look older than the list holding them.
+func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name string) (lists.List, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return lists.List{}, fmt.Errorf("copy list: begin: %w", err)
+	}
+	// Rolled back unless the commit below already ended the transaction, in
+	// which case this is a no-op returning ErrTxDone.
+	defer func() { _ = tx.Rollback() }()
+
+	var exists int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM lists WHERE id = $1 FOR KEY SHARE`, sourceID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lists.List{}, lists.ErrNotFound
+	}
+	if err != nil {
+		return lists.List{}, fmt.Errorf("copy list: load source: %w", err)
+	}
+
+	now := time.Now()
+	var l lists.List
+	if err := tx.QueryRowContext(ctx,
+		`INSERT INTO lists (name, created_at, updated_at) VALUES ($1, $2, $2)
+		 RETURNING id, name, created_at, updated_at`,
+		name, now,
+	).Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt); err != nil {
+		return lists.List{}, fmt.Errorf("copy list: insert list: %w", err)
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at)
+		 SELECT $1, name, quantity, unit, note, false, NULL,
+		        $3::timestamptz + row_number() OVER (ORDER BY created_at, id) * interval '1 microsecond',
+		        $3
+		 FROM items WHERE list_id = $2 AND deleted_at IS NULL`,
+		l.ID, sourceID, now)
+	if err != nil {
+		return lists.List{}, fmt.Errorf("copy list: insert items: %w", err)
+	}
+	copied, err := res.RowsAffected()
+	if err != nil {
+		return lists.List{}, fmt.Errorf("copy list: count copied items: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return lists.List{}, fmt.Errorf("copy list: commit: %w", err)
+	}
+
+	// Every copied item is unchecked by construction, so the counts follow from
+	// the insert's row count without a second read.
+	l.OpenItemCount = int(copied)
+	return l, nil
+}
+
 // AddItem inserts an item onto a list. It does not pre-check that the list
 // exists: a missing list is detected by the insert's own foreign-key
 // violation (SQLSTATE 23503), which is mapped to lists.ErrNotFound below.

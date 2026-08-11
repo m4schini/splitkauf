@@ -58,6 +58,52 @@ func TestCreateListPublishesListEvent(t *testing.T) {
 	}
 }
 
+// TestCopyListPublishesListEvent asserts a successful copy emits a single
+// {lists} reload hint, so other clients pick the new list up in their overview.
+func TestCopyListPublishesListEvent(t *testing.T) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+		return lists.List{ID: uuid.New(), Name: "Groceries (copy)"}, nil
+	}}
+	pub := &capturingPublisher{}
+	srv := newServerWithEvents(t, svc, pub)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+
+	got := pub.captured()
+	if len(got) != 1 {
+		t.Fatalf("published %d events, want 1: %+v", len(got), got)
+	}
+	if got[0].Type != events.TypeLists {
+		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeLists)
+	}
+	if got[0].ListID != "" {
+		t.Errorf("lists event carries listId %q, want empty", got[0].ListID)
+	}
+}
+
+// TestFailedCopyPublishesNothing proves the copy's publish is strictly after
+// success: a missing source emits no hint.
+func TestFailedCopyPublishesNothing(t *testing.T) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+		return lists.List{}, lists.ErrNotFound
+	}}
+	pub := &capturingPublisher{}
+	srv := newServerWithEvents(t, svc, pub)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if got := pub.captured(); len(got) != 0 {
+		t.Errorf("published %d events on error, want 0: %+v", len(got), got)
+	}
+}
+
 // TestCheckItemPublishesItemEvent asserts a successful check emits a single
 // {items, listId} reload hint (representative of the item-mutation handlers).
 func TestCheckItemPublishesItemEvent(t *testing.T) {
@@ -224,6 +270,10 @@ func (s *statefulService) RenameList(context.Context, uuid.UUID, string) (lists.
 	return lists.List{}, nil
 }
 func (s *statefulService) DeleteList(context.Context, uuid.UUID) error { return nil }
+func (s *statefulService) CopyList(context.Context, uuid.UUID, string) (lists.List, error) {
+	return lists.List{}, nil
+}
+
 func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, string, *string, bool) (lists.Item, error) {
 	return lists.Item{}, nil
 }

@@ -2,7 +2,7 @@
 
 // Package lists is the pure-Go domain for shopping lists and their items. It
 // owns the entities, their validation rules, and a Service that orchestrates
-// the eleven M1 operations over a Repository port. The Postgres implementation
+// the list and item operations over a Repository port. The Postgres implementation
 // of Repository lives in adapters/db; the Service is unit-tested against an
 // in-memory fake, giving domain coverage without a live database.
 package lists
@@ -108,6 +108,11 @@ type Repository interface {
 	ListItems(ctx context.Context, listID uuid.UUID) ([]Item, error)
 	RenameList(ctx context.Context, id uuid.UUID, name string) (List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
+	// CopyList creates a new list named name holding a copy of every
+	// non-deleted item of sourceID, each reset to unchecked. It is atomic: the
+	// list and its items are written in one transaction, and a source that
+	// does not exist (or vanishes mid-copy) yields ErrNotFound.
+	CopyList(ctx context.Context, sourceID uuid.UUID, name string) (List, error)
 
 	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
@@ -138,6 +143,27 @@ func validateName(name string) (string, error) {
 		return "", &ValidationError{Field: "name", Message: "name is too long"}
 	}
 	return trimmed, nil
+}
+
+// copySuffix is appended to a source list's name to derive the default name of
+// its copy.
+const copySuffix = " (copy)"
+
+// copyListName derives the default name for a copy of the list named original:
+// the original with " (copy)" appended. When that would exceed maxNameLength
+// the original is shortened from the end — one whole rune at a time, so a
+// multi-byte character is never cut in half — until the suffixed name fits.
+func copyListName(original string) string {
+	trimmed := strings.TrimSpace(original)
+	if len(trimmed)+len(copySuffix) <= maxNameLength {
+		return trimmed + copySuffix
+	}
+	runes := []rune(trimmed)
+	for len(runes) > 0 && len(string(runes))+len(copySuffix) > maxNameLength {
+		runes = runes[:len(runes)-1]
+	}
+	// Drop whitespace exposed by the cut so the result reads as "Name (copy)".
+	return strings.TrimRight(string(runes), " ") + copySuffix
 }
 
 // normalizeQuantity applies the domain default and bound for a new item's

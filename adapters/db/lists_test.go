@@ -457,6 +457,127 @@ func TestItemUnitRoundTrip(t *testing.T) {
 	}
 }
 
+// TestCopyList pins the copy's contract: every non-deleted item comes across
+// (open and checked alike), each reset to unchecked, with name/quantity/unit/
+// note and the source's display order preserved — and the source untouched.
+func TestCopyList(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	source, err := repo.CreateList(ctx, "Groceries")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	note := "whole"
+	open, err := repo.AddItem(ctx, source.ID, "milk", 2, "l", &note, false)
+	if err != nil {
+		t.Fatalf("AddItem(milk): %v", err)
+	}
+	checked, err := repo.AddItem(ctx, source.ID, "eggs", 12, "amount", nil, true)
+	if err != nil {
+		t.Fatalf("AddItem(eggs): %v", err)
+	}
+	gone, err := repo.AddItem(ctx, source.ID, "beer", 6, "bottle", nil, false)
+	if err != nil {
+		t.Fatalf("AddItem(beer): %v", err)
+	}
+	if err := repo.DeleteItem(ctx, source.ID, gone.ID); err != nil {
+		t.Fatalf("DeleteItem: %v", err)
+	}
+
+	copied, err := repo.CopyList(ctx, source.ID, "Groceries (copy)")
+	if err != nil {
+		t.Fatalf("CopyList: %v", err)
+	}
+	if copied.ID == source.ID {
+		t.Fatal("copy reused the source's id")
+	}
+	if copied.Name != "Groceries (copy)" {
+		t.Errorf("copy name = %q, want %q", copied.Name, "Groceries (copy)")
+	}
+	// The returned summary counts every copied item as open.
+	if copied.OpenItemCount != 2 || copied.CheckedItemCount != 0 {
+		t.Errorf("returned counts = %d/%d, want 2/0", copied.OpenItemCount, copied.CheckedItemCount)
+	}
+	assertCounts(t, repo, copied.ID, 2, 0)
+
+	items, err := repo.ListItems(ctx, copied.ID)
+	if err != nil {
+		t.Fatalf("ListItems(copy): %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("copy has %d items, want 2 (the soft-deleted one must not travel): %+v", len(items), items)
+	}
+	// ListItems reads in display order (created_at, id): the staggered insert
+	// timestamps must reproduce the source's order.
+	if items[0].Name != "milk" || items[1].Name != "eggs" {
+		t.Errorf("copy order = %q, %q, want milk, eggs", items[0].Name, items[1].Name)
+	}
+	if items[0].Quantity != 2 || items[0].Unit != "l" || items[0].Note == nil || *items[0].Note != "whole" {
+		t.Errorf("copied milk = %+v, want qty 2 unit l note whole", items[0])
+	}
+	if items[1].Quantity != 12 || items[1].Unit != "amount" || items[1].Note != nil {
+		t.Errorf("copied eggs = %+v, want qty 12 unit amount no note", items[1])
+	}
+	for _, it := range items {
+		if it.Checked || it.CheckedAt != nil {
+			t.Errorf("copied item %q = checked %v / %v, want unchecked with nil CheckedAt", it.Name, it.Checked, it.CheckedAt)
+		}
+		if it.ListID != copied.ID {
+			t.Errorf("copied item %q belongs to %v, want the copy %v", it.Name, it.ListID, copied.ID)
+		}
+		if it.ID == open.ID || it.ID == checked.ID {
+			t.Errorf("copied item %q reused the source item's id", it.Name)
+		}
+		if it.CreatedAt.Before(copied.CreatedAt) {
+			t.Errorf("copied item %q created_at %v predates its list %v", it.Name, it.CreatedAt, copied.CreatedAt)
+		}
+	}
+
+	// The source is untouched: same items, eggs still checked.
+	assertCounts(t, repo, source.ID, 1, 1)
+	if src, err := repo.Item(ctx, source.ID, checked.ID); err != nil || !src.Checked {
+		t.Errorf("source item after copy = %+v, %v; want still checked", src, err)
+	}
+}
+
+// TestCopyEmptyListAndMissingSource covers the copy's edges: an empty list
+// copies to an empty list, and a source that does not exist is ErrNotFound
+// (with no stray list left behind).
+func TestCopyEmptyListAndMissingSource(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	empty, err := repo.CreateList(ctx, "Empty")
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	copied, err := repo.CopyList(ctx, empty.ID, "Empty (copy)")
+	if err != nil {
+		t.Fatalf("CopyList(empty): %v", err)
+	}
+	if copied.OpenItemCount != 0 || copied.CheckedItemCount != 0 {
+		t.Errorf("counts = %d/%d, want 0/0", copied.OpenItemCount, copied.CheckedItemCount)
+	}
+	items, err := repo.ListItems(ctx, copied.ID)
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 0 {
+		t.Errorf("copy of an empty list has %d items, want 0", len(items))
+	}
+
+	if _, err := repo.CopyList(ctx, uuid.New(), "Ghost (copy)"); err != lists.ErrNotFound {
+		t.Fatalf("CopyList(missing) err = %v, want ErrNotFound", err)
+	}
+	// The failed copy rolled back: only the two lists above exist.
+	all, err := repo.Lists(ctx)
+	if err != nil {
+		t.Fatalf("Lists: %v", err)
+	}
+	if len(all) != 2 {
+		t.Errorf("Lists = %d, want 2 (a failed copy must not leave a list behind): %+v", len(all), all)
+	}
+}
+
 func assertCounts(t *testing.T, repo *db.ListsRepository, id uuid.UUID, open, checked int) {
 	t.Helper()
 	l, err := repo.List(context.Background(), id)

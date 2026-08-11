@@ -102,6 +102,30 @@ func (v *V1) DeleteList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// CopyList copies a list, resetting every copied item to unchecked. The request
+// body is optional: an absent or empty body means "no name supplied", and the
+// service derives "«source name» (copy)".
+func (v *V1) CopyList(w http.ResponseWriter, r *http.Request, listId ListId) {
+	var body CopyListJSONRequestBody
+	// decodeBody would reject the empty body this endpoint explicitly allows,
+	// so EOF is handled here as "no body"; anything else is malformed JSON.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		problem.Write(w, r, problem.New(problem.Validation, "request body is not valid JSON"))
+		return
+	}
+	name := ""
+	if body.Name != nil {
+		name = *body.Name
+	}
+	l, err := v.Service.CopyList(r.Context(), uuid.UUID(listId), name)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	v.publish(events.Event{Type: events.TypeLists})
+	writeJSON(w, r, http.StatusCreated, toList(l))
+}
+
 // AddItem adds an item to a list from the request body.
 func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 	var body AddItemJSONRequestBody

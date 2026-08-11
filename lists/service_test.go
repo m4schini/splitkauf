@@ -5,8 +5,10 @@ package lists
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -109,6 +111,29 @@ func (r *fakeRepo) DeleteList(_ context.Context, id uuid.UUID) error {
 		}
 	}
 	return nil
+}
+
+func (r *fakeRepo) CopyList(_ context.Context, sourceID uuid.UUID, name string) (List, error) {
+	if _, ok := r.lists[sourceID]; !ok {
+		return List{}, ErrNotFound
+	}
+	cp := &List{ID: uuid.New(), Name: name, CreatedAt: r.clock, UpdatedAt: r.clock}
+	r.lists[cp.ID] = cp
+	for _, it := range r.items {
+		if it.ListID != sourceID || r.deleted[it.ID] {
+			continue
+		}
+		copied := *it
+		copied.ID = uuid.New()
+		copied.ListID = cp.ID
+		copied.Checked = false
+		copied.CheckedAt = nil
+		copied.CreatedAt = r.clock
+		copied.UpdatedAt = r.clock
+		r.items[copied.ID] = &copied
+	}
+	r.recount(cp.ID)
+	return *cp, nil
 }
 
 func (r *fakeRepo) AddItem(_ context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error) {
@@ -292,6 +317,93 @@ func TestDeleteList(t *testing.T) {
 	}
 	if err := svc.DeleteList(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// TestCopyList covers the copy's naming rules and its pass-through of a missing
+// source. The item reset itself is the repository's job (see the db package's
+// integration test); here the fake mirrors it so the counts can be asserted.
+func TestCopyList(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	l, _ := svc.CreateList(ctx, "Groceries")
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false); err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	checked, _ := svc.AddItem(ctx, l.ID, "Eggs", 1, "", nil, false)
+	if _, err := svc.CheckItem(ctx, l.ID, checked.ID); err != nil {
+		t.Fatalf("CheckItem: %v", err)
+	}
+
+	// No name supplied: derived from the source, and every item comes back open.
+	cp, err := svc.CopyList(ctx, l.ID, "")
+	if err != nil {
+		t.Fatalf("CopyList: %v", err)
+	}
+	if cp.Name != "Groceries (copy)" {
+		t.Errorf("copy name = %q, want %q", cp.Name, "Groceries (copy)")
+	}
+	if cp.OpenItemCount != 2 || cp.CheckedItemCount != 0 {
+		t.Errorf("copy counts = %d/%d, want 2/0", cp.OpenItemCount, cp.CheckedItemCount)
+	}
+
+	// A supplied name wins and is trimmed like any other list name.
+	named, err := svc.CopyList(ctx, l.ID, "  Party  ")
+	if err != nil {
+		t.Fatalf("CopyList (named): %v", err)
+	}
+	if named.Name != "Party" {
+		t.Errorf("copy name = %q, want %q", named.Name, "Party")
+	}
+
+	// A whitespace-only name reaches the domain and is rejected. (A JSON-level
+	// empty string never gets here: the OpenAPI validator's minLength rejects
+	// it first.)
+	if _, err := svc.CopyList(ctx, l.ID, "   "); err == nil {
+		t.Fatal("expected name validation error")
+	} else {
+		assertValidationError(t, err, "name")
+	}
+
+	if _, err := svc.CopyList(ctx, uuid.New(), ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// TestCopyListNameTrimming pins the derived name's length handling: the suffix
+// always survives, the result fits maxNameLength, and the trim cuts whole runes
+// so a multi-byte name is never corrupted.
+func TestCopyListNameTrimming(t *testing.T) {
+	if got := copyListName("  Groceries  "); got != "Groceries (copy)" {
+		t.Errorf("copyListName = %q, want %q", got, "Groceries (copy)")
+	}
+
+	// A name already at the limit must be shortened to make room for " (copy)".
+	long := strings.Repeat("a", maxNameLength)
+	got := copyListName(long)
+	if len(got) != maxNameLength {
+		t.Errorf("len = %d, want %d: %q", len(got), maxNameLength, got)
+	}
+	if !strings.HasSuffix(got, copySuffix) {
+		t.Errorf("copyListName(long) = %q, want it to end in %q", got, copySuffix)
+	}
+
+	// Multi-byte runes: 100 × "ä" is 200 bytes, so the trim must drop whole
+	// runes (96 fit alongside the 7-byte suffix) rather than half a character.
+	multi := copyListName(strings.Repeat("ä", 100))
+	if len(multi) > maxNameLength {
+		t.Errorf("len = %d, want <= %d", len(multi), maxNameLength)
+	}
+	if !utf8.ValidString(multi) {
+		t.Errorf("copyListName cut a rune in half: %q", multi)
+	}
+	if want := strings.Repeat("ä", 96) + copySuffix; multi != want {
+		t.Errorf("copyListName = %q, want %q", multi, want)
+	}
+
+	// A cut that lands on a space must not leave it dangling before the suffix.
+	if got := copyListName(strings.Repeat("a", maxNameLength-8) + " bc"); !strings.HasSuffix(got, "a"+copySuffix) {
+		t.Errorf("copyListName = %q, want no whitespace before the suffix", got)
 	}
 }
 

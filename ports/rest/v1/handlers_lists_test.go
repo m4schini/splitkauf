@@ -33,6 +33,7 @@ type fakeService struct {
 	getList     func(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	renameList  func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	deleteList  func(ctx context.Context, id uuid.UUID) error
+	copyList    func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
@@ -59,6 +60,10 @@ func (f *fakeService) RenameList(ctx context.Context, id uuid.UUID, name string)
 
 func (f *fakeService) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return f.deleteList(ctx, id)
+}
+
+func (f *fakeService) CopyList(ctx context.Context, id uuid.UUID, name string) (lists.List, error) {
+	return f.copyList(ctx, id, name)
 }
 
 func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
@@ -684,6 +689,96 @@ func TestDeleteListNoContent(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+}
+
+// TestCopyListWithoutBody covers the body-less copy (the UI's one-tap case):
+// the request carries no name, so the service is called with an empty one and
+// derives the default itself.
+func TestCopyListWithoutBody(t *testing.T) {
+	sourceID := uuid.New()
+	want := lists.List{ID: uuid.New(), Name: "Groceries (copy)", OpenItemCount: 3, CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	svc := &fakeService{copyList: func(_ context.Context, id uuid.UUID, name string) (lists.List, error) {
+		if id != sourceID {
+			t.Errorf("service got list id %v, want %v", id, sourceID)
+		}
+		if name != "" {
+			t.Errorf("service got name %q, want empty (no name supplied)", name)
+		}
+		return want, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp, err := http.Post(srv.URL+"/api/v1/lists/"+sourceID.String()+"/copy", "", nil) //nolint:gosec // url is test-controlled (httptest server)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	var got v1.List
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Id != want.ID || got.Name != want.Name || got.OpenItemCount != 3 {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// TestCopyListWithName covers the optional body: a supplied name is forwarded
+// to the service verbatim.
+func TestCopyListWithName(t *testing.T) {
+	sourceID := uuid.New()
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, name string) (lists.List, error) {
+		if name != "Party" {
+			t.Errorf("service got name %q, want %q", name, "Party")
+		}
+		return lists.List{ID: uuid.New(), Name: name}, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+sourceID.String()+"/copy", `{"name":"Party"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+}
+
+// TestCopyListNotFound maps a missing source list to a 404 problem.
+func TestCopyListNotFound(t *testing.T) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+		return lists.List{}, lists.ErrNotFound
+	}}
+	srv := newServer(t, svc)
+
+	resp, err := http.Post(srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", "", nil) //nolint:gosec // url is test-controlled (httptest server)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("content-type = %q, want application/problem+json", ct)
+	}
+}
+
+// TestCopyListRejectsEmptyName pins that the OpenAPI validator (minLength: 1)
+// rejects an explicitly empty name before the handler runs.
+func TestCopyListRejectsEmptyName(t *testing.T) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+		t.Fatal("service should not be called for invalid body")
+		return lists.List{}, nil
+	}}
+	srv := newServer(t, svc)
+
+	resp := postJSON(t, srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", `{"name":""}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
 	}
 }
 

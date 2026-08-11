@@ -32,6 +32,7 @@ type ListService interface {
 	GetList(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	RenameList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
+	CopyList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
