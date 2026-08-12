@@ -4,7 +4,7 @@ git_commit: c8bc3732fefdb4ade7121e8144944ecdcb42b513
 branch: main
 topic: "List & item attribution: Created by / Added by / Bought by"
 tags: [plan, lists, items, members, auth, frontend, api]
-status: draft
+status: complete
 ---
 
 # PLAN: List & Item Attribution (Created by / Added by / Bought by)
@@ -220,11 +220,11 @@ Dependencies: Phase 2 (Actor type, Attribution schema, useMe, attributionLabel).
 - [x] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
 
 **Manual Verification**:
-- [ ] Add an item → "Added by you" appears immediately (optimistic) and survives a refetch.
-- [ ] Check an item → it moves to Done with "Bought by you"; uncheck → back to Open with "Added by you" (no stale bought-by).
-- [ ] With two browsers/users (password or OIDC mode), user B sees "Added by ‹A's name›" live via SSE refetch.
-- [ ] Copy a list → the copy's overview row says "by you" and every copied item says "Added by you".
-- [ ] Airplane-mode: add + check items offline → attributions show "you"; go online → replays keep the same attribution.
+- [x] Add an item → "Added by you" appears immediately (optimistic) and survives a refetch.
+- [x] Check an item → it moves to Done with "Bought by you"; uncheck → back to Open with "Added by you" (no stale bought-by).
+- [x] With two browsers/users (password or OIDC mode), user B sees "Added by ‹A's name›" live via SSE refetch.
+- [x] Copy a list → the copy's overview row says "by you" and every copied item says "Added by you".
+- [x] Airplane-mode: add + check items offline → attributions show "you"; go online → replays keep the same attribution.
 
 ## Implementation Notes
 
