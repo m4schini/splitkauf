@@ -190,34 +190,34 @@ Identity stamping + list attribution through every layer, rendered on overview r
 - [x] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
 
 **Manual Verification**:
-- [ ] With dev auth, create a list → overview row shows "· by you"; pre-existing lists show no attribution.
+- [x] With dev auth, create a list → overview row shows "· by you"; pre-existing lists show no attribution.
 
 ### Phase 3: "Added by" / "Bought by" on items, end-to-end
 
 Dependencies: Phase 2 (Actor type, Attribution schema, useMe, attributionLabel).
 
 **Tasks**:
-- [ ] `lists/lists.go`: add `AddedBy *Actor`, `BoughtBy *Actor` to `Item`; change port: `AddItem(…, addedBy uuid.UUID)`, `SetItemChecked(…, checkedBy *uuid.UUID)`.
-- [ ] `lists/service.go`: `AddItem` takes `actor uuid.UUID`; `CheckItem`/`UncheckItem`/`setChecked` take the actor and pass `&actor` when checking, `nil` when unchecking (uncheck clears `bought_by` alongside `checked_at`).
-- [ ] `adapters/db/lists.go`:
+- [x] `lists/lists.go`: add `AddedBy *Actor`, `BoughtBy *Actor` to `Item`; change port: `AddItem(…, addedBy uuid.UUID)`, `SetItemChecked(…, checkedBy *uuid.UUID)`.
+- [x] `lists/service.go`: `AddItem` takes `actor uuid.UUID`; `CheckItem`/`UncheckItem`/`setChecked` take the actor and pass `&actor` when checking, `nil` when unchecking (uncheck clears `bought_by` alongside `checked_at`).
+- [x] `adapters/db/lists.go`:
   - Item reads (`ListItems`, `Item`) select `added_by, bought_by` plus two member joins (`ma.name`, `mb.name`); `scanItem` maps both to `*Actor`.
   - `AddItem` inserts `added_by = actor`, and when `checked=true` also `bought_by = actor` (Decision 6 — a folded offline check replays as a single checked create, so `SetItemChecked` never runs; mirrors the existing `checked_at`-at-insert handling at `adapters/db/lists.go:236-239`); re-reads via `r.Item()`.
   - `SetItemChecked` writes `bought_by = checkedBy` (NULL on uncheck) and re-reads via `r.Item()`; `UpdateItem`/`RestoreItem` re-read via `r.Item()` so their responses carry attribution.
   - `CopyList` item-copy stamps `added_by = actor`, `bought_by = NULL`.
-- [ ] `lists/service_test.go`: fake + tests — actor recorded on add; checked-create stamps both `added_by` and `bought_by`; check stamps `bought_by`; uncheck clears it; idempotent re-check of an already-checked item does NOT restamp (existing early-return keeps the original buyer).
-- [ ] `splitkauf.openapi.yaml`: optional (not nullable) `addedBy` / `boughtBy` `$ref` fields on `Item`; `make generate`.
-- [ ] `ports/rest/v1/api.go` + `handlers_lists.go`: `ListService` signatures for `AddItem`/`CheckItem`/`UncheckItem` gain the actor; handlers pass the context user's id; `toItem` maps both actors. Update the fakes in `handlers_lists_test.go`, `publish_test.go`, `maxbody_test.go`.
-- [ ] `frontend/src/api.ts`: `addedBy?: Attribution`, `boughtBy?: Attribution` on `Item`.
-- [ ] `frontend/src/queries.ts`: optimistic attribution from `meKey` — `buildAddItemDefaults.onMutate` sets `addedBy`; `toggleChecked` sets `boughtBy` to me when checking, null when unchecking.
-- [ ] `frontend/src/ListDetail.tsx` `ItemRow`: after the note, render `<span className="item-attribution">Added by {label}</span>` for open items / `Bought by {label}` for checked items, via `attributionLabel`; omit when no label.
-- [ ] `frontend/src/index.css`: `.item-attribution` (muted, small — visually consistent with `.item-note`).
-- [ ] Tests: `ListDetail.test.tsx` (Added by you/name on open, Bought by on checked, hidden when unknown, uncheck clears optimistically), `offlineOutbox.test.tsx` fixture updates if needed.
-- [ ] Docs: mention attribution in `docs/architecture.md` if its data model section lists columns; finalize `US-L.11`.
+- [x] `lists/service_test.go`: fake + tests — actor recorded on add; checked-create stamps both `added_by` and `bought_by`; check stamps `bought_by`; uncheck clears it; idempotent re-check of an already-checked item does NOT restamp (existing early-return keeps the original buyer).
+- [x] `splitkauf.openapi.yaml`: optional (not nullable) `addedBy` / `boughtBy` `$ref` fields on `Item`; `make generate`.
+- [x] `ports/rest/v1/api.go` + `handlers_lists.go`: `ListService` signatures for `AddItem`/`CheckItem`/`UncheckItem` gain the actor; handlers pass the context user's id; `toItem` maps both actors. Update the fakes in `handlers_lists_test.go`, `publish_test.go`, `maxbody_test.go`.
+- [x] `frontend/src/api.ts`: `addedBy?: Attribution`, `boughtBy?: Attribution` on `Item`.
+- [x] `frontend/src/queries.ts`: optimistic attribution from `meKey` — `buildAddItemDefaults.onMutate` sets `addedBy`; `toggleChecked` sets `boughtBy` to me when checking, null when unchecking.
+- [x] `frontend/src/ListDetail.tsx` `ItemRow`: after the note, render `<span className="item-attribution">Added by {label}</span>` for open items / `Bought by {label}` for checked items, via `attributionLabel`; omit when no label.
+- [x] `frontend/src/index.css`: `.item-attribution` (muted, small — visually consistent with `.item-note`).
+- [x] Tests: `ListDetail.test.tsx` (Added by you/name on open, Bought by on checked, hidden when unknown, uncheck clears optimistically), `offlineOutbox.test.tsx` fixture updates if needed.
+- [x] Docs: mention attribution in `docs/architecture.md` if its data model section lists columns; finalize `US-L.11`.
 
 **Automated Verification**:
-- [ ] `make generate && make build` passes.
-- [ ] `make test` passes.
-- [ ] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
+- [x] `make generate && make build` passes.
+- [x] `make test` passes.
+- [x] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
 
 **Manual Verification**:
 - [ ] Add an item → "Added by you" appears immediately (optimistic) and survives a refetch.
