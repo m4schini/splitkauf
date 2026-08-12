@@ -28,6 +28,7 @@ import {
   deleteItem as apiDeleteItem,
   deleteList as apiDeleteList,
   getList,
+  getMe,
   listLists,
   renameList,
   restoreItem as apiRestoreItem,
@@ -37,13 +38,16 @@ import {
   type Item,
   type List,
   type ListWithItems,
+  type Attribution,
   type ProblemDetail,
   type UpdateItemRequest,
+  type User,
 } from './api'
 import { queryClient as sharedQueryClient } from './queryClient'
 
 export const listsKey = ['lists'] as const
 export const listKey = (listId: string) => ['lists', listId] as const
+export const meKey = ['me'] as const
 
 // Stable mutation keys: the identity a persisted paused mutation resumes under.
 export const addItemKey = ['items', 'add'] as const
@@ -55,6 +59,27 @@ export const restoreItemKey = ['items', 'restore'] as const
 export const createListKey = ['lists', 'create'] as const
 export const renameListKey = ['lists', 'rename'] as const
 export const deleteListKey = ['lists', 'delete'] as const
+
+/**
+ * The signed-in user (US-A.1). It also decides which attributions read as
+ * "you", so it lives here next to the mutations that stamp them rather than in
+ * the component that gates on it. `retry: false` keeps the signed-out 401 a
+ * fast, single request.
+ */
+export function useMe() {
+  return useQuery({ queryKey: meKey, queryFn: getMe, retry: false })
+}
+
+/**
+ * The attribution to stamp on an optimistic create, from the cached `/me` user.
+ * Undefined when `/me` has not resolved yet (a cold cache offline), in which
+ * case the row simply renders without attribution until the server's answer
+ * arrives — the server attributes the write regardless, from the session.
+ */
+function optimisticAttribution(queryClient: QueryClient): Attribution | undefined {
+  const me = queryClient.getQueryData<User>(meKey)
+  return me && { id: me.id, name: me.name }
+}
 
 export function useLists() {
   return useQuery({ queryKey: listsKey, queryFn: listLists })
@@ -491,6 +516,10 @@ function buildCreateListDefaults(
         name,
         openItemCount: 0,
         checkedItemCount: 0,
+        // The server will attribute this to the same user from the session, so
+        // showing "by you" now avoids the row flickering its attribution in
+        // once the create (possibly much later, from the offline outbox) lands.
+        createdBy: optimisticAttribution(queryClient),
         createdAt: nowIso(),
         updatedAt: nowIso(),
       }

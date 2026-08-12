@@ -58,7 +58,11 @@ func (v *V1) CreateList(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	l, err := v.Service.CreateList(r.Context(), body.Name)
+	u, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	l, err := v.Service.CreateList(r.Context(), body.Name, u)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -117,7 +121,11 @@ func (v *V1) CopyList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if body.Name != nil {
 		name = *body.Name
 	}
-	l, err := v.Service.CopyList(r.Context(), uuid.UUID(listId), name)
+	u, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	l, err := v.Service.CopyList(r.Context(), uuid.UUID(listId), name, u)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -236,6 +244,20 @@ func (v *V1) UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, 
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
 
+// actor returns the id of the authenticated user for a mutation that records
+// attribution. RequireAuth puts the user in the context before any handler
+// runs, so its absence is a wiring bug, not a client error — hence the same
+// Internal problem GetMe writes. On false the caller must stop; the response is
+// already written.
+func actor(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	u, ok := auth.UserFrom(r.Context())
+	if !ok {
+		problem.Write(w, r, problem.New(problem.Internal, "no authenticated user in context"))
+		return uuid.Nil, false
+	}
+	return u.ID, true
+}
+
 // decodeBody decodes the JSON request body into dst. On failure it writes a
 // validation problem and returns false so the caller stops. The OpenAPI
 // validation middleware normally rejects malformed bodies before the handler
@@ -296,6 +318,22 @@ func toInt32(n int) int32 {
 	}
 }
 
+// toAttribution maps a domain actor to its generated response model. A nil
+// actor stays nil, so the field is omitted entirely — "absent" is how the API
+// says the attribution is unknown. An actor whose name did not resolve keeps a
+// null name; the client can still recognise its own id.
+func toAttribution(a *lists.Actor) *Attribution {
+	if a == nil {
+		return nil
+	}
+	out := &Attribution{Id: openapi_types.UUID(a.ID)}
+	if a.Name != "" {
+		name := a.Name
+		out.Name = &name
+	}
+	return out
+}
+
 // toList maps a domain list to its generated response model.
 func toList(l lists.List) List {
 	return List{
@@ -303,6 +341,7 @@ func toList(l lists.List) List {
 		Name:             l.Name,
 		OpenItemCount:    toInt32(l.OpenItemCount),
 		CheckedItemCount: toInt32(l.CheckedItemCount),
+		CreatedBy:        toAttribution(l.CreatedBy),
 		CreatedAt:        l.CreatedAt,
 		UpdatedAt:        l.UpdatedAt,
 	}
@@ -315,6 +354,7 @@ func toListWithItems(l lists.List, items []lists.Item) ListWithItems {
 		Name:             l.Name,
 		OpenItemCount:    toInt32(l.OpenItemCount),
 		CheckedItemCount: toInt32(l.CheckedItemCount),
+		CreatedBy:        toAttribution(l.CreatedBy),
 		CreatedAt:        l.CreatedAt,
 		UpdatedAt:        l.UpdatedAt,
 		Items:            make([]Item, 0, len(items)),

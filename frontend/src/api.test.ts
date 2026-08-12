@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   addItem,
   apiFetch,
+  attributionLabel,
   checkItem,
   createList,
   deleteItem,
@@ -456,5 +457,36 @@ describe('logout', () => {
     expect(removeClientSpy).toHaveBeenCalledTimes(1)
     // The persisted store must be gone before the navigation is kicked off.
     expect(order).toEqual(['removeClient', 'submit'])
+  })
+})
+
+// US-L.11: the single place that decides how an attribution is addressed. It is
+// shared by the overview and the item rows, so its edge cases are pinned here
+// rather than duplicated in both component tests.
+describe('attributionLabel', () => {
+  const meId = 'user-me'
+
+  it('addresses the viewer as "you", by id rather than by name', () => {
+    expect(attributionLabel({ id: meId, name: 'Alex' }, meId)).toBe('you')
+    // Even with no resolved name: the id alone identifies the viewer.
+    expect(attributionLabel({ id: meId, name: null }, meId)).toBe('you')
+  })
+
+  it('addresses another member by name', () => {
+    expect(attributionLabel({ id: 'user-other', name: 'Maria' }, meId)).toBe('Maria')
+  })
+
+  it('returns null when there is nothing worth showing', () => {
+    // No attribution at all (a row predating the feature).
+    expect(attributionLabel(undefined, meId)).toBeNull()
+    // A stranger whose name never resolved — a bare UUID helps nobody.
+    expect(attributionLabel({ id: 'user-other', name: null }, meId)).toBeNull()
+    expect(attributionLabel({ id: 'user-other', name: '' }, meId)).toBeNull()
+  })
+
+  // Before /me resolves there is no viewer to compare against; falling back to
+  // the name keeps the row informative instead of blank.
+  it('falls back to the name when the viewer is unknown', () => {
+    expect(attributionLabel({ id: meId, name: 'Alex' }, undefined)).toBe('Alex')
   })
 })

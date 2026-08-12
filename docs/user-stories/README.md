@@ -85,6 +85,7 @@ of each other and may be built in either order (or in parallel).
 | # | Stories | Why here |
 |---|---------|----------|
 | 19 | [US-L.10](US-L.10-copy-a-list.md) | Copying a list with every item unchecked turns a finished shop into the next one's starting point; builds on the M1 list/item CRUD and the M3 live-update hints. |
+| 20 | [US-L.11](US-L.11-see-who-did-what.md) | Naming who created a list and who added or bought each item makes a shared list answerable; needs the M2 membership records to resolve a display name. |
 
 ## Out of scope
 

@@ -146,6 +146,7 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.members.Upsert(ctx, members.Member{
 		Subject: user.ID.String(),
+		UserID:  user.ID,
 		Email:   user.Email,
 		Name:    user.Name,
 	}); err != nil {

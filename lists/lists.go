@@ -54,19 +54,29 @@ type ValidationError struct {
 
 func (e *ValidationError) Error() string { return e.Message }
 
-// User is an authenticated user. In M1 it is always the hardcoded dev user.
-type User struct {
+// Actor is the user credited with an action (US-L.11): the creator of a list,
+// or the member who added or bought an item. Only the ID is stored; Name is
+// resolved at read time from the members table, so a rename propagates to every
+// past action. Name is empty when no member row matches the id — the UI then
+// shows nothing rather than a bare UUID (except for the acting user themselves,
+// which the client recognises by id alone).
+//
+// A nil *Actor means the action predates attribution, or was taken by nobody
+// the app can name.
+type Actor struct {
 	ID   uuid.UUID
 	Name string
 }
 
 // List is a shopping list together with a summary of its item counts. The
 // counts are derived by the repository; a zero-item list has both at zero.
+// CreatedBy is nil for lists created before attribution existed.
 type List struct {
 	ID               uuid.UUID
 	Name             string
 	OpenItemCount    int
 	CheckedItemCount int
+	CreatedBy        *Actor
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -101,8 +111,12 @@ type ItemUpdate struct {
 // implements it; the Service depends only on this interface. Every method that
 // addresses a specific list or item returns ErrNotFound when it does not exist
 // (item lookups are always scoped to their list).
+// The acting user's id is passed explicitly to every method that records
+// attribution, rather than read from the context: the domain stays free of
+// transport concerns, and a missing actor becomes a compile error instead of a
+// silently unattributed row.
 type Repository interface {
-	CreateList(ctx context.Context, name string) (List, error)
+	CreateList(ctx context.Context, name string, createdBy uuid.UUID) (List, error)
 	Lists(ctx context.Context) ([]List, error)
 	List(ctx context.Context, id uuid.UUID) (List, error)
 	ListItems(ctx context.Context, listID uuid.UUID) ([]Item, error)
@@ -111,8 +125,10 @@ type Repository interface {
 	// CopyList creates a new list named name holding a copy of every
 	// non-deleted item of sourceID, each reset to unchecked. It is atomic: the
 	// list and its items are written in one transaction, and a source that
-	// does not exist (or vanishes mid-copy) yields ErrNotFound.
-	CopyList(ctx context.Context, sourceID uuid.UUID, name string) (List, error)
+	// does not exist (or vanishes mid-copy) yields ErrNotFound. The copier is
+	// credited as the creator of the copy and the adder of every copied item —
+	// the copy is their new list, whoever assembled the original.
+	CopyList(ctx context.Context, sourceID uuid.UUID, name string, actor uuid.UUID) (List, error)
 
 	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)

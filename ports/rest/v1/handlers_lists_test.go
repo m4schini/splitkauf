@@ -28,12 +28,12 @@ import (
 // tests. Each field, when set, overrides the corresponding method; unset
 // methods return zero values. This lets a test wire only what it exercises.
 type fakeService struct {
-	createList  func(ctx context.Context, name string) (lists.List, error)
+	createList  func(ctx context.Context, name string, actor uuid.UUID) (lists.List, error)
 	listsFn     func(ctx context.Context) ([]lists.List, error)
 	getList     func(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	renameList  func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	deleteList  func(ctx context.Context, id uuid.UUID) error
-	copyList    func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
+	copyList    func(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error)
 	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
@@ -42,8 +42,8 @@ type fakeService struct {
 	uncheckItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
 }
 
-func (f *fakeService) CreateList(ctx context.Context, name string) (lists.List, error) {
-	return f.createList(ctx, name)
+func (f *fakeService) CreateList(ctx context.Context, name string, actor uuid.UUID) (lists.List, error) {
+	return f.createList(ctx, name, actor)
 }
 
 func (f *fakeService) Lists(ctx context.Context) ([]lists.List, error) {
@@ -62,8 +62,8 @@ func (f *fakeService) DeleteList(ctx context.Context, id uuid.UUID) error {
 	return f.deleteList(ctx, id)
 }
 
-func (f *fakeService) CopyList(ctx context.Context, id uuid.UUID, name string) (lists.List, error) {
-	return f.copyList(ctx, id, name)
+func (f *fakeService) CopyList(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error) {
+	return f.copyList(ctx, id, name, actor)
 }
 
 func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
@@ -349,9 +349,14 @@ func newDiscoveryServer(t *testing.T) string {
 
 func TestCreateListHappyPath(t *testing.T) {
 	want := lists.List{ID: uuid.New(), Name: "Groceries", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	svc := &fakeService{createList: func(_ context.Context, name string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, name string, actor uuid.UUID) (lists.List, error) {
 		if name != "Groceries" {
 			t.Errorf("service got name %q", name)
+		}
+		// The dev authenticator is the one wired into this server, so the
+		// handler must have pulled its user out of the request context.
+		if actor != auth.DevUser.ID {
+			t.Errorf("service got actor %v, want the dev user %v", actor, auth.DevUser.ID)
 		}
 		return want, nil
 	}}
@@ -377,7 +382,7 @@ func TestCreateListHappyPath(t *testing.T) {
 // handler runs, yielding a 400 application/problem+json validation problem.
 func TestCreateListValidationSurface(t *testing.T) {
 	// The service must never be called for an invalid request.
-	svc := &fakeService{createList: func(_ context.Context, _ string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for invalid body")
 		return lists.List{}, nil
 	}}
@@ -698,12 +703,15 @@ func TestDeleteListNoContent(t *testing.T) {
 func TestCopyListWithoutBody(t *testing.T) {
 	sourceID := uuid.New()
 	want := lists.List{ID: uuid.New(), Name: "Groceries (copy)", OpenItemCount: 3, CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	svc := &fakeService{copyList: func(_ context.Context, id uuid.UUID, name string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error) {
 		if id != sourceID {
 			t.Errorf("service got list id %v, want %v", id, sourceID)
 		}
 		if name != "" {
 			t.Errorf("service got name %q, want empty (no name supplied)", name)
+		}
+		if actor != auth.DevUser.ID {
+			t.Errorf("service got actor %v, want the dev user %v", actor, auth.DevUser.ID)
 		}
 		return want, nil
 	}}
@@ -731,7 +739,7 @@ func TestCopyListWithoutBody(t *testing.T) {
 // to the service verbatim.
 func TestCopyListWithName(t *testing.T) {
 	sourceID := uuid.New()
-	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, name string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, name string, _ uuid.UUID) (lists.List, error) {
 		if name != "Party" {
 			t.Errorf("service got name %q, want %q", name, "Party")
 		}
@@ -748,7 +756,7 @@ func TestCopyListWithName(t *testing.T) {
 
 // TestCopyListNotFound maps a missing source list to a 404 problem.
 func TestCopyListNotFound(t *testing.T) {
-	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) (lists.List, error) {
 		return lists.List{}, lists.ErrNotFound
 	}}
 	srv := newServer(t, svc)
@@ -769,7 +777,7 @@ func TestCopyListNotFound(t *testing.T) {
 // TestCopyListRejectsEmptyName pins that the OpenAPI validator (minLength: 1)
 // rejects an explicitly empty name before the handler runs.
 func TestCopyListRejectsEmptyName(t *testing.T) {
-	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for invalid body")
 		return lists.List{}, nil
 	}}

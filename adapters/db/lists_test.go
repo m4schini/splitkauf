@@ -10,12 +10,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/lists"
+	"github.com/m4schini/splitkauf/members"
 )
 
 // newTestRepo opens a repository against the DSN in SPLITKAUF_TEST_DATABASE_DSN,
 // skipping the test when running with -short or when the DSN is unset. It
 // TRUNCATEs the lists table (items cascade) so each test starts clean without
 // dropping or recreating the schema.
+// testActor stands in for the authenticated user whose id the REST layer
+// passes down to every attributing write.
+var testActor = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
 func newTestRepo(t *testing.T) (*db.ListsRepository, context.Context) {
 	t.Helper()
 	if testing.Short() {
@@ -41,7 +46,7 @@ func newTestRepo(t *testing.T) (*db.ListsRepository, context.Context) {
 func TestListLifecycle(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	created, err := repo.CreateList(ctx, "Groceries")
+	created, err := repo.CreateList(ctx, "Groceries", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -104,7 +109,7 @@ func TestListNotFound(t *testing.T) {
 func TestDeleteListCascadesItems(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Cascade")
+	list, err := repo.CreateList(ctx, "Cascade", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -126,7 +131,7 @@ func TestDeleteListCascadesItems(t *testing.T) {
 func TestItemLifecycleAndCounts(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Shopping")
+	list, err := repo.CreateList(ctx, "Shopping", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -199,7 +204,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 func TestItemNotFound(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "L")
+	list, err := repo.CreateList(ctx, "L", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -223,7 +228,7 @@ func TestItemNotFound(t *testing.T) {
 func TestSoftDeleteAndRestore(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Shopping")
+	list, err := repo.CreateList(ctx, "Shopping", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -275,7 +280,7 @@ func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
 	// A list whose only item is soft-deleted.
-	deletedList, err := repo.CreateList(ctx, "All deleted")
+	deletedList, err := repo.CreateList(ctx, "All deleted", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -288,7 +293,7 @@ func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
 	}
 
 	// An empty list (no items at all).
-	emptyList, err := repo.CreateList(ctx, "Empty")
+	emptyList, err := repo.CreateList(ctx, "Empty", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -326,7 +331,7 @@ func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
 func TestRestoreNeverDeletedIsIdempotent(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Shopping")
+	list, err := repo.CreateList(ctx, "Shopping", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -353,7 +358,7 @@ func TestRestoreNeverDeletedIsIdempotent(t *testing.T) {
 func TestAddItemChecked(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Shopping")
+	list, err := repo.CreateList(ctx, "Shopping", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -387,7 +392,7 @@ func TestAddItemNonexistentListReturnsNotFound(t *testing.T) {
 func TestItemUnitRoundTrip(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	list, err := repo.CreateList(ctx, "Shopping")
+	list, err := repo.CreateList(ctx, "Shopping", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -463,7 +468,7 @@ func TestItemUnitRoundTrip(t *testing.T) {
 func TestCopyList(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	source, err := repo.CreateList(ctx, "Groceries")
+	source, err := repo.CreateList(ctx, "Groceries", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -484,7 +489,7 @@ func TestCopyList(t *testing.T) {
 		t.Fatalf("DeleteItem: %v", err)
 	}
 
-	copied, err := repo.CopyList(ctx, source.ID, "Groceries (copy)")
+	copied, err := repo.CopyList(ctx, source.ID, "Groceries (copy)", testActor)
 	if err != nil {
 		t.Fatalf("CopyList: %v", err)
 	}
@@ -546,11 +551,11 @@ func TestCopyList(t *testing.T) {
 func TestCopyEmptyListAndMissingSource(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	empty, err := repo.CreateList(ctx, "Empty")
+	empty, err := repo.CreateList(ctx, "Empty", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	copied, err := repo.CopyList(ctx, empty.ID, "Empty (copy)")
+	copied, err := repo.CopyList(ctx, empty.ID, "Empty (copy)", testActor)
 	if err != nil {
 		t.Fatalf("CopyList(empty): %v", err)
 	}
@@ -565,7 +570,7 @@ func TestCopyEmptyListAndMissingSource(t *testing.T) {
 		t.Errorf("copy of an empty list has %d items, want 0", len(items))
 	}
 
-	if _, err := repo.CopyList(ctx, uuid.New(), "Ghost (copy)"); err != lists.ErrNotFound {
+	if _, err := repo.CopyList(ctx, uuid.New(), "Ghost (copy)", testActor); err != lists.ErrNotFound {
 		t.Fatalf("CopyList(missing) err = %v, want ErrNotFound", err)
 	}
 	// The failed copy rolled back: only the two lists above exist.
@@ -586,5 +591,75 @@ func assertCounts(t *testing.T, repo *db.ListsRepository, id uuid.UUID, open, ch
 	}
 	if l.OpenItemCount != open || l.CheckedItemCount != checked {
 		t.Errorf("counts = %d/%d, want %d/%d", l.OpenItemCount, l.CheckedItemCount, open, checked)
+	}
+}
+
+// TestListAttribution pins the read-time name resolution (US-L.11): the
+// creator's id is stored on the list, the display name comes from the members
+// join, and a rename of that member changes what past lists report — which is
+// the whole reason the name is not snapshotted at write time.
+func TestListAttribution(t *testing.T) {
+	memberRepo, ctx := newTestMemberRepo(t)
+	repo, _ := newTestRepo(t)
+
+	if err := memberRepo.Upsert(ctx, members.Member{
+		Subject: "subject-for-" + testActor.String(),
+		UserID:  testActor,
+		Name:    "Alice",
+	}); err != nil {
+		t.Fatalf("Upsert member: %v", err)
+	}
+
+	created, err := repo.CreateList(ctx, "Groceries", testActor)
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	if created.CreatedBy == nil {
+		t.Fatal("CreatedBy is nil, want the acting user")
+	}
+	if created.CreatedBy.ID != testActor || created.CreatedBy.Name != "Alice" {
+		t.Errorf("CreatedBy = %+v, want {%v Alice}", created.CreatedBy, testActor)
+	}
+
+	// A copy is credited to the copier, and the overview read resolves the name
+	// through the same join.
+	copied, err := repo.CopyList(ctx, created.ID, "Groceries (copy)", testActor)
+	if err != nil {
+		t.Fatalf("CopyList: %v", err)
+	}
+	if copied.CreatedBy == nil || copied.CreatedBy.Name != "Alice" {
+		t.Errorf("copy CreatedBy = %+v, want Alice", copied.CreatedBy)
+	}
+
+	// Rename the member: every past attribution must follow.
+	if err := memberRepo.Upsert(ctx, members.Member{
+		Subject: "subject-for-" + testActor.String(),
+		UserID:  testActor,
+		Name:    "Alice Cooper",
+	}); err != nil {
+		t.Fatalf("Upsert member (rename): %v", err)
+	}
+	all, err := repo.Lists(ctx)
+	if err != nil {
+		t.Fatalf("Lists: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("Lists = %d, want 2", len(all))
+	}
+	for _, l := range all {
+		if l.CreatedBy == nil || l.CreatedBy.Name != "Alice Cooper" {
+			t.Errorf("list %q CreatedBy = %+v, want the renamed Alice Cooper", l.Name, l.CreatedBy)
+		}
+	}
+
+	// An actor with no member row still yields an attribution — the id is known,
+	// only the name is not. The UI hides the line unless the id is the viewer's.
+	stranger := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	orphan, err := repo.CreateList(ctx, "Orphan", stranger)
+	if err != nil {
+		t.Fatalf("CreateList (unknown member): %v", err)
+	}
+	if orphan.CreatedBy == nil || orphan.CreatedBy.ID != stranger || orphan.CreatedBy.Name != "" {
+		t.Errorf("CreatedBy = %+v, want id %v with an empty name", orphan.CreatedBy, stranger)
 	}
 }

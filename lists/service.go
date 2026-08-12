@@ -23,13 +23,14 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo, now: time.Now}
 }
 
-// CreateList validates the name and persists a new, empty list.
-func (s *Service) CreateList(ctx context.Context, name string) (List, error) {
+// CreateList validates the name and persists a new, empty list, credited to
+// actor as its creator.
+func (s *Service) CreateList(ctx context.Context, name string, actor uuid.UUID) (List, error) {
 	clean, err := validateListName(name)
 	if err != nil {
 		return List{}, err
 	}
-	return s.repo.CreateList(ctx, clean)
+	return s.repo.CreateList(ctx, clean, actor)
 }
 
 // Lists returns every list with its item-count summary.
@@ -64,8 +65,10 @@ func (s *Service) RenameList(ctx context.Context, id uuid.UUID, name string) (Li
 // CopyList creates a new list holding a copy of every non-deleted item of the
 // source list, each reset to unchecked. An empty name means "derive one": the
 // copy is named "«source name» (copy)". A supplied name is validated like any
-// other list name. It returns ErrNotFound when the source does not exist.
-func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string) (List, error) {
+// other list name. The copy (and every item on it) is attributed to actor, not
+// to whoever created the source. It returns ErrNotFound when the source does
+// not exist.
+func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (List, error) {
 	source, err := s.repo.List(ctx, id)
 	if err != nil {
 		return List{}, err
@@ -77,7 +80,7 @@ func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string) (List
 			return List{}, err
 		}
 	}
-	return s.repo.CopyList(ctx, id, clean)
+	return s.repo.CopyList(ctx, id, clean, actor)
 }
 
 // DeleteList deletes a list and (via the repository's cascade) all its items.

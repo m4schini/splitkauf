@@ -1,9 +1,16 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { deleteList as apiDeleteList, type List } from './api'
+import { attributionLabel, deleteList as apiDeleteList, type List } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
-import { listsKey, removeListLocally, restoreListLocally, useCreateList, useLists } from './queries'
+import {
+  listsKey,
+  removeListLocally,
+  restoreListLocally,
+  useCreateList,
+  useLists,
+  useMe,
+} from './queries'
 import { useLiveEvents } from './live'
 
 interface ListsOverviewProps {
@@ -13,6 +20,7 @@ interface ListsOverviewProps {
 /** Overview of all shopping lists (US-L.1/L.2), with a bottom-anchored create form. */
 export function ListsOverview({ onOpenList }: ListsOverviewProps) {
   const { data: lists, isLoading, isError } = useLists()
+  const { data: me } = useMe()
   const createList = useCreateList()
   const queryClient = useQueryClient()
   const { pending, schedule, undo } = useUndoQueue()
@@ -71,29 +79,35 @@ export function ListsOverview({ onOpenList }: ListsOverviewProps) {
           <p className="hint">No lists yet — add one below.</p>
         )}
         <ul className="row-list">
-          {visibleLists.map((list) => (
-            <li key={list.id} className="row">
-              <button
-                type="button"
-                className="row-tap-target list-row-button"
-                onClick={() => onOpenList(list.id)}
-              >
-                <span className="list-row-name">{list.name}</span>
-                <span className="list-row-counts">
-                  {list.openItemCount} open
-                  {list.checkedItemCount > 0 ? ` · ${list.checkedItemCount} done` : ''}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="icon-button danger"
-                aria-label={`Delete list ${list.name}`}
-                onClick={() => handleDelete(list)}
-              >
-                Delete
-              </button>
-            </li>
-          ))}
+          {visibleLists.map((list) => {
+            // Null for a list nobody is credited with — a list from before
+            // attribution, or a creator whose name never resolved (US-L.11).
+            const createdBy = attributionLabel(list.createdBy, me?.id)
+            return (
+              <li key={list.id} className="row">
+                <button
+                  type="button"
+                  className="row-tap-target list-row-button"
+                  onClick={() => onOpenList(list.id)}
+                >
+                  <span className="list-row-name">{list.name}</span>
+                  <span className="list-row-counts">
+                    {list.openItemCount} open
+                    {list.checkedItemCount > 0 ? ` · ${list.checkedItemCount} done` : ''}
+                    {createdBy ? ` · by ${createdBy}` : ''}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="icon-button danger"
+                  aria-label={`Delete list ${list.name}`}
+                  onClick={() => handleDelete(list)}
+                >
+                  Delete
+                </button>
+              </li>
+            )
+          })}
         </ul>
       </div>
 

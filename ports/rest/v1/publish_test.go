@@ -34,7 +34,7 @@ func patchJSON(t *testing.T, url, body string) *http.Response {
 // TestCreateListPublishesListEvent asserts a successful list create emits a
 // single {lists} reload hint (representative of the list-mutation handlers).
 func TestCreateListPublishesListEvent(t *testing.T) {
-	svc := &fakeService{createList: func(_ context.Context, name string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, name string, _ uuid.UUID) (lists.List, error) {
 		return lists.List{ID: uuid.New(), Name: name}, nil
 	}}
 	pub := &capturingPublisher{}
@@ -61,7 +61,7 @@ func TestCreateListPublishesListEvent(t *testing.T) {
 // TestCopyListPublishesListEvent asserts a successful copy emits a single
 // {lists} reload hint, so other clients pick the new list up in their overview.
 func TestCopyListPublishesListEvent(t *testing.T) {
-	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) (lists.List, error) {
 		return lists.List{ID: uuid.New(), Name: "Groceries (copy)"}, nil
 	}}
 	pub := &capturingPublisher{}
@@ -88,7 +88,7 @@ func TestCopyListPublishesListEvent(t *testing.T) {
 // TestFailedCopyPublishesNothing proves the copy's publish is strictly after
 // success: a missing source emits no hint.
 func TestFailedCopyPublishesNothing(t *testing.T) {
-	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string) (lists.List, error) {
+	svc := &fakeService{copyList: func(_ context.Context, _ uuid.UUID, _ string, _ uuid.UUID) (lists.List, error) {
 		return lists.List{}, lists.ErrNotFound
 	}}
 	pub := &capturingPublisher{}
@@ -258,7 +258,7 @@ func (s *statefulService) setChecked(listID, itemID uuid.UUID, checked bool) (li
 }
 
 // Unused-by-these-tests methods satisfy the interface.
-func (s *statefulService) CreateList(context.Context, string) (lists.List, error) {
+func (s *statefulService) CreateList(context.Context, string, uuid.UUID) (lists.List, error) {
 	return lists.List{}, nil
 }
 func (s *statefulService) Lists(context.Context) ([]lists.List, error) { return nil, nil }
@@ -270,7 +270,7 @@ func (s *statefulService) RenameList(context.Context, uuid.UUID, string) (lists.
 	return lists.List{}, nil
 }
 func (s *statefulService) DeleteList(context.Context, uuid.UUID) error { return nil }
-func (s *statefulService) CopyList(context.Context, uuid.UUID, string) (lists.List, error) {
+func (s *statefulService) CopyList(context.Context, uuid.UUID, string, uuid.UUID) (lists.List, error) {
 	return lists.List{}, nil
 }
 

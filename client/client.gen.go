@@ -88,6 +88,22 @@ type AddItemRequest struct {
 	Unit *Unit `json:"unit,omitempty"`
 }
 
+// Attribution The user credited with an action — creating a list, adding an item, or
+// buying one. Only the id is stored; the name is resolved when the
+// resource is read, so a profile rename applies retroactively.
+//
+// Clients render "you" by comparing `id` against the id from `GET /me`
+// rather than by matching the name.
+type Attribution struct {
+	// Id The acting user's unique identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The acting user's display name, or null when no member record
+	// matches the id (the account has never signed in since attribution
+	// was introduced). Clients should show nothing rather than a bare id.
+	Name *string `json:"name,omitempty"`
+}
+
 // CopyListRequest Optional request body for copying a list. When omitted (or when `name`
 // is absent) the server names the copy "«Original name» (copy)".
 type CopyListRequest struct {
@@ -170,6 +186,10 @@ type List struct {
 	// CreatedAt When the list was created.
 	CreatedAt time.Time `json:"createdAt"`
 
+	// CreatedBy Who created the list. Absent when unknown — lists created before
+	// attribution was introduced carry no creator.
+	CreatedBy *Attribution `json:"createdBy,omitempty"`
+
 	// Id The list's unique identifier.
 	Id openapi_types.UUID `json:"id"`
 
@@ -190,6 +210,10 @@ type ListWithItems struct {
 
 	// CreatedAt When the list was created.
 	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy Who created the list. Absent when unknown — lists created before
+	// attribution was introduced carry no creator.
+	CreatedBy *Attribution `json:"createdBy,omitempty"`
 
 	// Id The list's unique identifier.
 	Id openapi_types.UUID `json:"id"`

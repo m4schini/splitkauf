@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/members"
 )
@@ -42,10 +43,12 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	repo, ctx := newTestMemberRepo(t)
 
 	const subject = "oidc-subject-123"
+	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 	// First Upsert inserts a brand-new member.
 	if err := repo.Upsert(ctx, members.Member{
 		Subject: subject,
+		UserID:  userID,
 		Email:   "alice@example.com",
 		Name:    "Alice",
 	}); err != nil {
@@ -59,6 +62,9 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	if inserted.Email != "alice@example.com" || inserted.Name != "Alice" {
 		t.Errorf("inserted = %+v, want email alice@example.com name Alice", inserted)
 	}
+	if inserted.UserID != userID {
+		t.Errorf("user_id = %v, want %v", inserted.UserID, userID)
+	}
 	if inserted.CreatedAt.IsZero() || inserted.UpdatedAt.IsZero() {
 		t.Errorf("timestamps not set: created=%v updated=%v", inserted.CreatedAt, inserted.UpdatedAt)
 	}
@@ -68,8 +74,12 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 
 	// Second Upsert with the SAME subject but changed email/name must UPDATE the
 	// existing row (ON CONFLICT) rather than insert a duplicate.
+	// The user id is re-stamped too: migration 000007's backfill guesses it from
+	// the subject, and a login is what corrects a wrong guess (US-L.11).
+	corrected := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	if err := repo.Upsert(ctx, members.Member{
 		Subject: subject,
+		UserID:  corrected,
 		Email:   "alice.new@example.com",
 		Name:    "Alice Cooper",
 	}); err != nil {
@@ -90,6 +100,9 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	// ...while updated_at must advance.
 	if !updated.UpdatedAt.After(inserted.UpdatedAt) {
 		t.Errorf("updated_at did not advance: was %v, now %v", inserted.UpdatedAt, updated.UpdatedAt)
+	}
+	if updated.UserID != corrected {
+		t.Errorf("user_id = %v, want the re-stamped %v", updated.UserID, corrected)
 	}
 	if updated.Subject != subject {
 		t.Errorf("subject = %q, want %q", updated.Subject, subject)

@@ -136,12 +136,26 @@ export interface User {
   email?: string
 }
 
+/**
+ * The user credited with an action (US-L.11). Only the id is stored server-side;
+ * `name` is resolved when the resource is read, so a profile rename applies to
+ * every past action. It is null when no member record matches the id, in which
+ * case there is nothing worth displaying — except to that user themselves, who
+ * is recognised by id (see `attributionLabel`).
+ */
+export interface Attribution {
+  id: string
+  name: string | null
+}
+
 /** A shopping list with a summary of its item counts. */
 export interface List {
   id: string
   name: string
   openItemCount: number
   checkedItemCount: number
+  /** Who created the list; absent for lists that predate attribution. */
+  createdBy?: Attribution
   createdAt: string
   updatedAt: string
 }
@@ -203,6 +217,22 @@ export interface Item {
   checkedAt?: string | null
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * How to address the user credited with an action, or null when there is
+ * nothing worth showing. The viewer is always "you" — recognised by id, so it
+ * works even for an account whose name never resolved. Anyone else is shown by
+ * name; a nameless stranger yields null and the caller renders no line at all,
+ * rather than exposing a raw UUID.
+ */
+export function attributionLabel(
+  attribution: Attribution | undefined,
+  meId: string | undefined,
+): string | null {
+  if (!attribution) return null
+  if (meId && attribution.id === meId) return 'you'
+  return attribution.name || null
 }
 
 /** A list together with all of its items. */

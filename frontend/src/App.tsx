@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getAuthConfig, getMe, isUnauthorized, login, logout } from './api'
+import { getAuthConfig, isUnauthorized, login, logout } from './api'
 import { ListsOverview } from './ListsOverview'
 import { ListDetail } from './ListDetail'
 import { LoginForm } from './LoginForm'
 import { OfflineIndicator } from './OfflineIndicator'
-import { randomId, subscribeSyncNotice } from './queries'
+import { randomId, subscribeSyncNotice, useMe } from './queries'
 
 const SYNC_NOTICE_MS = 6000
 
@@ -72,7 +72,6 @@ function SyncNotices({
 
 type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
-const meKey = ['me'] as const
 const authConfigKey = ['authConfig'] as const
 
 /**
@@ -85,15 +84,7 @@ const authConfigKey = ['authConfig'] as const
 function App() {
   const [view, setView] = useState<View>({ screen: 'overview' })
   const { notices, dismiss } = useSyncNotices()
-  const {
-    data: user,
-    error,
-    isPending,
-  } = useQuery({
-    queryKey: meKey,
-    queryFn: getMe,
-    retry: false,
-  })
+  const { data: user, error, isPending } = useMe()
   // The auth mode decides the signed-out UI (password form vs OIDC redirect).
   // It's public and rarely changes, so cache it and never retry; an
   // unresolved/failed lookup falls back to the OIDC redirect button below.

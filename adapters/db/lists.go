@@ -41,35 +41,44 @@ var _ lists.Repository = (*ListsRepository)(nil)
 // filter (deleted_at IS NULL) lives in the JOIN's ON clause, NOT a WHERE: a
 // WHERE would demote the LEFT JOIN to an inner join and drop lists whose items
 // are all deleted (and empty lists) from the results.
+// The creator's display name is resolved here rather than stored, so a member
+// rename propagates to every list they ever created. The join is on the unique
+// members.user_id, so it matches at most one row and cannot multiply the item
+// rows the counts aggregate over. A creator with no member row (or a list from
+// before attribution) simply yields NULLs.
 const listSelect = `
 	SELECT l.id, l.name, l.created_at, l.updated_at,
 	       COALESCE(SUM(CASE WHEN i.checked = false THEN 1 ELSE 0 END), 0) AS open_count,
-	       COALESCE(SUM(CASE WHEN i.checked = true  THEN 1 ELSE 0 END), 0) AS checked_count
+	       COALESCE(SUM(CASE WHEN i.checked = true  THEN 1 ELSE 0 END), 0) AS checked_count,
+	       l.created_by, m.name AS created_by_name
 	FROM lists l
-	LEFT JOIN items i ON i.list_id = l.id AND i.deleted_at IS NULL`
+	LEFT JOIN items i ON i.list_id = l.id AND i.deleted_at IS NULL
+	LEFT JOIN members m ON m.user_id = l.created_by`
 
 // itemColumns is the column list for an item row, ordered to match scanItem.
 const itemColumns = `id, list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at`
 
-// CreateList inserts a new, empty list and returns it with zero counts.
-func (r *ListsRepository) CreateList(ctx context.Context, name string) (lists.List, error) {
+// CreateList inserts a new, empty list credited to createdBy and returns it
+// with zero counts. The row is re-read through List() rather than returned by
+// RETURNING: the creator's display name comes from a join no RETURNING clause
+// can perform (see listSelect).
+func (r *ListsRepository) CreateList(ctx context.Context, name string, createdBy uuid.UUID) (lists.List, error) {
 	now := time.Now()
-	row := r.db.QueryRowContext(ctx,
-		`INSERT INTO lists (name, created_at, updated_at) VALUES ($1, $2, $2)
-		 RETURNING id, name, created_at, updated_at`,
-		name, now)
-
-	var l lists.List
-	if err := row.Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt); err != nil {
+	var id uuid.UUID
+	if err := r.db.QueryRowContext(ctx,
+		`INSERT INTO lists (name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $3)
+		 RETURNING id`,
+		name, createdBy, now,
+	).Scan(&id); err != nil {
 		return lists.List{}, fmt.Errorf("create list: %w", err)
 	}
-	return l, nil
+	return r.List(ctx, id)
 }
 
 // Lists returns every list with its item-count summary, newest first.
 func (r *ListsRepository) Lists(ctx context.Context) ([]lists.List, error) {
 	rows, err := r.db.QueryContext(ctx,
-		listSelect+` GROUP BY l.id ORDER BY l.created_at DESC, l.id`)
+		listSelect+` GROUP BY l.id, m.name ORDER BY l.created_at DESC, l.id`)
 	if err != nil {
 		return nil, fmt.Errorf("query lists: %w", err)
 	}
@@ -92,7 +101,7 @@ func (r *ListsRepository) Lists(ctx context.Context) ([]lists.List, error) {
 // List returns a single list with its counts, or lists.ErrNotFound.
 func (r *ListsRepository) List(ctx context.Context, id uuid.UUID) (lists.List, error) {
 	row := r.db.QueryRowContext(ctx,
-		listSelect+` WHERE l.id = $1 GROUP BY l.id`, id)
+		listSelect+` WHERE l.id = $1 GROUP BY l.id, m.name`, id)
 
 	l, err := scanList(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -171,7 +180,7 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 // ORDER BY created_at, id, so a single shared timestamp would leave the copy's
 // order to the UUID tie-break, while reusing the source timestamps would make
 // the copied items look older than the list holding them.
-func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name string) (lists.List, error) {
+func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name string, actor uuid.UUID) (lists.List, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return lists.List{}, fmt.Errorf("copy list: begin: %w", err)
@@ -190,38 +199,34 @@ func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name
 	}
 
 	now := time.Now()
-	var l lists.List
+	var newID uuid.UUID
 	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO lists (name, created_at, updated_at) VALUES ($1, $2, $2)
-		 RETURNING id, name, created_at, updated_at`,
-		name, now,
-	).Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt); err != nil {
+		`INSERT INTO lists (name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $3)
+		 RETURNING id`,
+		name, actor, now,
+	).Scan(&newID); err != nil {
 		return lists.List{}, fmt.Errorf("copy list: insert list: %w", err)
 	}
 
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at)
-		 SELECT $1, name, quantity, unit, note, false, NULL,
+	// The copier is credited with adding every copied item, and nobody has
+	// bought any of them yet — the copy starts as their fresh shopping list.
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, added_by, bought_by, created_at, updated_at)
+		 SELECT $1, name, quantity, unit, note, false, NULL, $4, NULL,
 		        $3::timestamptz + row_number() OVER (ORDER BY created_at, id) * interval '1 microsecond',
 		        $3
 		 FROM items WHERE list_id = $2 AND deleted_at IS NULL`,
-		l.ID, sourceID, now)
-	if err != nil {
+		newID, sourceID, now, actor); err != nil {
 		return lists.List{}, fmt.Errorf("copy list: insert items: %w", err)
-	}
-	copied, err := res.RowsAffected()
-	if err != nil {
-		return lists.List{}, fmt.Errorf("copy list: count copied items: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return lists.List{}, fmt.Errorf("copy list: commit: %w", err)
 	}
 
-	// Every copied item is unchecked by construction, so the counts follow from
-	// the insert's row count without a second read.
-	l.OpenItemCount = int(copied)
-	return l, nil
+	// Re-read for the counts and the creator's display name, which the join in
+	// listSelect resolves and no RETURNING clause could.
+	return r.List(ctx, newID)
 }
 
 // AddItem inserts an item onto a list. It does not pre-check that the list
@@ -375,14 +380,30 @@ type scanner interface {
 
 // scanList scans a list projection (see listSelect) into a lists.List.
 func scanList(s scanner) (lists.List, error) {
-	var l lists.List
-	if err := s.Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt, &l.OpenItemCount, &l.CheckedItemCount); err != nil {
+	var (
+		l             lists.List
+		createdBy     uuid.NullUUID
+		createdByName sql.NullString
+	)
+	if err := s.Scan(&l.ID, &l.Name, &l.CreatedAt, &l.UpdatedAt, &l.OpenItemCount, &l.CheckedItemCount,
+		&createdBy, &createdByName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return lists.List{}, err
 		}
 		return lists.List{}, fmt.Errorf("scan list: %w", err)
 	}
+	l.CreatedBy = toActor(createdBy, createdByName)
 	return l, nil
+}
+
+// toActor builds the attribution for one (id, joined name) pair. A NULL id
+// means unattributed (nil); a NULL name means the id has no member row, which
+// is still worth reporting — the client recognises its own id without a name.
+func toActor(id uuid.NullUUID, name sql.NullString) *lists.Actor {
+	if !id.Valid {
+		return nil
+	}
+	return &lists.Actor{ID: id.UUID, Name: name.String}
 }
 
 // scanItem scans an item row (see itemColumns) into a lists.Item, translating

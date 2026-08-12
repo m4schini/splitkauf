@@ -32,7 +32,7 @@ func (nopCloserReader) Close() error { return nil }
 // a declared Content-Length above the 1 MiB cap is rejected with a 413
 // problem+json response before the handler (and thus the service) ever runs.
 func TestOversizedContentLengthReturns413Problem(t *testing.T) {
-	svc := &fakeService{createList: func(_ context.Context, _ string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for an oversized body")
 		return lists.List{}, nil
 	}}
@@ -76,7 +76,7 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 // validator failing to decode the truncated read) — both are
 // application/problem+json, and the service must never be reached.
 func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
-	svc := &fakeService{createList: func(_ context.Context, _ string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for an oversized body")
 		return lists.List{}, nil
 	}}
@@ -112,7 +112,7 @@ func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 // ordinary requests well under the cap.
 func TestNormalSizedPostStillSucceeds(t *testing.T) {
 	want := lists.List{ID: uuid.New(), Name: "Groceries", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	svc := &fakeService{createList: func(_ context.Context, name string) (lists.List, error) {
+	svc := &fakeService{createList: func(_ context.Context, name string, _ uuid.UUID) (lists.List, error) {
 		if name != "Groceries" {
 			t.Errorf("service got name %q", name)
 		}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { isUnauthorized, passwordLogin } from './api'
+import { meKey } from './queries'
 
 /**
  * Username/password sign-in form (US-A.6), shown when the server reports
@@ -24,7 +25,7 @@ export function LoginForm() {
     try {
       await passwordLogin(username, password)
       // Re-resolve the auth gate; a successful login flips to the signed-in view.
-      await queryClient.invalidateQueries({ queryKey: ['me'] })
+      await queryClient.invalidateQueries({ queryKey: meKey })
     } catch (err) {
       setError(
         isUnauthorized(err)

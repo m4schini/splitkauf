@@ -27,12 +27,12 @@ func New(si ServerInterface, options ChiServerOptions) http.Handler {
 // mirrors *lists.Service; declaring it as an interface here lets tests inject a
 // fake without a database. The concrete *lists.Service satisfies it.
 type ListService interface {
-	CreateList(ctx context.Context, name string) (lists.List, error)
+	CreateList(ctx context.Context, name string, actor uuid.UUID) (lists.List, error)
 	Lists(ctx context.Context) ([]lists.List, error)
 	GetList(ctx context.Context, id uuid.UUID) (lists.List, []lists.Item, error)
 	RenameList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
-	CopyList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
+	CopyList(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error)
 	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error

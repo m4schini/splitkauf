@@ -26,6 +26,7 @@ var DevUser = User{ID: devUserID, Name: "Dev User"}
 func DevMember() members.Member {
 	return members.Member{
 		Subject: DevUser.ID.String(),
+		UserID:  DevUser.ID,
 		Email:   DevUser.Email,
 		Name:    DevUser.Name,
 	}

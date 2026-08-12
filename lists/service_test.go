@@ -52,8 +52,8 @@ func (r *fakeRepo) recount(listID uuid.UUID) {
 	l.CheckedItemCount = checked
 }
 
-func (r *fakeRepo) CreateList(_ context.Context, name string) (List, error) {
-	l := &List{ID: uuid.New(), Name: name, CreatedAt: r.clock, UpdatedAt: r.clock}
+func (r *fakeRepo) CreateList(_ context.Context, name string, createdBy uuid.UUID) (List, error) {
+	l := &List{ID: uuid.New(), Name: name, CreatedBy: &Actor{ID: createdBy}, CreatedAt: r.clock, UpdatedAt: r.clock}
 	r.lists[l.ID] = l
 	return *l, nil
 }
@@ -113,11 +113,11 @@ func (r *fakeRepo) DeleteList(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *fakeRepo) CopyList(_ context.Context, sourceID uuid.UUID, name string) (List, error) {
+func (r *fakeRepo) CopyList(_ context.Context, sourceID uuid.UUID, name string, actor uuid.UUID) (List, error) {
 	if _, ok := r.lists[sourceID]; !ok {
 		return List{}, ErrNotFound
 	}
-	cp := &List{ID: uuid.New(), Name: name, CreatedAt: r.clock, UpdatedAt: r.clock}
+	cp := &List{ID: uuid.New(), Name: name, CreatedBy: &Actor{ID: actor}, CreatedAt: r.clock, UpdatedAt: r.clock}
 	r.lists[cp.ID] = cp
 	for _, it := range r.items {
 		if it.ListID != sourceID || r.deleted[it.ID] {
@@ -233,22 +233,30 @@ func newService() (*Service, *fakeRepo) {
 
 func ptr[T any](v T) *T { return &v }
 
+// testActor stands in for the authenticated user the REST layer passes down.
+var testActor = uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
 func TestCreateList(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	if _, err := svc.CreateList(ctx, "  "); err == nil {
+	if _, err := svc.CreateList(ctx, "  ", testActor); err == nil {
 		t.Fatal("expected empty-name validation error")
 	} else {
 		assertValidationError(t, err, "name")
 	}
 
-	l, err := svc.CreateList(ctx, "  Groceries  ")
+	l, err := svc.CreateList(ctx, "  Groceries  ", testActor)
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
 	if l.Name != "Groceries" {
 		t.Fatalf("name not trimmed: %q", l.Name)
+	}
+	// The acting user must reach the repository, or the list is created
+	// unattributed and nothing downstream can recover who made it (US-L.11).
+	if l.CreatedBy == nil || l.CreatedBy.ID != testActor {
+		t.Fatalf("CreatedBy = %+v, want actor %v", l.CreatedBy, testActor)
 	}
 }
 
@@ -256,7 +264,7 @@ func TestListsAndGetList(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	if _, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", nil, false); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -285,7 +293,7 @@ func TestListsAndGetList(t *testing.T) {
 func TestRenameList(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Old")
+	l, _ := svc.CreateList(ctx, "Old", testActor)
 
 	if _, err := svc.RenameList(ctx, l.ID, ""); err == nil {
 		t.Fatal("expected validation error")
@@ -306,7 +314,7 @@ func TestRenameList(t *testing.T) {
 func TestDeleteList(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 2, "", nil, false)
 
 	if err := svc.DeleteList(ctx, l.ID); err != nil {
@@ -326,7 +334,7 @@ func TestDeleteList(t *testing.T) {
 func TestCopyList(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -336,7 +344,10 @@ func TestCopyList(t *testing.T) {
 	}
 
 	// No name supplied: derived from the source, and every item comes back open.
-	cp, err := svc.CopyList(ctx, l.ID, "")
+	// A second actor copies it, so the assertion below distinguishes "credited
+	// to the copier" from "inherited from the source's creator".
+	copier := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	cp, err := svc.CopyList(ctx, l.ID, "", copier)
 	if err != nil {
 		t.Fatalf("CopyList: %v", err)
 	}
@@ -346,9 +357,12 @@ func TestCopyList(t *testing.T) {
 	if cp.OpenItemCount != 2 || cp.CheckedItemCount != 0 {
 		t.Errorf("copy counts = %d/%d, want 2/0", cp.OpenItemCount, cp.CheckedItemCount)
 	}
+	if cp.CreatedBy == nil || cp.CreatedBy.ID != copier {
+		t.Errorf("copy CreatedBy = %+v, want the copier %v", cp.CreatedBy, copier)
+	}
 
 	// A supplied name wins and is trimmed like any other list name.
-	named, err := svc.CopyList(ctx, l.ID, "  Party  ")
+	named, err := svc.CopyList(ctx, l.ID, "  Party  ", testActor)
 	if err != nil {
 		t.Fatalf("CopyList (named): %v", err)
 	}
@@ -359,13 +373,13 @@ func TestCopyList(t *testing.T) {
 	// A whitespace-only name reaches the domain and is rejected. (A JSON-level
 	// empty string never gets here: the OpenAPI validator's minLength rejects
 	// it first.)
-	if _, err := svc.CopyList(ctx, l.ID, "   "); err == nil {
+	if _, err := svc.CopyList(ctx, l.ID, "   ", testActor); err == nil {
 		t.Fatal("expected name validation error")
 	} else {
 		assertValidationError(t, err, "name")
 	}
 
-	if _, err := svc.CopyList(ctx, uuid.New(), ""); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.CopyList(ctx, uuid.New(), "", testActor); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -410,7 +424,7 @@ func TestCopyListNameTrimming(t *testing.T) {
 func TestAddItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
 	// name validation
 	if _, err := svc.AddItem(ctx, l.ID, " ", 1, "", nil, false); err == nil {
@@ -456,7 +470,7 @@ func TestAddItem(t *testing.T) {
 func TestUpdateItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", ptr("2%"), false)
 
 	// invalid name
@@ -502,7 +516,7 @@ func TestUpdateItem(t *testing.T) {
 func TestDeleteItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
@@ -518,7 +532,7 @@ func TestDeleteItem(t *testing.T) {
 func TestRestoreItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
@@ -547,7 +561,7 @@ func TestRestoreItem(t *testing.T) {
 func TestAddItemChecked(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
 	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, true)
 	if err != nil {
@@ -561,7 +575,7 @@ func TestAddItemChecked(t *testing.T) {
 func TestCheckUncheckItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
 
 	checked, err := svc.CheckItem(ctx, l.ID, it.ID)
@@ -633,7 +647,7 @@ func TestUnitsIsSourceOfTruth(t *testing.T) {
 func TestAddItemUnit(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
 	// empty -> default amount
 	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
@@ -667,7 +681,7 @@ func TestAddItemUnit(t *testing.T) {
 func TestUpdateItemUnit(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
 
 	// valid change
@@ -701,7 +715,7 @@ func TestUpdateItemUnit(t *testing.T) {
 func TestUnitPreservedThroughStateChanges(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
-	l, _ := svc.CreateList(ctx, "Groceries")
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
 
 	checked, err := svc.CheckItem(ctx, l.ID, it.ID)

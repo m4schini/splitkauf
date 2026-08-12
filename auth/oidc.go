@@ -265,6 +265,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.members.Upsert(ctx, members.Member{
 		Subject: idToken.Subject,
+		UserID:  subjectUUID(idToken.Subject),
 		Email:   claims.Email,
 		Name:    name,
 	}); err != nil {

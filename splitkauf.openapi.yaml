@@ -450,6 +450,29 @@ components:
           format: email
           nullable: true
           description: The user's email address, if known.
+    Attribution:
+      type: object
+      description: |
+        The user credited with an action — creating a list, adding an item, or
+        buying one. Only the id is stored; the name is resolved when the
+        resource is read, so a profile rename applies retroactively.
+
+        Clients render "you" by comparing `id` against the id from `GET /me`
+        rather than by matching the name.
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The acting user's unique identifier.
+        name:
+          type: string
+          nullable: true
+          description: |
+            The acting user's display name, or null when no member record
+            matches the id (the account has never signed in since attribution
+            was introduced). Clients should show nothing rather than a bare id.
     List:
       type: object
       description: A shopping list with a summary of its item counts.
@@ -476,6 +499,12 @@ components:
           type: integer
           format: int32
           description: The number of checked items on the list.
+        createdBy:
+          allOf:
+            - $ref: "#/components/schemas/Attribution"
+          description: |
+            Who created the list. Absent when unknown — lists created before
+            attribution was introduced carry no creator.
         createdAt:
           type: string
           format: date-time
