@@ -128,6 +128,8 @@ func (r *fakeRepo) CopyList(_ context.Context, sourceID uuid.UUID, name string, 
 		copied.ListID = cp.ID
 		copied.Checked = false
 		copied.CheckedAt = nil
+		copied.AddedBy = &Actor{ID: actor}
+		copied.BoughtBy = nil
 		copied.CreatedAt = r.clock
 		copied.UpdatedAt = r.clock
 		r.items[copied.ID] = &copied
@@ -136,17 +138,20 @@ func (r *fakeRepo) CopyList(_ context.Context, sourceID uuid.UUID, name string, 
 	return *cp, nil
 }
 
-func (r *fakeRepo) AddItem(_ context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error) {
+func (r *fakeRepo) AddItem(_ context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, addedBy uuid.UUID) (Item, error) {
 	if _, ok := r.lists[listID]; !ok {
 		return Item{}, ErrNotFound
 	}
 	it := &Item{
 		ID: uuid.New(), ListID: listID, Name: name, Quantity: quantity, Unit: unit, Note: note,
-		Checked: checked, CreatedAt: r.clock, UpdatedAt: r.clock,
+		Checked: checked, AddedBy: &Actor{ID: addedBy}, CreatedAt: r.clock, UpdatedAt: r.clock,
 	}
 	if checked {
 		t := r.clock
 		it.CheckedAt = &t
+		// A create that arrives already checked was checked by its adder
+		// offline; mirror the adapter and credit them as the buyer too.
+		it.BoughtBy = &Actor{ID: addedBy}
 	}
 	r.items[it.ID] = it
 	return *it, nil
@@ -200,13 +205,18 @@ func (r *fakeRepo) RestoreItem(_ context.Context, listID, itemID uuid.UUID) (Ite
 	return *it, nil
 }
 
-func (r *fakeRepo) SetItemChecked(_ context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (Item, error) {
+func (r *fakeRepo) SetItemChecked(_ context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time, checkedBy *uuid.UUID) (Item, error) {
 	it, ok := r.items[itemID]
 	if !ok || it.ListID != listID || r.deleted[itemID] {
 		return Item{}, ErrNotFound
 	}
 	it.Checked = checked
 	it.CheckedAt = checkedAt
+	// nil clears the buyer, exactly as the adapter's NULL write does.
+	it.BoughtBy = nil
+	if checkedBy != nil {
+		it.BoughtBy = &Actor{ID: *checkedBy}
+	}
 	it.UpdatedAt = r.clock
 	return *it, nil
 }
@@ -265,7 +275,7 @@ func TestListsAndGetList(t *testing.T) {
 	ctx := context.Background()
 
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", nil, false); err != nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", nil, false, testActor); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 
@@ -315,7 +325,7 @@ func TestDeleteList(t *testing.T) {
 	svc, repo := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 2, "", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 2, "", nil, false, testActor)
 
 	if err := svc.DeleteList(ctx, l.ID); err != nil {
 		t.Fatalf("DeleteList: %v", err)
@@ -335,11 +345,11 @@ func TestCopyList(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false); err != nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
-	checked, _ := svc.AddItem(ctx, l.ID, "Eggs", 1, "", nil, false)
-	if _, err := svc.CheckItem(ctx, l.ID, checked.ID); err != nil {
+	checked, _ := svc.AddItem(ctx, l.ID, "Eggs", 1, "", nil, false, testActor)
+	if _, err := svc.CheckItem(ctx, l.ID, checked.ID, testActor); err != nil {
 		t.Fatalf("CheckItem: %v", err)
 	}
 
@@ -427,21 +437,21 @@ func TestAddItem(t *testing.T) {
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
 	// name validation
-	if _, err := svc.AddItem(ctx, l.ID, " ", 1, "", nil, false); err == nil {
+	if _, err := svc.AddItem(ctx, l.ID, " ", 1, "", nil, false, testActor); err == nil {
 		t.Fatal("expected name validation error")
 	} else {
 		assertValidationError(t, err, "name")
 	}
 
 	// quantity validation
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", -1, "", nil, false); err == nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", -1, "", nil, false, testActor); err == nil {
 		t.Fatal("expected quantity validation error")
 	} else {
 		assertValidationError(t, err, "quantity")
 	}
 
 	// default quantity + note normalisation (blank note -> nil)
-	it, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", ptr("   "), false)
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 0, "", ptr("   "), false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -453,7 +463,7 @@ func TestAddItem(t *testing.T) {
 	}
 
 	// explicit quantity + real note
-	it2, err := svc.AddItem(ctx, l.ID, "Eggs", 12, "", ptr("free range"), false)
+	it2, err := svc.AddItem(ctx, l.ID, "Eggs", 12, "", ptr("free range"), false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -462,7 +472,7 @@ func TestAddItem(t *testing.T) {
 	}
 
 	// unknown list
-	if _, err := svc.AddItem(ctx, uuid.New(), "X", 1, "", nil, false); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.AddItem(ctx, uuid.New(), "X", 1, "", nil, false, testActor); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -471,7 +481,7 @@ func TestUpdateItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", ptr("2%"), false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", ptr("2%"), false, testActor)
 
 	// invalid name
 	if _, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Name: ptr("")}); err == nil {
@@ -517,7 +527,7 @@ func TestDeleteItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
 		t.Fatalf("DeleteItem: %v", err)
@@ -533,7 +543,7 @@ func TestRestoreItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor)
 
 	if err := svc.DeleteItem(ctx, l.ID, it.ID); err != nil {
 		t.Fatalf("DeleteItem: %v", err)
@@ -547,7 +557,7 @@ func TestRestoreItem(t *testing.T) {
 		t.Fatalf("restored id = %v, want %v", restored.ID, it.ID)
 	}
 	// The item is visible again after restore.
-	if _, err := svc.CheckItem(ctx, l.ID, it.ID); err != nil {
+	if _, err := svc.CheckItem(ctx, l.ID, it.ID, testActor); err != nil {
 		t.Fatalf("item not visible after restore: %v", err)
 	}
 
@@ -563,12 +573,86 @@ func TestAddItemChecked(t *testing.T) {
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
-	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, true)
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, true, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 	if !it.Checked || it.CheckedAt == nil {
 		t.Fatalf("expected checked item with CheckedAt, got %+v", it)
+	}
+	// A create that arrives already checked is an offline check folded into the
+	// queued create: no CheckItem will ever follow, so the buyer has to be
+	// recorded here or "Bought by you" is lost on replay (US-L.11).
+	if it.AddedBy == nil || it.AddedBy.ID != testActor {
+		t.Errorf("AddedBy = %+v, want actor %v", it.AddedBy, testActor)
+	}
+	if it.BoughtBy == nil || it.BoughtBy.ID != testActor {
+		t.Errorf("BoughtBy = %+v, want the adder %v", it.BoughtBy, testActor)
+	}
+}
+
+// TestItemAttribution covers the buyer's lifecycle: an open item has an adder
+// but no buyer, checking credits the checker, unchecking clears them, and a
+// re-check by someone else does not rewrite an already-checked item's buyer.
+func TestItemAttribution(t *testing.T) {
+	svc, _ := newService()
+	ctx := context.Background()
+	l, _ := svc.CreateList(ctx, "Groceries", testActor)
+
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if it.AddedBy == nil || it.AddedBy.ID != testActor {
+		t.Fatalf("AddedBy = %+v, want actor %v", it.AddedBy, testActor)
+	}
+	if it.BoughtBy != nil {
+		t.Errorf("BoughtBy = %+v on an open item, want nil", it.BoughtBy)
+	}
+
+	// Someone else does the shopping: the buyer is the checker, not the adder.
+	buyer := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	checked, err := svc.CheckItem(ctx, l.ID, it.ID, buyer)
+	if err != nil {
+		t.Fatalf("CheckItem: %v", err)
+	}
+	if checked.BoughtBy == nil || checked.BoughtBy.ID != buyer {
+		t.Fatalf("BoughtBy = %+v, want the checker %v", checked.BoughtBy, buyer)
+	}
+	if checked.AddedBy == nil || checked.AddedBy.ID != testActor {
+		t.Errorf("AddedBy = %+v, want it preserved as %v", checked.AddedBy, testActor)
+	}
+
+	// Checking an already-checked item must not reassign it: the early return
+	// in setChecked is what protects the original buyer's credit.
+	again, err := svc.CheckItem(ctx, l.ID, it.ID, testActor)
+	if err != nil {
+		t.Fatalf("CheckItem (repeat): %v", err)
+	}
+	if again.BoughtBy == nil || again.BoughtBy.ID != buyer {
+		t.Errorf("BoughtBy = %+v after a re-check, want the original buyer %v", again.BoughtBy, buyer)
+	}
+
+	// Back on the open list, nobody has bought it — a stale buyer would claim
+	// the item is handled when it is not.
+	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID, testActor)
+	if err != nil {
+		t.Fatalf("UncheckItem: %v", err)
+	}
+	if unchecked.BoughtBy != nil {
+		t.Errorf("BoughtBy = %+v after uncheck, want nil", unchecked.BoughtBy)
+	}
+	if unchecked.AddedBy == nil || unchecked.AddedBy.ID != testActor {
+		t.Errorf("AddedBy = %+v, want it preserved across the uncheck", unchecked.AddedBy)
+	}
+
+	// Re-checking after an uncheck credits whoever checked it this time.
+	recheck, err := svc.CheckItem(ctx, l.ID, it.ID, testActor)
+	if err != nil {
+		t.Fatalf("CheckItem (after uncheck): %v", err)
+	}
+	if recheck.BoughtBy == nil || recheck.BoughtBy.ID != testActor {
+		t.Errorf("BoughtBy = %+v, want the new checker %v", recheck.BoughtBy, testActor)
 	}
 }
 
@@ -576,9 +660,9 @@ func TestCheckUncheckItem(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor)
 
-	checked, err := svc.CheckItem(ctx, l.ID, it.ID)
+	checked, err := svc.CheckItem(ctx, l.ID, it.ID, testActor)
 	if err != nil {
 		t.Fatalf("CheckItem: %v", err)
 	}
@@ -587,7 +671,7 @@ func TestCheckUncheckItem(t *testing.T) {
 	}
 
 	// idempotent: checking again returns the same checkedAt (no rewrite)
-	again, err := svc.CheckItem(ctx, l.ID, it.ID)
+	again, err := svc.CheckItem(ctx, l.ID, it.ID, testActor)
 	if err != nil {
 		t.Fatalf("CheckItem (idempotent): %v", err)
 	}
@@ -595,7 +679,7 @@ func TestCheckUncheckItem(t *testing.T) {
 		t.Fatalf("checkedAt changed on idempotent re-check")
 	}
 
-	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID)
+	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID, testActor)
 	if err != nil {
 		t.Fatalf("UncheckItem: %v", err)
 	}
@@ -604,12 +688,12 @@ func TestCheckUncheckItem(t *testing.T) {
 	}
 
 	// idempotent uncheck
-	if _, err := svc.UncheckItem(ctx, l.ID, it.ID); err != nil {
+	if _, err := svc.UncheckItem(ctx, l.ID, it.ID, testActor); err != nil {
 		t.Fatalf("UncheckItem (idempotent): %v", err)
 	}
 
 	// unknown item
-	if _, err := svc.CheckItem(ctx, l.ID, uuid.New()); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.CheckItem(ctx, l.ID, uuid.New(), testActor); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
@@ -650,7 +734,7 @@ func TestAddItemUnit(t *testing.T) {
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
 
 	// empty -> default amount
-	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false)
+	it, err := svc.AddItem(ctx, l.ID, "Milk", 1, "", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -659,7 +743,7 @@ func TestAddItemUnit(t *testing.T) {
 	}
 
 	// valid token kept
-	it2, err := svc.AddItem(ctx, l.ID, "Milk", 2, "l", nil, false)
+	it2, err := svc.AddItem(ctx, l.ID, "Milk", 2, "l", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -668,7 +752,7 @@ func TestAddItemUnit(t *testing.T) {
 	}
 
 	// invalid token -> validation error
-	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "furlong", nil, false); err == nil {
+	if _, err := svc.AddItem(ctx, l.ID, "Milk", 1, "furlong", nil, false, testActor); err == nil {
 		t.Fatal("expected unit validation error")
 	} else {
 		assertValidationError(t, err, "unit")
@@ -682,7 +766,7 @@ func TestUpdateItemUnit(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false, testActor)
 
 	// valid change
 	got, err := svc.UpdateItem(ctx, l.ID, it.ID, ItemUpdate{Unit: ptr("kg")})
@@ -716,9 +800,9 @@ func TestUnitPreservedThroughStateChanges(t *testing.T) {
 	svc, _ := newService()
 	ctx := context.Background()
 	l, _ := svc.CreateList(ctx, "Groceries", testActor)
-	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false)
+	it, _ := svc.AddItem(ctx, l.ID, "Milk", 1, "l", nil, false, testActor)
 
-	checked, err := svc.CheckItem(ctx, l.ID, it.ID)
+	checked, err := svc.CheckItem(ctx, l.ID, it.ID, testActor)
 	if err != nil {
 		t.Fatalf("CheckItem: %v", err)
 	}
@@ -726,7 +810,7 @@ func TestUnitPreservedThroughStateChanges(t *testing.T) {
 		t.Fatalf("checked unit = %q, want l", checked.Unit)
 	}
 
-	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID)
+	unchecked, err := svc.UncheckItem(ctx, l.ID, it.ID, testActor)
 	if err != nil {
 		t.Fatalf("UncheckItem: %v", err)
 	}

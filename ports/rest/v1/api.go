@@ -33,12 +33,12 @@ type ListService interface {
 	RenameList(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	DeleteList(ctx context.Context, id uuid.UUID) error
 	CopyList(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error)
-	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
+	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, actor uuid.UUID) (lists.Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
 	RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	CheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	UncheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
+	CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
+	UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
 }
 
 // V1 implements the generated ServerInterface. It carries the process-level

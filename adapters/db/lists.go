@@ -55,8 +55,22 @@ const listSelect = `
 	LEFT JOIN items i ON i.list_id = l.id AND i.deleted_at IS NULL
 	LEFT JOIN members m ON m.user_id = l.created_by`
 
-// itemColumns is the column list for an item row, ordered to match scanItem.
+// itemColumns is the column list for an item row, unqualified, for the INSERT
+// and UPDATE statements that write one.
 const itemColumns = `id, list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at`
+
+// itemSelect is the projection for reading an item, ordered to match scanItem.
+// Like listSelect it resolves the attributions' display names through members
+// rather than storing them, so a rename applies retroactively. Two separate
+// joins are needed because the adder and the buyer are independent people.
+const itemSelect = `
+	SELECT i.id, i.list_id, i.name, i.quantity, i.unit, i.note, i.checked, i.checked_at,
+	       i.created_at, i.updated_at,
+	       i.added_by, ma.name AS added_by_name,
+	       i.bought_by, mb.name AS bought_by_name
+	FROM items i
+	LEFT JOIN members ma ON ma.user_id = i.added_by
+	LEFT JOIN members mb ON mb.user_id = i.bought_by`
 
 // CreateList inserts a new, empty list credited to createdBy and returns it
 // with zero counts. The row is re-read through List() rather than returned by
@@ -117,7 +131,7 @@ func (r *ListsRepository) List(ctx context.Context, id uuid.UUID) (lists.List, e
 // does not distinguish a missing list from an empty one (an empty slice).
 func (r *ListsRepository) ListItems(ctx context.Context, listID uuid.UUID) ([]lists.Item, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT `+itemColumns+` FROM items WHERE list_id = $1 AND deleted_at IS NULL ORDER BY created_at, id`, listID)
+		itemSelect+` WHERE i.list_id = $1 AND i.deleted_at IS NULL ORDER BY i.created_at, i.id`, listID)
 	if err != nil {
 		return nil, fmt.Errorf("query items: %w", err)
 	}
@@ -234,21 +248,28 @@ func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name
 // violation (SQLSTATE 23503), which is mapped to lists.ErrNotFound below.
 // Pre-checking would open a TOCTOU race against a concurrent DeleteList
 // between the check and the insert.
-func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
+func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, addedBy uuid.UUID) (lists.Item, error) {
 	now := time.Now()
 	// When the item is created already checked (an offline check folded into a
-	// queued create), stamp checked_at at insert; otherwise leave it NULL.
-	var checkedAt any
+	// queued create), stamp checked_at at insert; otherwise leave it NULL. The
+	// buyer follows the same rule: that fold means the adder checked it off
+	// themselves before it ever reached the server, and no SetItemChecked will
+	// follow to record who did.
+	var (
+		checkedAt any
+		boughtBy  any
+	)
 	if checked {
 		checkedAt = now
+		boughtBy = addedBy
 	}
-	row := r.db.QueryRowContext(ctx,
-		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-		 RETURNING `+itemColumns,
-		listID, name, quantity, unit, nullString(note), checked, checkedAt, now)
-
-	it, err := scanItem(row)
+	var id uuid.UUID
+	err := r.db.QueryRowContext(ctx,
+		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, added_by, bought_by, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+		 RETURNING id`,
+		listID, name, quantity, unit, nullString(note), checked, checkedAt, addedBy, boughtBy, now,
+	).Scan(&id)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgErrForeignKeyViolation {
@@ -256,13 +277,13 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 		}
 		return lists.Item{}, fmt.Errorf("add item: %w", err)
 	}
-	return it, nil
+	return r.Item(ctx, listID, id)
 }
 
 // Item returns a single item scoped to its list, or lists.ErrNotFound.
 func (r *ListsRepository) Item(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT `+itemColumns+` FROM items WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL`, itemID, listID)
+		itemSelect+` WHERE i.id = $1 AND i.list_id = $2 AND i.deleted_at IS NULL`, itemID, listID)
 
 	it, err := scanItem(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -302,19 +323,24 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 		next++
 	}
 
-	query := fmt.Sprintf(
-		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d AND deleted_at IS NULL RETURNING %s`,
-		strings.Join(sets, ", "), next, next+1, itemColumns)
+	// The interpolated parts are not caller-controlled: sets holds fixed
+	// "column = $n" fragments chosen by the switch above, and the indexes are
+	// counters. Every caller-supplied value is a bound parameter in args.
+	query := fmt.Sprintf( //nolint:gosec // G201: only internal fragments are interpolated; values are bound
+		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d AND deleted_at IS NULL`,
+		strings.Join(sets, ", "), next, next+1)
 	args = append(args, itemID, listID)
 
-	it, err := scanItem(r.db.QueryRowContext(ctx, query, args...))
-	if errors.Is(err, sql.ErrNoRows) {
-		return lists.Item{}, lists.ErrNotFound
-	}
+	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("update item: %w", err)
 	}
-	return it, nil
+	if n, _ := res.RowsAffected(); n == 0 {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	// Re-read so the response carries the attributions with their names
+	// resolved; editing an item never changes who added or bought it.
+	return r.Item(ctx, listID, itemID)
 }
 
 // DeleteItem soft-deletes an item by stamping deleted_at: the row is kept so the
@@ -339,37 +365,36 @@ func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UU
 // unchanged. A missing row yields lists.ErrNotFound. It mirrors
 // SetItemChecked's write-and-return shape.
 func (r *ListsRepository) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
-	row := r.db.QueryRowContext(ctx,
+	res, err := r.db.ExecContext(ctx,
 		`UPDATE items SET deleted_at = NULL, updated_at = $3
-		 WHERE list_id = $1 AND id = $2 RETURNING `+itemColumns,
+		 WHERE list_id = $1 AND id = $2`,
 		listID, itemID, time.Now())
-
-	it, err := scanItem(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return lists.Item{}, lists.ErrNotFound
-	}
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("restore item: %w", err)
 	}
-	return it, nil
-}
-
-// SetItemChecked writes an item's checked state and checkedAt timestamp,
-// returning the updated row or lists.ErrNotFound.
-func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (lists.Item, error) {
-	row := r.db.QueryRowContext(ctx,
-		`UPDATE items SET checked = $3, checked_at = $4, updated_at = $5
-		 WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL RETURNING `+itemColumns,
-		itemID, listID, checked, nullTime(checkedAt), time.Now())
-
-	it, err := scanItem(row)
-	if errors.Is(err, sql.ErrNoRows) {
+	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
+	// A restored item keeps the attributions it had before the delete; the
+	// re-read is what resolves their names (see itemSelect).
+	return r.Item(ctx, listID, itemID)
+}
+
+// SetItemChecked writes an item's checked state, checkedAt timestamp and buyer,
+// returning the updated row or lists.ErrNotFound. A nil checkedBy clears the
+// buyer, which is how unchecking leaves no stale "bought by" behind.
+func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time, checkedBy *uuid.UUID) (lists.Item, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE items SET checked = $3, checked_at = $4, bought_by = $5, updated_at = $6
+		 WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL`,
+		itemID, listID, checked, nullTime(checkedAt), nullUUID(checkedBy), time.Now())
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("set item checked: %w", err)
 	}
-	return it, nil
+	if n, _ := res.RowsAffected(); n == 0 {
+		return lists.Item{}, lists.ErrNotFound
+	}
+	return r.Item(ctx, listID, itemID)
 }
 
 // scanner abstracts *sql.Row and *sql.Rows so scanList/scanItem serve both the
@@ -410,11 +435,16 @@ func toActor(id uuid.NullUUID, name sql.NullString) *lists.Actor {
 // the nullable note/checked_at columns to their pointer fields.
 func scanItem(s scanner) (lists.Item, error) {
 	var (
-		it        lists.Item
-		note      sql.NullString
-		checkedAt sql.NullTime
+		it           lists.Item
+		note         sql.NullString
+		checkedAt    sql.NullTime
+		addedBy      uuid.NullUUID
+		addedByName  sql.NullString
+		boughtBy     uuid.NullUUID
+		boughtByName sql.NullString
 	)
-	if err := s.Scan(&it.ID, &it.ListID, &it.Name, &it.Quantity, &it.Unit, &note, &it.Checked, &checkedAt, &it.CreatedAt, &it.UpdatedAt); err != nil {
+	if err := s.Scan(&it.ID, &it.ListID, &it.Name, &it.Quantity, &it.Unit, &note, &it.Checked, &checkedAt,
+		&it.CreatedAt, &it.UpdatedAt, &addedBy, &addedByName, &boughtBy, &boughtByName); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return lists.Item{}, err
 		}
@@ -427,6 +457,8 @@ func scanItem(s scanner) (lists.Item, error) {
 		t := checkedAt.Time
 		it.CheckedAt = &t
 	}
+	it.AddedBy = toActor(addedBy, addedByName)
+	it.BoughtBy = toActor(boughtBy, boughtByName)
 	return it, nil
 }
 
@@ -444,4 +476,12 @@ func nullTime(t *time.Time) any {
 		return nil
 	}
 	return *t
+}
+
+// nullUUID maps an optional uuid to a driver argument: nil becomes SQL NULL.
+func nullUUID(id *uuid.UUID) any {
+	if id == nil {
+		return nil
+	}
+	return *id
 }

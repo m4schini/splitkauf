@@ -83,6 +83,11 @@ type List struct {
 
 // Item is a single entry on a shopping list. Note is optional (nil when
 // unset); CheckedAt is set only while Checked is true.
+//
+// AddedBy and BoughtBy are nil when unknown — an item from before attribution
+// existed, or, for BoughtBy, an item nobody has bought yet. BoughtBy is cleared
+// whenever the item returns to the open list, so it never names a buyer for
+// something still to be bought.
 type Item struct {
 	ID        uuid.UUID
 	ListID    uuid.UUID
@@ -92,6 +97,8 @@ type Item struct {
 	Note      *string
 	Checked   bool
 	CheckedAt *time.Time
+	AddedBy   *Actor
+	BoughtBy  *Actor
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -130,12 +137,19 @@ type Repository interface {
 	// the copy is their new list, whoever assembled the original.
 	CopyList(ctx context.Context, sourceID uuid.UUID, name string, actor uuid.UUID) (List, error)
 
-	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error)
+	// AddItem adds an item to a list, credited to addedBy. When checked is
+	// true the item is also credited to addedBy as its buyer: that combination
+	// is an offline check folded into a queued create, so the same actor did
+	// both and no SetItemChecked call will ever follow to record it.
+	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, addedBy uuid.UUID) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update ItemUpdate) (Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
 	RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
-	SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time) (Item, error)
+	// SetItemChecked writes an item's checked state. checkedBy is the buyer to
+	// credit when checking, and nil when unchecking — which clears the stored
+	// buyer alongside checkedAt.
+	SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time, checkedBy *uuid.UUID) (Item, error)
 }
 
 // validateListName trims and validates a list name, returning the cleaned

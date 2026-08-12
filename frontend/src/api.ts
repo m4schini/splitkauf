@@ -215,6 +215,10 @@ export interface Item {
   note?: string | null
   checked: boolean
   checkedAt?: string | null
+  /** Who added the item; absent for items that predate attribution. */
+  addedBy?: Attribution
+  /** Who checked it off. Absent while the item is open — uncheck clears it. */
+  boughtBy?: Attribution | null
   createdAt: string
   updatedAt: string
 }
@@ -227,7 +231,7 @@ export interface Item {
  * rather than exposing a raw UUID.
  */
 export function attributionLabel(
-  attribution: Attribution | undefined,
+  attribution: Attribution | null | undefined,
   meId: string | undefined,
 ): string | null {
   if (!attribution) return null

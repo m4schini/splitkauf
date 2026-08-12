@@ -226,13 +226,17 @@ interface DeleteListVariables {
 
 function toggleChecked(queryClient: QueryClient, listId: string, itemId: string, checked: boolean) {
   const previous = queryClient.getQueryData<ListWithItems>(listKey(listId))
+  // Checking credits the viewer; unchecking clears the buyer outright, mirroring
+  // the server so the row never keeps a stale "Bought by" while back on the
+  // open list.
+  const boughtBy = checked ? optimisticAttribution(queryClient) : null
   queryClient.setQueryData<ListWithItems>(
     listKey(listId),
     (old) =>
       old && {
         ...old,
         items: old.items.map((i) =>
-          i.id === itemId ? { ...i, checked, checkedAt: checked ? nowIso() : null } : i,
+          i.id === itemId ? { ...i, checked, checkedAt: checked ? nowIso() : null, boughtBy } : i,
         ),
         openItemCount: old.openItemCount + (checked ? -1 : 1),
         checkedItemCount: old.checkedItemCount + (checked ? 1 : -1),
@@ -335,6 +339,7 @@ function buildAddItemDefaults(
       const previous = queryClient.getQueryData<ListWithItems>(listKey(listId))
       const previousLists = queryClient.getQueryData<List[]>(listsKey)
       const checked = payload.checked ?? false
+      const me = optimisticAttribution(queryClient)
       const optimistic: Item = {
         id: tempId,
         listId,
@@ -344,6 +349,10 @@ function buildAddItemDefaults(
         note: payload.note ?? null,
         checked,
         checkedAt: checked ? nowIso() : null,
+        addedBy: me,
+        // A create that is already checked was checked by its adder offline;
+        // the server credits them as the buyer too, so show that now.
+        boughtBy: checked ? me : null,
         createdAt: nowIso(),
         updatedAt: nowIso(),
       }

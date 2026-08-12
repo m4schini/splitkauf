@@ -601,3 +601,120 @@ describe('ListDetail', () => {
     vi.useRealTimers()
   })
 })
+
+// US-L.11: an open item says who put it on the list, a checked one says who
+// bought it. Both are resolved against /me so the viewer reads as "you".
+describe('ListDetail item attribution', () => {
+  const me = { id: 'user-me', name: 'Alex' }
+
+  /** Serves /me and the list detail separately so id comparison is meaningful. */
+  function stubApi(list: ListWithItems) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(jsonResponse(String(input).endsWith('/me') ? me : list)),
+      ),
+    )
+  }
+
+  function listWithItems(items: ListWithItems['items']): ListWithItems {
+    return { ...baseList, items }
+  }
+
+  function item(overrides: Partial<ListWithItems['items'][number]>) {
+    return { ...baseList.items[0], ...overrides }
+  }
+
+  it('credits the adder on an open item and the buyer on a checked one', async () => {
+    stubApi(
+      listWithItems([
+        item({ id: 'i1', name: 'Milk', addedBy: { id: 'user-other', name: 'Maria' } }),
+        item({
+          id: 'i2',
+          name: 'Bread',
+          checked: true,
+          checkedAt: '2026-01-01T00:00:00Z',
+          addedBy: { id: 'user-other', name: 'Maria' },
+          boughtBy: { id: me.id, name: 'Alex' },
+        }),
+      ]),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    expect(await screen.findByText('Added by Maria')).toBeInTheDocument()
+    // The checked row shows the buyer, NOT its adder — who bought it is the
+    // useful fact once it is in the cart.
+    expect(screen.getByText('Bought by you')).toBeInTheDocument()
+    expect(screen.queryByText('Added by you')).not.toBeInTheDocument()
+  })
+
+  it('shows no attribution for items that predate it', async () => {
+    stubApi(listWithItems([item({ id: 'i1', name: 'Milk' })]))
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    expect(screen.queryByText(/Added by/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Bought by/)).not.toBeInTheDocument()
+  })
+
+  it('attributes an optimistically added item to the viewer', async () => {
+    const user = userEvent.setup()
+    // The POST never settles, so only the optimistic row can be asserted.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST') return new Promise<Response>(() => {})
+        return Promise.resolve(jsonResponse(String(input).endsWith('/me') ? me : listWithItems([])))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await user.type(await screen.findByLabelText('Add item'), 'Eggs')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    expect(await screen.findByText('Added by you')).toBeInTheDocument()
+  })
+
+  // Checking optimistically flips the line from adder to buyer, and unchecking
+  // must clear the buyer rather than leave a stale "Bought by" on an open item.
+  it('flips to "Bought by you" on check and back on uncheck', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST') return new Promise<Response>(() => {})
+        return Promise.resolve(
+          jsonResponse(
+            String(input).endsWith('/me')
+              ? me
+              : listWithItems([
+                  item({ id: 'i1', name: 'Milk', addedBy: { id: me.id, name: 'Alex' } }),
+                ]),
+          ),
+        )
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    expect(await screen.findByText('Added by you')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox'))
+    expect(await screen.findByText('Bought by you')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox'))
+    expect(await screen.findByText('Added by you')).toBeInTheDocument()
+    expect(screen.queryByText('Bought by you')).not.toBeInTheDocument()
+  })
+})

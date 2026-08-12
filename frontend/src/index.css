@@ -248,6 +248,14 @@ input {
   flex-basis: 100%;
 }
 
+/* Who added or bought the item (US-L.11). Quieter than the note: it is context,
+   never the reason you are reading the row. */
+.item-attribution {
+  color: var(--fg-muted);
+  font-size: 12px;
+  flex-basis: 100%;
+}
+
 .item-row:has(.item-checkbox:checked) .item-name,
 .item-row:has(.item-checkbox:checked) .item-qty {
   /* Checked items are visually separated (done section) but text stays at

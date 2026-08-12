@@ -178,6 +178,13 @@ Key decisions (from `docs/research/collaborative-lists.md`):
 - **Check = record, not delete**: `checked_by`/`checked_at` capture who completed an
   item and when; unchecking restores it.
 
+Attribution has since shipped (US-L.11, migration 000007), with `checked_by`
+landing as `bought_by` alongside `lists.created_by` and `items.added_by`. All
+three store only the acting user's UUID; the display name is resolved at read
+time by joining `members.user_id`, so renaming a member updates every past
+action rather than leaving a stale snapshot. Unchecking clears `bought_by`.
+The rest of the model above remains the target, not the built state.
+
 ---
 
 ## 5. Collaboration & Sync ✅ / 🔜

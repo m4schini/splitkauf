@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { type Item, type List, type Unit, unitLabels, units } from './api'
+import { attributionLabel, type Item, type List, type Unit, unitLabels, units } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
 import {
@@ -19,6 +19,7 @@ import {
   useRestoreItem,
   useUncheckItem,
   useUpdateItem,
+  useMe,
 } from './queries'
 import { useLiveEvents } from './live'
 
@@ -55,6 +56,8 @@ interface ListDetailProps {
 
 interface ItemRowProps {
   item: Item
+  /** The viewer's user id, for rendering their own actions as "you". */
+  meId: string | undefined
   unsynced: boolean
   onToggle: (item: Item) => void
   onEdit: (item: Item) => void
@@ -66,6 +69,7 @@ interface ItemRowProps {
 
 function ItemRow({
   item,
+  meId,
   unsynced,
   onToggle,
   onEdit,
@@ -138,6 +142,12 @@ function ItemRow({
     )
   }
 
+  // A checked item reports who bought it; an open one who put it on the list.
+  // Either can be unknown (an item from before attribution, or a member whose
+  // name never resolved), in which case the line is left out entirely.
+  const attributedTo = attributionLabel(item.checked ? item.boughtBy : item.addedBy, meId)
+  const attribution = attributedTo && `${item.checked ? 'Bought' : 'Added'} by ${attributedTo}`
+
   return (
     <li className="row item-row">
       <label className="row-tap-target item-row-label">
@@ -153,6 +163,7 @@ function ItemRow({
             <span className="item-qty">{formatQuantity(item.quantity, item.unit)}</span>
           )}
           {item.note && <span className="item-note">{item.note}</span>}
+          {attribution && <span className="item-attribution">{attribution}</span>}
           {unsynced && (
             <span className="unsynced-badge">
               <span className="unsynced-tag">Unsynced</span>
@@ -194,6 +205,7 @@ function ItemRow({
 /** List detail: open/done item sections, bottom quick-add, copy/rename/delete list. */
 export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailProps) {
   const { data: list, isLoading, isError } = useListDetail(listId)
+  const { data: me } = useMe()
   const addItem = useAddItem(listId)
   const updateItem = useUpdateItem(listId)
   const checkItem = useCheckItem(listId)
@@ -433,6 +445,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
               <ItemRow
                 key={item.id}
                 item={item}
+                meId={me?.id}
                 unsynced={isUnsynced(item.id)}
                 onToggle={handleToggle}
                 onEdit={(i) => setEditingItemId(i.id)}
@@ -461,6 +474,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
                 <ItemRow
                   key={item.id}
                   item={item}
+                  meId={me?.id}
                   unsynced={isUnsynced(item.id)}
                   onToggle={handleToggle}
                   onEdit={(i) => setEditingItemId(i.id)}

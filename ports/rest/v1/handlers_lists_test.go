@@ -34,12 +34,12 @@ type fakeService struct {
 	renameList  func(ctx context.Context, id uuid.UUID, name string) (lists.List, error)
 	deleteList  func(ctx context.Context, id uuid.UUID) error
 	copyList    func(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (lists.List, error)
-	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error)
+	addItem     func(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, actor uuid.UUID) (lists.Item, error)
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
 	restoreItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	checkItem   func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	uncheckItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
+	checkItem   func(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
+	uncheckItem func(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
 }
 
 func (f *fakeService) CreateList(ctx context.Context, name string, actor uuid.UUID) (lists.List, error) {
@@ -66,8 +66,8 @@ func (f *fakeService) CopyList(ctx context.Context, id uuid.UUID, name string, a
 	return f.copyList(ctx, id, name, actor)
 }
 
-func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (lists.Item, error) {
-	return f.addItem(ctx, listID, name, quantity, unit, note, checked)
+func (f *fakeService) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, actor uuid.UUID) (lists.Item, error) {
+	return f.addItem(ctx, listID, name, quantity, unit, note, checked, actor)
 }
 
 func (f *fakeService) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error) {
@@ -82,12 +82,12 @@ func (f *fakeService) RestoreItem(ctx context.Context, listID, itemID uuid.UUID)
 	return f.restoreItem(ctx, listID, itemID)
 }
 
-func (f *fakeService) CheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
-	return f.checkItem(ctx, listID, itemID)
+func (f *fakeService) CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error) {
+	return f.checkItem(ctx, listID, itemID, actor)
 }
 
-func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
-	return f.uncheckItem(ctx, listID, itemID)
+func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error) {
+	return f.uncheckItem(ctx, listID, itemID, actor)
 }
 
 // newServer starts a full-stack dev-mode REST server (via rest.New) backed by
@@ -497,7 +497,7 @@ func TestGetListHappyPath(t *testing.T) {
 
 func TestAddItemHappyPath(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool) (lists.Item, error) {
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool, _ uuid.UUID) (lists.Item, error) {
 		if lid != listID || name != "milk" || qty != 2 || unit != "l" {
 			t.Errorf("service got lid=%v name=%q qty=%d unit=%q", lid, name, qty, unit)
 		}
@@ -524,7 +524,7 @@ func TestAddItemHappyPath(t *testing.T) {
 // application/problem+json validation problem. The service is never called.
 func TestAddItemInvalidUnit400(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, _ uuid.UUID, _ string, _ int, _ string, _ *string, _ bool) (lists.Item, error) {
+	svc := &fakeService{addItem: func(_ context.Context, _ uuid.UUID, _ string, _ int, _ string, _ *string, _ bool, _ uuid.UUID) (lists.Item, error) {
 		t.Fatal("service should not be called for an invalid unit")
 		return lists.Item{}, nil
 	}}
@@ -586,7 +586,7 @@ func TestUpdateItemUnit(t *testing.T) {
 func TestCheckItemHappyPath(t *testing.T) {
 	listID, itemID := uuid.New(), uuid.New()
 	now := time.Now()
-	svc := &fakeService{checkItem: func(_ context.Context, lid, iid uuid.UUID) (lists.Item, error) {
+	svc := &fakeService{checkItem: func(_ context.Context, lid, iid uuid.UUID, _ uuid.UUID) (lists.Item, error) {
 		if lid != listID || iid != itemID {
 			t.Errorf("service got lid=%v iid=%v", lid, iid)
 		}
@@ -659,7 +659,7 @@ func TestRestoreItemNotFound(t *testing.T) {
 // checked=true reaches the service, and the created item reports checked.
 func TestAddItemChecked(t *testing.T) {
 	listID := uuid.New()
-	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool) (lists.Item, error) {
+	svc := &fakeService{addItem: func(_ context.Context, lid uuid.UUID, name string, qty int, unit string, note *string, checked bool, _ uuid.UUID) (lists.Item, error) {
 		if !checked {
 			t.Errorf("service got checked=false, want true")
 		}

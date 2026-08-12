@@ -570,6 +570,20 @@ components:
           format: date-time
           nullable: true
           description: When the item was last checked off, if it is checked.
+        addedBy:
+          allOf:
+            - $ref: "#/components/schemas/Attribution"
+          description: |
+            Who added the item to the list. Absent when unknown — items added
+            before attribution was introduced carry no adder.
+        boughtBy:
+          allOf:
+            - $ref: "#/components/schemas/Attribution"
+          description: |
+            Who checked the item off, i.e. bought it. Absent while the item is
+            open: unchecking clears it, so it never names a buyer for something
+            still to be bought. Re-checking credits whoever checked it that
+            time, who need not be the adder.
         createdAt:
           type: string
           format: date-time

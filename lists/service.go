@@ -95,7 +95,7 @@ func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
 // already checked off (used when an offline check folds into a queued create);
 // the repository sets checkedAt at insert. It returns ErrNotFound when the list
 // does not exist.
-func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool) (Item, error) {
+func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, actor uuid.UUID) (Item, error) {
 	clean, err := validateItemName(name)
 	if err != nil {
 		return Item{}, err
@@ -108,7 +108,7 @@ func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, qu
 	if err != nil {
 		return Item{}, err
 	}
-	return s.repo.AddItem(ctx, listID, clean, qty, u, normalizeNote(note), checked)
+	return s.repo.AddItem(ctx, listID, clean, qty, u, normalizeNote(note), checked, actor)
 }
 
 // UpdateItem applies a partial update to an item: only the fields present in
@@ -154,23 +154,28 @@ func (s *Service) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (It
 	return s.repo.RestoreItem(ctx, listID, itemID)
 }
 
-// CheckItem marks an item as checked. It is an idempotent state transition:
-// an already-checked item is returned unchanged (its checkedAt is preserved).
-func (s *Service) CheckItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error) {
-	return s.setChecked(ctx, listID, itemID, true)
+// CheckItem marks an item as checked, crediting actor as its buyer. It is an
+// idempotent state transition: an already-checked item is returned unchanged
+// (its checkedAt and original buyer are preserved).
+func (s *Service) CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (Item, error) {
+	return s.setChecked(ctx, listID, itemID, true, actor)
 }
 
-// UncheckItem returns a checked item to the open list. It is idempotent: an
-// already-open item is returned unchanged.
-func (s *Service) UncheckItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error) {
-	return s.setChecked(ctx, listID, itemID, false)
+// UncheckItem returns a checked item to the open list, clearing its buyer. It
+// is idempotent: an already-open item is returned unchanged.
+func (s *Service) UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (Item, error) {
+	return s.setChecked(ctx, listID, itemID, false, actor)
 }
 
 // setChecked performs the shared check/uncheck logic: it loads the item, and
 // only writes when the checked state actually changes, keeping the transition
-// idempotent. When checking, checkedAt is set to now; when unchecking, it is
-// cleared.
-func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool) (Item, error) {
+// idempotent. When checking, checkedAt is set to now and actor is credited as
+// the buyer; when unchecking, both are cleared — an item back on the open list
+// has not been bought by anyone.
+//
+// The early return on an unchanged state is what keeps a re-check from
+// reassigning an item someone else already bought.
+func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, actor uuid.UUID) (Item, error) {
 	item, err := s.repo.Item(ctx, listID, itemID)
 	if err != nil {
 		return Item{}, err
@@ -178,10 +183,14 @@ func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, chec
 	if item.Checked == checked {
 		return item, nil
 	}
-	var checkedAt *time.Time
+	var (
+		checkedAt *time.Time
+		checkedBy *uuid.UUID
+	)
 	if checked {
 		t := s.now()
 		checkedAt = &t
+		checkedBy = &actor
 	}
-	return s.repo.SetItemChecked(ctx, listID, itemID, checked, checkedAt)
+	return s.repo.SetItemChecked(ctx, listID, itemID, checked, checkedAt, checkedBy)
 }

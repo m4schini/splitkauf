@@ -108,7 +108,7 @@ func TestFailedCopyPublishesNothing(t *testing.T) {
 // {items, listId} reload hint (representative of the item-mutation handlers).
 func TestCheckItemPublishesItemEvent(t *testing.T) {
 	listID, itemID := uuid.New(), uuid.New()
-	svc := &fakeService{checkItem: func(_ context.Context, lid, iid uuid.UUID) (lists.Item, error) {
+	svc := &fakeService{checkItem: func(_ context.Context, lid, iid uuid.UUID, _ uuid.UUID) (lists.Item, error) {
 		return lists.Item{ID: iid, ListID: lid, Name: "milk", Checked: true}, nil
 	}}
 	pub := &capturingPublisher{}
@@ -164,7 +164,7 @@ func TestRestoreItemPublishesItemEvent(t *testing.T) {
 // failing mutation (not-found) emits nothing.
 func TestNoEventOnMutationError(t *testing.T) {
 	listID, itemID := uuid.New(), uuid.New()
-	svc := &fakeService{checkItem: func(_ context.Context, _, _ uuid.UUID) (lists.Item, error) {
+	svc := &fakeService{checkItem: func(_ context.Context, _, _ uuid.UUID, _ uuid.UUID) (lists.Item, error) {
 		return lists.Item{}, lists.ErrNotFound
 	}}
 	pub := &capturingPublisher{}
@@ -231,11 +231,11 @@ func (s *statefulService) UpdateItem(_ context.Context, listID, itemID uuid.UUID
 	return *it, nil
 }
 
-func (s *statefulService) CheckItem(_ context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+func (s *statefulService) CheckItem(_ context.Context, listID, itemID uuid.UUID, _ uuid.UUID) (lists.Item, error) {
 	return s.setChecked(listID, itemID, true)
 }
 
-func (s *statefulService) UncheckItem(_ context.Context, listID, itemID uuid.UUID) (lists.Item, error) {
+func (s *statefulService) UncheckItem(_ context.Context, listID, itemID uuid.UUID, _ uuid.UUID) (lists.Item, error) {
 	return s.setChecked(listID, itemID, false)
 }
 
@@ -274,7 +274,7 @@ func (s *statefulService) CopyList(context.Context, uuid.UUID, string, uuid.UUID
 	return lists.List{}, nil
 }
 
-func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, string, *string, bool) (lists.Item, error) {
+func (s *statefulService) AddItem(context.Context, uuid.UUID, string, int, string, *string, bool, uuid.UUID) (lists.Item, error) {
 	return lists.Item{}, nil
 }
 func (s *statefulService) DeleteItem(context.Context, uuid.UUID, uuid.UUID) error { return nil }

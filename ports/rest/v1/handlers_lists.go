@@ -149,7 +149,11 @@ func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 		unit = string(*body.Unit)
 	}
 	checked := body.Checked != nil && *body.Checked
-	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, unit, body.Note, checked)
+	u, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, unit, body.Note, checked, u)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -224,7 +228,11 @@ func (v *V1) RestoreItem(w http.ResponseWriter, r *http.Request, listId ListId, 
 
 // CheckItem marks an item as checked (idempotent).
 func (v *V1) CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
-	item, err := v.Service.CheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId))
+	u, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	item, err := v.Service.CheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId), u)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -235,7 +243,11 @@ func (v *V1) CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, it
 
 // UncheckItem returns a checked item to the open list (idempotent).
 func (v *V1) UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
-	item, err := v.Service.UncheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId))
+	u, ok := actor(w, r)
+	if !ok {
+		return
+	}
+	item, err := v.Service.UncheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId), u)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -376,6 +388,8 @@ func toItem(it lists.Item) Item {
 		Note:      it.Note,
 		Checked:   it.Checked,
 		CheckedAt: it.CheckedAt,
+		AddedBy:   toAttribution(it.AddedBy),
+		BoughtBy:  toAttribution(it.BoughtBy),
 		CreatedAt: it.CreatedAt,
 		UpdatedAt: it.UpdatedAt,
 	}

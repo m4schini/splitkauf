@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/m4schini/splitkauf/adapters/db"
@@ -101,7 +102,7 @@ func TestListNotFound(t *testing.T) {
 	if err := repo.DeleteList(ctx, uuid.New()); err != lists.ErrNotFound {
 		t.Errorf("DeleteList err = %v, want ErrNotFound", err)
 	}
-	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false); err != lists.ErrNotFound {
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false, testActor); err != lists.ErrNotFound {
 		t.Errorf("AddItem err = %v, want ErrNotFound", err)
 	}
 }
@@ -113,7 +114,7 @@ func TestDeleteListCascadesItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false); err != nil {
+	if _, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false, testActor); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
 	if err := repo.DeleteList(ctx, list.ID); err != nil {
@@ -137,7 +138,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 	}
 
 	note := "whole"
-	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "amount", &note, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "amount", &note, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 
 	// Check it: counts flip to one checked.
 	now := item.CreatedAt
-	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now)
+	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now, &testActor)
 	if err != nil {
 		t.Fatalf("SetItemChecked(true): %v", err)
 	}
@@ -182,7 +183,7 @@ func TestItemLifecycleAndCounts(t *testing.T) {
 	assertCounts(t, repo, list.ID, 0, 1)
 
 	// Uncheck it: back to open, checkedAt cleared.
-	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil)
+	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil, nil)
 	if err != nil {
 		t.Fatalf("SetItemChecked(false): %v", err)
 	}
@@ -218,7 +219,7 @@ func TestItemNotFound(t *testing.T) {
 	if err := repo.DeleteItem(ctx, list.ID, uuid.New()); err != lists.ErrNotFound {
 		t.Errorf("DeleteItem err = %v, want ErrNotFound", err)
 	}
-	if _, err := repo.SetItemChecked(ctx, list.ID, uuid.New(), true, nil); err != lists.ErrNotFound {
+	if _, err := repo.SetItemChecked(ctx, list.ID, uuid.New(), true, nil, nil); err != lists.ErrNotFound {
 		t.Errorf("SetItemChecked err = %v, want ErrNotFound", err)
 	}
 }
@@ -232,7 +233,7 @@ func TestSoftDeleteAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 3, "amount", nil, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 3, "amount", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -284,7 +285,7 @@ func TestListWithAllItemsDeletedStillAppears(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, deletedList.ID, "milk", 1, "amount", nil, false)
+	item, err := repo.AddItem(ctx, deletedList.ID, "milk", 1, "amount", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -335,7 +336,7 @@ func TestRestoreNeverDeletedIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -362,7 +363,7 @@ func TestAddItemChecked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, true)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 1, "amount", nil, true, testActor)
 	if err != nil {
 		t.Fatalf("AddItem(checked): %v", err)
 	}
@@ -380,7 +381,7 @@ func TestAddItemChecked(t *testing.T) {
 func TestAddItemNonexistentListReturnsNotFound(t *testing.T) {
 	repo, ctx := newTestRepo(t)
 
-	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false); err != lists.ErrNotFound {
+	if _, err := repo.AddItem(ctx, uuid.New(), "milk", 1, "amount", nil, false, testActor); err != lists.ErrNotFound {
 		t.Errorf("AddItem to nonexistent list err = %v, want ErrNotFound", err)
 	}
 }
@@ -398,7 +399,7 @@ func TestItemUnitRoundTrip(t *testing.T) {
 	}
 
 	// Add-with-unit round trip.
-	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "l", nil, false)
+	item, err := repo.AddItem(ctx, list.ID, "milk", 2, "l", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
@@ -414,7 +415,7 @@ func TestItemUnitRoundTrip(t *testing.T) {
 	}
 
 	// Default "amount" round-trips (the value the service supplies when omitted).
-	plain, err := repo.AddItem(ctx, list.ID, "eggs", 1, "amount", nil, false)
+	plain, err := repo.AddItem(ctx, list.ID, "eggs", 1, "amount", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem(amount): %v", err)
 	}
@@ -434,14 +435,14 @@ func TestItemUnitRoundTrip(t *testing.T) {
 
 	// check / uncheck preserve the unit.
 	now := item.CreatedAt
-	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now)
+	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now, &testActor)
 	if err != nil {
 		t.Fatalf("SetItemChecked(true): %v", err)
 	}
 	if checked.Unit != "kg" {
 		t.Errorf("checked unit = %q, want kg (preserved)", checked.Unit)
 	}
-	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil)
+	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil, nil)
 	if err != nil {
 		t.Fatalf("SetItemChecked(false): %v", err)
 	}
@@ -473,15 +474,15 @@ func TestCopyList(t *testing.T) {
 		t.Fatalf("CreateList: %v", err)
 	}
 	note := "whole"
-	open, err := repo.AddItem(ctx, source.ID, "milk", 2, "l", &note, false)
+	open, err := repo.AddItem(ctx, source.ID, "milk", 2, "l", &note, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem(milk): %v", err)
 	}
-	checked, err := repo.AddItem(ctx, source.ID, "eggs", 12, "amount", nil, true)
+	checked, err := repo.AddItem(ctx, source.ID, "eggs", 12, "amount", nil, true, testActor)
 	if err != nil {
 		t.Fatalf("AddItem(eggs): %v", err)
 	}
-	gone, err := repo.AddItem(ctx, source.ID, "beer", 6, "bottle", nil, false)
+	gone, err := repo.AddItem(ctx, source.ID, "beer", 6, "bottle", nil, false, testActor)
 	if err != nil {
 		t.Fatalf("AddItem(beer): %v", err)
 	}
@@ -663,3 +664,143 @@ func TestListAttribution(t *testing.T) {
 		t.Errorf("CreatedBy = %+v, want id %v with an empty name", orphan.CreatedBy, stranger)
 	}
 }
+
+// TestItemAttribution pins the item attributions against real SQL: the adder
+// survives every subsequent write, the buyer is written on check and actually
+// cleared (not merely hidden) on uncheck, and both names resolve through the
+// members join.
+func TestItemAttribution(t *testing.T) {
+	memberRepo, ctx := newTestMemberRepo(t)
+	repo, _ := newTestRepo(t)
+
+	buyer := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	for _, m := range []members.Member{
+		{Subject: "adder", UserID: testActor, Name: "Alice"},
+		{Subject: "buyer", UserID: buyer, Name: "Maria"},
+	} {
+		if err := memberRepo.Upsert(ctx, m); err != nil {
+			t.Fatalf("Upsert member %s: %v", m.Name, err)
+		}
+	}
+
+	list, err := repo.CreateList(ctx, "Groceries", testActor)
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+
+	item, err := repo.AddItem(ctx, list.ID, "Milk", 1, "l", nil, false, testActor)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	if item.AddedBy == nil || item.AddedBy.Name != "Alice" {
+		t.Fatalf("AddedBy = %+v, want Alice", item.AddedBy)
+	}
+	if item.BoughtBy != nil {
+		t.Errorf("BoughtBy = %+v on a new open item, want nil", item.BoughtBy)
+	}
+
+	now := time.Now()
+	checked, err := repo.SetItemChecked(ctx, list.ID, item.ID, true, &now, &buyer)
+	if err != nil {
+		t.Fatalf("SetItemChecked(true): %v", err)
+	}
+	if checked.BoughtBy == nil || checked.BoughtBy.Name != "Maria" {
+		t.Fatalf("BoughtBy = %+v, want Maria", checked.BoughtBy)
+	}
+	if checked.AddedBy == nil || checked.AddedBy.Name != "Alice" {
+		t.Errorf("AddedBy = %+v, want Alice preserved through the check", checked.AddedBy)
+	}
+
+	// An edit must not disturb either attribution — the write path re-reads the
+	// row rather than returning a RETURNING projection that cannot join.
+	updated, err := repo.UpdateItem(ctx, list.ID, item.ID, lists.ItemUpdate{Name: ptrString("Oat milk")})
+	if err != nil {
+		t.Fatalf("UpdateItem: %v", err)
+	}
+	if updated.AddedBy == nil || updated.AddedBy.Name != "Alice" ||
+		updated.BoughtBy == nil || updated.BoughtBy.Name != "Maria" {
+		t.Errorf("attributions lost on update: added=%+v bought=%+v", updated.AddedBy, updated.BoughtBy)
+	}
+
+	unchecked, err := repo.SetItemChecked(ctx, list.ID, item.ID, false, nil, nil)
+	if err != nil {
+		t.Fatalf("SetItemChecked(false): %v", err)
+	}
+	if unchecked.BoughtBy != nil {
+		t.Errorf("BoughtBy = %+v after uncheck, want nil", unchecked.BoughtBy)
+	}
+	// Re-read independently: the buyer must be gone from the row itself, not
+	// just absent from the response the write happened to build.
+	reread, err := repo.Item(ctx, list.ID, item.ID)
+	if err != nil {
+		t.Fatalf("Item: %v", err)
+	}
+	if reread.BoughtBy != nil {
+		t.Errorf("bought_by still set in the database: %+v", reread.BoughtBy)
+	}
+	if reread.AddedBy == nil || reread.AddedBy.Name != "Alice" {
+		t.Errorf("AddedBy = %+v, want Alice preserved across the uncheck", reread.AddedBy)
+	}
+}
+
+// TestAddItemCheckedStampsBuyer covers the offline fold: a create that arrives
+// already checked credits its adder as the buyer too, because no separate check
+// call will ever follow to record one.
+func TestAddItemCheckedStampsBuyer(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	list, err := repo.CreateList(ctx, "Groceries", testActor)
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, list.ID, "Milk", 1, "l", nil, true, testActor)
+	if err != nil {
+		t.Fatalf("AddItem(checked): %v", err)
+	}
+	if item.AddedBy == nil || item.AddedBy.ID != testActor {
+		t.Errorf("AddedBy = %+v, want %v", item.AddedBy, testActor)
+	}
+	if item.BoughtBy == nil || item.BoughtBy.ID != testActor {
+		t.Errorf("BoughtBy = %+v, want the adder %v", item.BoughtBy, testActor)
+	}
+}
+
+// TestCopyListItemAttribution: the copier adds every item on the copy, and none
+// of them is bought — the source's buyers do not travel with the copy.
+func TestCopyListItemAttribution(t *testing.T) {
+	repo, ctx := newTestRepo(t)
+
+	source, err := repo.CreateList(ctx, "Groceries", testActor)
+	if err != nil {
+		t.Fatalf("CreateList: %v", err)
+	}
+	item, err := repo.AddItem(ctx, source.ID, "Milk", 1, "l", nil, false, testActor)
+	if err != nil {
+		t.Fatalf("AddItem: %v", err)
+	}
+	now := time.Now()
+	if _, err := repo.SetItemChecked(ctx, source.ID, item.ID, true, &now, &testActor); err != nil {
+		t.Fatalf("SetItemChecked: %v", err)
+	}
+
+	copier := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	copied, err := repo.CopyList(ctx, source.ID, "Groceries (copy)", copier)
+	if err != nil {
+		t.Fatalf("CopyList: %v", err)
+	}
+	items, err := repo.ListItems(ctx, copied.ID)
+	if err != nil {
+		t.Fatalf("ListItems: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("copy has %d items, want 1", len(items))
+	}
+	if items[0].AddedBy == nil || items[0].AddedBy.ID != copier {
+		t.Errorf("AddedBy = %+v, want the copier %v", items[0].AddedBy, copier)
+	}
+	if items[0].BoughtBy != nil {
+		t.Errorf("BoughtBy = %+v on a copied item, want nil", items[0].BoughtBy)
+	}
+}
+
+func ptrString(s string) *string { return &s }

@@ -144,6 +144,16 @@ type HealthStatus struct {
 
 // Item A single item on a shopping list.
 type Item struct {
+	// AddedBy Who added the item to the list. Absent when unknown — items added
+	// before attribution was introduced carry no adder.
+	AddedBy *Attribution `json:"addedBy,omitempty"`
+
+	// BoughtBy Who checked the item off, i.e. bought it. Absent while the item is
+	// open: unchecking clears it, so it never names a buyer for something
+	// still to be bought. Re-checking credits whoever checked it that
+	// time, who need not be the adder.
+	BoughtBy *Attribution `json:"boughtBy,omitempty"`
+
 	// Checked Whether the item has been checked off (in the cart).
 	Checked bool `json:"checked"`
 
