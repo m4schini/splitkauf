@@ -164,30 +164,30 @@ Dependencies: Phase 1.
 Identity stamping + list attribution through every layer, rendered on overview rows.
 
 **Tasks**:
-- [ ] `members/members.go`: add `UserID uuid.UUID` to `Member`; document that it is the stable auth UUID (dev/password id, or UUIDv5 of the OIDC subject).
-- [ ] `adapters/db/members.go`: `Upsert` writes `user_id` (`ON CONFLICT … SET user_id = EXCLUDED.user_id`); `Get` scans it.
-- [ ] Supply `UserID` at the three upsert call sites: `auth/dev.go` `DevMember()` (`DevUser.ID`), `auth/oidc.go` callback upsert (`subjectUUID(idToken.Subject)`), `auth/password.go` login upsert (`user.ID`).
-- [ ] `lists/lists.go`: add `Actor{ID uuid.UUID; Name string}`; remove unused `User`; add `CreatedBy *Actor` to `List`; change port: `CreateList(ctx, name string, createdBy uuid.UUID)`, `CopyList(ctx, sourceID uuid.UUID, name string, actor uuid.UUID)`.
-- [ ] `lists/service.go`: `CreateList`/`CopyList` accept `actor uuid.UUID` and pass it through.
-- [ ] `adapters/db/lists.go`:
+- [x] `members/members.go`: add `UserID uuid.UUID` to `Member`; document that it is the stable auth UUID (dev/password id, or UUIDv5 of the OIDC subject).
+- [x] `adapters/db/members.go`: `Upsert` writes `user_id` (`ON CONFLICT … SET user_id = EXCLUDED.user_id`); `Get` scans it.
+- [x] Supply `UserID` at the three upsert call sites: `auth/dev.go` `DevMember()` (`DevUser.ID`), `auth/oidc.go` callback upsert (`subjectUUID(idToken.Subject)`), `auth/password.go` login upsert (`user.ID`).
+- [x] `lists/lists.go`: add `Actor{ID uuid.UUID; Name string}`; remove unused `User`; add `CreatedBy *Actor` to `List`; change port: `CreateList(ctx, name string, createdBy uuid.UUID)`, `CopyList(ctx, sourceID uuid.UUID, name string, actor uuid.UUID)`.
+- [x] `lists/service.go`: `CreateList`/`CopyList` accept `actor uuid.UUID` and pass it through.
+- [x] `adapters/db/lists.go`:
   - `listSelect` selects `l.created_by, m.name` via `LEFT JOIN members m ON m.user_id = l.created_by`; the `GROUP BY` clauses live at the two call sites (`Lists()` at `adapters/db/lists.go:72`, `List()` at `:95`) — both become `GROUP BY l.id, m.name`. (The one-row join on unique `user_id` cannot distort the item counts.)
   - `scanList` maps `(created_by, m.name)` → `*Actor` (nil when `created_by` is NULL; empty name when the member row is missing).
   - `CreateList` inserts `created_by` and re-reads via `r.List()` (decision 4 — replaces the bare `RETURNING` scan).
   - `CopyList` stamps `created_by` on the new list and re-reads via `r.List()` (drop the manual count fix-up).
-- [ ] `lists/service_test.go`: extend the fake repo + assert the actor reaches `CreateList`/`CopyList`.
-- [ ] `splitkauf.openapi.yaml`: add `Attribution` schema (`required: [id]`; `name` nullable) and an **optional** (not nullable — see Decision 5) `createdBy: $ref` on `List`; run `make generate` (regenerates `ports/rest/v1` and `client`).
-- [ ] `ports/rest/v1/api.go`: update the hand-written `ListService` interface (`api.go:29-42`) — `CreateList`/`CopyList` gain the actor parameter.
-- [ ] `ports/rest/v1/handlers_lists.go`: `CreateList`/`CopyList` read `auth.UserFrom(r.Context())` (missing → `problem.Internal`, like `GetMe`) and pass `u.ID`; `toList`/`toListWithItems` map `CreatedBy` → `Attribution`. Update the `ListService` fakes in `handlers_lists_test.go`, `publish_test.go`, and `maxbody_test.go`.
-- [ ] `frontend/src/api.ts`: add `Attribution { id: string; name: string | null }`; `createdBy?: Attribution` on `List` (and inherited by `ListWithItems`).
-- [ ] `frontend/src/queries.ts`: export `meKey` + `useMe()` (moved from `App.tsx`; `App.tsx` consumes it, and `LoginForm.tsx:27`'s `['me']` invalidation literal switches to the exported `meKey`); the optimistic list in `buildCreateListDefaults.onMutate` sets `createdBy` from `queryClient.getQueryData(meKey)`.
-- [ ] `frontend/src/ListsOverview.tsx`: append `· by {label}` to the counts line, where `label` is `"you"` when `createdBy.id === me.id`, else `createdBy.name`; omit when `createdBy` is null or name is empty and not me. Extract a shared `attributionLabel(a, meId)` helper (used again in Phase 3).
-- [ ] Tests: `ListsOverview.test.tsx` (by-you / by-name / hidden-when-null), `api.test.ts` fixture updates.
-- [ ] Add `docs/user-stories/US-L.11-see-who-did-what.md` covering all three attributions (list + item scope; items land in Phase 3).
+- [x] `lists/service_test.go`: extend the fake repo + assert the actor reaches `CreateList`/`CopyList`.
+- [x] `splitkauf.openapi.yaml`: add `Attribution` schema (`required: [id]`; `name` nullable) and an **optional** (not nullable — see Decision 5) `createdBy: $ref` on `List`; run `make generate` (regenerates `ports/rest/v1` and `client`).
+- [x] `ports/rest/v1/api.go`: update the hand-written `ListService` interface (`api.go:29-42`) — `CreateList`/`CopyList` gain the actor parameter.
+- [x] `ports/rest/v1/handlers_lists.go`: `CreateList`/`CopyList` read `auth.UserFrom(r.Context())` (missing → `problem.Internal`, like `GetMe`) and pass `u.ID`; `toList`/`toListWithItems` map `CreatedBy` → `Attribution`. Update the `ListService` fakes in `handlers_lists_test.go`, `publish_test.go`, and `maxbody_test.go`.
+- [x] `frontend/src/api.ts`: add `Attribution { id: string; name: string | null }`; `createdBy?: Attribution` on `List` (and inherited by `ListWithItems`).
+- [x] `frontend/src/queries.ts`: export `meKey` + `useMe()` (moved from `App.tsx`; `App.tsx` consumes it, and `LoginForm.tsx:27`'s `['me']` invalidation literal switches to the exported `meKey`); the optimistic list in `buildCreateListDefaults.onMutate` sets `createdBy` from `queryClient.getQueryData(meKey)`.
+- [x] `frontend/src/ListsOverview.tsx`: append `· by {label}` to the counts line, where `label` is `"you"` when `createdBy.id === me.id`, else `createdBy.name`; omit when `createdBy` is null or name is empty and not me. Extract a shared `attributionLabel(a, meId)` helper (used again in Phase 3).
+- [x] Tests: `ListsOverview.test.tsx` (by-you / by-name / hidden-when-null), `api.test.ts` fixture updates.
+- [x] Add `docs/user-stories/US-L.11-see-who-did-what.md` covering all three attributions (list + item scope; items land in Phase 3).
 
 **Automated Verification**:
-- [ ] `make generate && make build` — spec, generated code, and mappers compile.
-- [ ] `make test` — Go unit + adapter + handler tests pass.
-- [ ] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
+- [x] `make generate && make build` — spec, generated code, and mappers compile.
+- [x] `make test` — Go unit + adapter + handler tests pass.
+- [x] `cd frontend && npm run test && npm run typecheck && npm run lint` pass.
 
 **Manual Verification**:
 - [ ] With dev auth, create a list → overview row shows "· by you"; pre-existing lists show no attribution.
