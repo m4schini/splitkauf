@@ -133,14 +133,14 @@ Dependencies: Phase 1
 Convert the remaining five buttons on the list detail screen to icons.
 
 **Tasks**:
-- [ ] In `frontend/src/ListDetail.tsx`, import `ArrowLeft, Copy, Pencil, Trash2` from `lucide-react`
-- [ ] Replace the header button text children, keeping classes, `aria-label`s, and handlers unchanged (all icons get `aria-hidden="true"`): Back (line 388) → `<ArrowLeft size={20} aria-hidden="true" />`, Copy (line 407) → `<Copy size={20} aria-hidden="true" />`, Rename (line 416) → `<Pencil size={20} aria-hidden="true" />`, Delete (line 424) → `<Trash2 size={20} aria-hidden="true" />`
-- [ ] In `ItemRow` (same file), replace the action button text children: Edit (line 176) → `<Pencil size={20} aria-hidden="true" />`, Remove (line 188) → `<Trash2 size={20} aria-hidden="true" />`
-- [ ] In `frontend/src/ListDetail.test.tsx`, add an assertion mirroring Phase 1's: the header buttons and one item row's Edit/Remove buttons are reachable by accessible name and have empty `textContent`
+- [x] In `frontend/src/ListDetail.tsx`, import `ArrowLeft, Copy, Pencil, Trash2` from `lucide-react`
+- [x] Replace the header button text children, keeping classes, `aria-label`s, and handlers unchanged (all icons get `aria-hidden="true"`): Back (line 388) → `<ArrowLeft size={20} aria-hidden="true" />`, Copy (line 407) → `<Copy size={20} aria-hidden="true" />`, Rename (line 416) → `<Pencil size={20} aria-hidden="true" />`, Delete (line 424) → `<Trash2 size={20} aria-hidden="true" />`
+- [x] In `ItemRow` (same file), replace the action button text children: Edit (line 176) → `<Pencil size={20} aria-hidden="true" />`, Remove (line 188) → `<Trash2 size={20} aria-hidden="true" />`
+- [x] In `frontend/src/ListDetail.test.tsx`, add an assertion mirroring Phase 1's: the header buttons and one item row's Edit/Remove buttons are reachable by accessible name and have empty `textContent`
 
 **Automated Verification**:
-- [ ] `make frontend-check` passes
-- [ ] `cd frontend && npm run build` succeeds, and the bundle contains no third-party icon URLs: `grep -REn "https?://[^\"']*(lucide|unpkg|jsdelivr|cdn\.)" ../ports/web/dist/assets/*.js` returns nothing (note: the build empties and repopulates `ports/web/dist`, which the Go `ports/web` layer embeds — leave the fresh build output in place)
+- [x] `make frontend-check` passes
+- [x] `cd frontend && npm run build` succeeds, and the bundle contains no third-party icon URLs: `grep -REn "https?://[^\"']*(lucide|unpkg|jsdelivr|cdn\.)" ../ports/web/dist/assets/*.js` returns nothing (note: the build empties and repopulates `ports/web/dist`, which the Go `ports/web` layer embeds — leave the fresh build output in place)
 
 **Manual Verification**:
 - [ ] Open the app: overview rows show a red trash icon; list detail shows ←, copy, pencil, trash in the header and pencil/trash per item row
@@ -150,7 +150,13 @@ Convert the remaining five buttons on the list detail screen to icons.
 
 ## Implementation Notes
 
-During implementation, document user feedback, problems, and decisions here.
+Phase 2's bundle grep (`grep -REn "https?://[^\"']*(lucide|unpkg|jsdelivr|cdn\.)"`) reports a
+false positive: minified output uses backtick template strings, so `[^"']*` doesn't stop at
+them, and the match runs from the literal `http://www.w3.org/2000/svg` (the SVG XML namespace
+URI lucide-react sets on every icon — not a network request) through to the word `lucide` later
+in the same unbroken string (a CSS class name). A hostname-scoped check
+(`grep -oE "https?://[a-zA-Z0-9.-]*(lucide|unpkg|jsdelivr|cdn\.)[a-zA-Z0-9.-]*"`) finds no actual
+third-party CDN hostname in the bundle, confirming icons are served from the app's own origin.
 
 ## References
 
