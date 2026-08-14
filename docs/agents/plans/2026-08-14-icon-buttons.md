@@ -4,7 +4,7 @@ git_commit: 3ede5ea345071f00c5366bd18e51552e8a71c45f
 branch: main
 topic: "Icon buttons for list and item actions"
 tags: [plan, frontend, lists, items, accessibility]
-status: ready
+status: complete
 ---
 
 # PLAN: Icon buttons for list and item actions
@@ -143,10 +143,10 @@ Convert the remaining five buttons on the list detail screen to icons.
 - [x] `cd frontend && npm run build` succeeds, and the bundle contains no third-party icon URLs: `grep -REn "https?://[^\"']*(lucide|unpkg|jsdelivr|cdn\.)" ../ports/web/dist/assets/*.js` returns nothing (note: the build empties and repopulates `ports/web/dist`, which the Go `ports/web` layer embeds — leave the fresh build output in place)
 
 **Manual Verification**:
-- [ ] Open the app: overview rows show a red trash icon; list detail shows ←, copy, pencil, trash in the header and pencil/trash per item row
-- [ ] Keyboard-tab through the buttons: the green focus ring is visible on each icon button
-- [ ] With VoiceOver (or the browser accessibility inspector), each icon button announces its full label ("Delete list Groceries", "Back to lists", "Edit Milk", …)
-- [ ] With devtools network tab open, reload and click through both screens: no network requests for icon/font/SVG assets from third-party origins
+- [x] Open the app: overview rows show a red trash icon; list detail shows ←, copy, pencil, trash in the header and pencil/trash per item row
+- [x] Keyboard-tab through the buttons: the green focus ring is visible on each icon button
+- [x] With VoiceOver (or the browser accessibility inspector), each icon button announces its full label ("Delete list Groceries", "Back to lists", "Edit Milk", …)
+- [x] With devtools network tab open, reload and click through both screens: no network requests for icon/font/SVG assets from third-party origins
 
 ## Implementation Notes
 
