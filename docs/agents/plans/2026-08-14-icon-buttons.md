@@ -106,8 +106,8 @@ Dependencies: None
 Add `lucide-react`, restyle `.icon-button` for icon-only content, and convert the first button (per-row Delete on the overview) as the vertical slice proving the pattern.
 
 **Tasks**:
-- [ ] Run `npm install lucide-react` in `frontend/` (adds to `dependencies` in `package.json` and updates `package-lock.json`)
-- [ ] In `frontend/src/index.css`, update the `.icon-button` block (line 317) for icon-only content:
+- [x] Run `npm install lucide-react` in `frontend/` (adds to `dependencies` in `package.json` and updates `package-lock.json`)
+- [x] In `frontend/src/index.css`, update the `.icon-button` block (line 317) for icon-only content:
   ```css
   .icon-button {
     display: inline-flex;
@@ -120,11 +120,11 @@ Add `lucide-react`, restyle `.icon-button` for icon-only content, and convert th
   }
   ```
   (min-width/min-height/border-radius/font-size/cursor continue to come from the shared block at line 305.)
-- [ ] In `frontend/src/ListsOverview.tsx`, import `Trash2` from `lucide-react` and replace the "Delete" text child of the per-row delete button (line 100) with `<Trash2 size={20} aria-hidden="true" />`, keeping `className="icon-button danger"` and the `aria-label` unchanged. Note: lucide-react does NOT set `aria-hidden` itself — pass it explicitly on every icon.
-- [ ] In `frontend/src/ListsOverview.test.tsx`, add an assertion that the delete button's accessible name is intact and it contains no visible text (icon-only): query `getByRole('button', { name: 'Delete list Groceries' })` (the existing fixture list name) and assert `button.textContent === ''`
+- [x] In `frontend/src/ListsOverview.tsx`, import `Trash2` from `lucide-react` and replace the "Delete" text child of the per-row delete button (line 100) with `<Trash2 size={20} aria-hidden="true" />`, keeping `className="icon-button danger"` and the `aria-label` unchanged. Note: lucide-react does NOT set `aria-hidden` itself — pass it explicitly on every icon.
+- [x] In `frontend/src/ListsOverview.test.tsx`, add an assertion that the delete button's accessible name is intact and it contains no visible text (icon-only): query `getByRole('button', { name: 'Delete list Groceries' })` (the existing fixture list name) and assert `button.textContent === ''`
 
 **Automated Verification**:
-- [ ] `make frontend-check` passes (runs lint, format-check, typecheck, and the vitest suites — existing tests query by accessible name and must stay green, plus the new icon-only assertion)
+- [x] `make frontend-check` passes (runs lint, format-check, typecheck, and the vitest suites — existing tests query by accessible name and must stay green, plus the new icon-only assertion)
 
 ### Phase 2: ListDetail header and item-row buttons
 
