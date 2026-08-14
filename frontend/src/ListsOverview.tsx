@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Trash2 } from 'lucide-react'
 import { attributionLabel, deleteList as apiDeleteList, type List } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
@@ -103,7 +104,7 @@ export function ListsOverview({ onOpenList }: ListsOverviewProps) {
                   aria-label={`Delete list ${list.name}`}
                   onClick={() => handleDelete(list)}
                 >
-                  Delete
+                  <Trash2 size={20} aria-hidden="true" />
                 </button>
               </li>
             )

@@ -99,7 +99,9 @@ describe('ListsOverview', () => {
     render(<ListsOverview onOpenList={() => {}} />, { wrapper: withQueryClient() })
     await screen.findByText('Groceries')
 
-    await user.click(screen.getByRole('button', { name: 'Delete list Groceries' }))
+    const deleteButton = screen.getByRole('button', { name: 'Delete list Groceries' })
+    expect(deleteButton).toHaveTextContent('')
+    await user.click(deleteButton)
 
     await waitFor(() => expect(screen.queryByText('Groceries')).not.toBeInTheDocument())
     expect(screen.getByText('Deleted "Groceries" — Undo')).toBeInTheDocument()
