@@ -79,6 +79,15 @@ describe('ListDetail', () => {
     expect(screen.getByText('Done (1)')).toBeInTheDocument()
     expect(screen.getByText('Milk')).toBeInTheDocument()
     expect(screen.getByText('Bread')).toBeInTheDocument()
+
+    // Header and item-row actions are icon-only: accessible names stay
+    // intact, but the buttons render no visible text.
+    expect(screen.getByRole('button', { name: 'Back to lists' })).toHaveTextContent('')
+    expect(screen.getByRole('button', { name: 'Copy list' })).toHaveTextContent('')
+    expect(screen.getByRole('button', { name: 'Rename list' })).toHaveTextContent('')
+    expect(screen.getByRole('button', { name: 'Delete list' })).toHaveTextContent('')
+    expect(screen.getByRole('button', { name: 'Edit Milk' })).toHaveTextContent('')
+    expect(screen.getByRole('button', { name: 'Remove Milk' })).toHaveTextContent('')
   })
 
   it('adds an item optimistically and keeps the quick-add input focused', async () => {

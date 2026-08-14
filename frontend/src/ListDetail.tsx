@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Copy, Pencil, Trash2 } from 'lucide-react'
 import { attributionLabel, type Item, type List, type Unit, unitLabels, units } from './api'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
@@ -183,7 +184,7 @@ function ItemRow({
             onEdit(item)
           }}
         >
-          Edit
+          <Pencil size={20} aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -195,7 +196,7 @@ function ItemRow({
             onRemove(item)
           }}
         >
-          Remove
+          <Trash2 size={20} aria-hidden="true" />
         </button>
       </div>
     </li>
@@ -386,7 +387,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
     <div className="screen">
       <header className="screen-header">
         <button type="button" className="icon-button" onClick={onBack} aria-label="Back to lists">
-          Back
+          <ArrowLeft size={20} aria-hidden="true" />
         </button>
         {renaming ? (
           <form className="rename-form" onSubmit={saveRename}>
@@ -411,7 +412,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
             aria-label="Copy list"
             disabled={copyList.isPending}
           >
-            Copy
+            <Copy size={20} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -419,7 +420,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
             onClick={startRename}
             aria-label="Rename list"
           >
-            Rename
+            <Pencil size={20} aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -427,7 +428,7 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
             onClick={handleDeleteList}
             aria-label="Delete list"
           >
-            Delete
+            <Trash2 size={20} aria-hidden="true" />
           </button>
         </div>
       </header>
