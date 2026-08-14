@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package client is a generated Go client for the Splitkauf REST API.
 // It is generated from splitkauf.openapi.yaml using oapi-codegen and is

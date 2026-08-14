@@ -2,7 +2,7 @@
 
 Guidance for AI coding assistants (Cursor, GitHub Copilot, OpenCode, Claude, etc.) contributing to this project.
 
-License: TODO
+License: CC0-1.0
 
 ---
 

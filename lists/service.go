@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 package lists
 

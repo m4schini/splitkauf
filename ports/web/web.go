@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package web embeds and serves the built React frontend (see frontend/,
 // output to ports/web/dist by `npm run build`). Handler serves static assets

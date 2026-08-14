@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package problem implements RFC 9457 (Problem Details for HTTP APIs) as the
 // uniform error format for the splitkauf API. It owns a registry of the problem

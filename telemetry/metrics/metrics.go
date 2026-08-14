@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package metrics defines the Prometheus/OpenMetrics collectors emitted by
 // the service and exposes them on a dedicated HTTP listener. Metric names follow

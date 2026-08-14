@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package auth is the authentication port for the splitkauf HTTP API. It
 // exposes an Authenticator with two implementations selected by config: a

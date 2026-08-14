@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 //go:generate go tool oapi-codegen -config config.yaml ../../../splitkauf.openapi.yaml
 package v1

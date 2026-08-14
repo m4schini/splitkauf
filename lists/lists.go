@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package lists is the pure-Go domain for shopping lists and their items. It
 // owns the entities, their validation rules, and a Service that orchestrates

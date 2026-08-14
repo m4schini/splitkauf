@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package members is the minimal membership domain for M2. Every account that
 // authenticates against the OIDC provider (or the dev user in dev-auth mode) is

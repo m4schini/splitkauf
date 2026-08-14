@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package events is the in-process fan-out for real-time sync. It carries
 // coarse reload hints (not state deltas) from the mutating REST handlers to

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TODO
+// SPDX-License-Identifier: CC0-1.0
 
 // Package users is the local-account domain for password authentication
 // (US-A.6/US-A.7). A user is a credential record — a unique username and a
