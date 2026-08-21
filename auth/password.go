@@ -49,8 +49,8 @@ func dummyHash() string {
 
 // passwordAuthenticator is the local username/password Authenticator. It
 // validates credentials against the users repository, then establishes the same
-// scs server-side session the OIDC flow uses (minus the OAuth tokens), so
-// RequireAuth, logout, and durable Postgres sessions behave identically. There
+// scs server-side session the OIDC flow uses, so RequireAuth, logout, and
+// durable Postgres sessions behave identically. There
 // is no self-registration: accounts are provisioned out of band via the
 // `useradd` CLI.
 type passwordAuthenticator struct {

@@ -174,16 +174,14 @@ the one this deployment path is tested against):
 
 1. In Authentik, create an **OAuth2/OIDC Provider**:
    - Client type: **Confidential**.
-   - Scopes: `openid profile email` (add `offline_access` too if you want
-     the provider to issue refresh tokens; the backend refreshes the
-     session server-side, so this is optional but recommended).
+   - Scopes: `openid profile email`. The provider only authenticates the
+     user at login; Splitkauf stores no access or refresh token, so no
+     further scopes are needed. Session duration is governed by
+     `auth.session.lifetime` (`SPLITKAUF_AUTH_SESSION_LIFETIME`), not by any
+     provider token lifetime.
    - Redirect URI: `<SPLITKAUF_APP_BASE_URL>/api/auth/callback` (e.g.
      `https://splitkauf.example.com/api/auth/callback`), matching
      `SPLITKAUF_AUTH_OIDC_REDIRECT_URL` exactly.
-   - Set the access token lifetime **short (5–15 minutes)**. Splitkauf
-     refreshes tokens server-side using the refresh token, so there's no
-     benefit to a long-lived access token, and a short one limits exposure
-     if it ever leaks.
 2. Create an **Application** bound to that provider, with its launch/logout
    URL set to `SPLITKAUF_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL` (e.g.
    `https://splitkauf.example.com/`).

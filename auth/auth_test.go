@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -130,6 +131,12 @@ func TestNewSelectsOIDCWhenEnabled(t *testing.T) {
 	}
 	if oa.endSessionEndpoint == "" {
 		t.Error("expected end_session_endpoint to be read from discovery metadata")
+	}
+	// Authentication-only scopes: exactly these three, nothing that would keep
+	// tokens alive beyond login.
+	wantScopes := []string{"openid", "profile", "email"}
+	if !slices.Equal(oa.oauth2Config.Scopes, wantScopes) {
+		t.Errorf("configured scopes = %v, want %v", oa.oauth2Config.Scopes, wantScopes)
 	}
 }
 

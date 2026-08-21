@@ -48,7 +48,7 @@ func TestRequireSession(t *testing.T) {
 			seed: func(ctx context.Context, sm *scs.SessionManager) {
 				// Hand-built JSON as written before UserID existed in SessionData;
 				// it unmarshals with UserID == uuid.Nil and must be rejected.
-				sm.Put(ctx, sessionDataKey, []byte(`{"access_token":"a","refresh_token":"r","id_token":"i","expiry":"2026-01-01T00:00:00Z","subject":"sub-old","email":"old@example.com","name":"Old"}`))
+				sm.Put(ctx, sessionDataKey, []byte(`{"subject":"sub-old","email":"old@example.com","name":"Old"}`))
 			},
 			wantStatus: http.StatusUnauthorized,
 		},

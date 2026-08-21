@@ -266,9 +266,8 @@ From `docs/research/oidc-go-pwa-integration.md`. **Decisions committed**
   operator-provisioned via the `useradd` CLI (no public sign-up) and stored in a
   `users` table (unique username + bcrypt `password_hash`). Login POSTs
   credentials to `/api/auth/login`; on success it establishes the **same scs
-  session** the OIDC flow uses (subject = user id, no OAuth tokens), so
-  `RequireAuth`, logout, and durable Postgres sessions are identical across
-  modes. An unknown user and a wrong password return the same 401 and both run a
+  session** the OIDC flow uses, so `RequireAuth`, logout, and durable Postgres
+  sessions are identical across modes. An unknown user and a wrong password return the same 401 and both run a
   bcrypt comparison (dummy hash on miss) so timing/response can't enumerate
   usernames. `GET /api/auth/config` reports the active mode so the SPA renders
   the right login UI.
@@ -276,9 +275,10 @@ From `docs/research/oidc-go-pwa-integration.md`. **Decisions committed**
 
 | Concern | Decision |
 |---------|----------|
-| Pattern | **BFF (Backend for Frontend)** — the Go backend owns all tokens; the browser holds only an opaque `HttpOnly`/`Secure`/`SameSite=Lax` session cookie. Tokens never reach the browser. |
+| Pattern | **BFF (Backend for Frontend)** — the Go backend completes the login flow; the browser holds only an opaque `HttpOnly`/`Secure`/`SameSite=Lax` session cookie. Tokens never reach the browser. |
+| IdP's role | **Authentication only** — the IdP replaces the username/password input, nothing more. The session stores no access or refresh token and no token expiry: only the resolved `UserID`, the subject/email/name claims, and the ID token kept solely as the `id_token_hint` for RP-initiated logout. `RequireAuth` never contacts the IdP; IdP-side revocation takes effect at the next login. Scopes: `openid profile email`. |
 | OIDC client | `coreos/go-oidc/v3` + `golang.org/x/oauth2` — **provider-agnostic**, works with both Zitadel and Keycloak; no IdP-specific SDK. |
-| Sessions | `alexedwards/scs/v2` with **`postgresstore`** — sessions live in PostgreSQL, keeping the deployment at a single external dependency. |
+| Sessions | `alexedwards/scs/v2` with **`postgresstore`** — sessions live in PostgreSQL, keeping the deployment at a single external dependency. Session expiry in **all** modes is governed solely by the scs session lifetime (`auth.session.lifetime`, default 168h). |
 | PKCE | S256 mandatory on every authorization request (RFC 9700). |
 | Roles | **Database table**, not IdP claims — the IdP only authenticates; splitkauf owns authorization (list membership, roles). |
 
@@ -302,14 +302,11 @@ sequenceDiagram
     I->>B: 302 /api/auth/callback?code
     B->>S: GET /api/auth/callback
     S->>I: exchange code (verifier)
-    I->>S: ID/access/refresh tokens
-    S->>S: store tokens in Postgres session
+    I->>S: ID token (verified: signature + nonce)
+    S->>S: store UserID + claims + ID-token logout hint in Postgres session
     S->>B: Set-Cookie: session (HttpOnly) + 302 /
-    B->>S: /api/v1/* with cookie
+    B->>S: /api/v1/* with cookie (no IdP contact)
 ```
-
-Operational note: if Zitadel is used, its 12-hour default access-token lifetime must
-be reduced to 5–15 minutes (Keycloak defaults to 5 min).
 
 Open sub-items (deliberately not yet decided): backchannel logout, multi-tenancy.
 

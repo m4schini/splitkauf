@@ -29,9 +29,9 @@ var subjectNamespace = uuid.MustParse("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 // oidcAuthenticator is the Backend-for-Frontend OIDC Authenticator: it runs the
 // Authorization Code + PKCE flow as a confidential client, using the identity
 // provider only to authenticate the user at login. The resulting server-side
-// scs session carries no OAuth access or refresh tokens — only the resolved
-// user id and the ID token retained as the RP-initiated-logout hint. The
-// browser only ever holds the opaque session cookie.
+// scs session carries no OAuth tokens — only the resolved user id, the claims,
+// and the ID token retained as the RP-initiated-logout hint. The browser only
+// ever holds the opaque session cookie.
 type oidcAuthenticator struct {
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
@@ -58,7 +58,9 @@ func newOIDC(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, re
 		ClientSecret: cfg.Auth.OIDC.ClientSecret,
 		RedirectURL:  cfg.Auth.OIDC.RedirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", oidc.ScopeOfflineAccess},
+		// Authentication-only scopes: the IdP's job ends at sign-in, so no
+		// scope that would keep tokens alive beyond login is requested.
+		Scopes: []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
 	// Pull the RP-initiated-logout endpoint from the discovery document, if the
@@ -314,8 +316,7 @@ func (a *oidcAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 // RequireAuth admits only requests carrying a valid session, via the shared
 // requireSession middleware: it loads the SessionData and injects the
 // auth.User, or returns a 401 problem. It never contacts the identity
-// provider — there is no refresh path and no 503 path; the scs session
-// lifetime alone governs expiry.
+// provider; the scs session lifetime alone governs expiry.
 func (a *oidcAuthenticator) RequireAuth(next http.Handler) http.Handler {
 	return requireSession(a.sm, a.logger)(next)
 }
