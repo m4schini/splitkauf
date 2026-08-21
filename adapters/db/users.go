@@ -37,7 +37,9 @@ func (r *UserRepository) Create(ctx context.Context, in users.NewUser) (users.Us
 INSERT INTO users (username, password_hash, name, email)
 VALUES ($1, $2, $3, $4)
 RETURNING id, username, name, COALESCE(email, ''), created_at, updated_at`
+
 	var u users.User
+
 	err := r.db.QueryRowContext(ctx, q, in.Username, in.PasswordHash, in.Name, nullEmpty(in.Email)).Scan(
 		&u.ID, &u.Username, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt,
 	)
@@ -46,8 +48,10 @@ RETURNING id, username, name, COALESCE(email, ''), created_at, updated_at`
 		if errors.As(err, &pgErr) && pgErr.Code == pgErrUniqueViolation {
 			return users.User{}, users.ErrUsernameTaken
 		}
+
 		return users.User{}, fmt.Errorf("creating user: %w", err)
 	}
+
 	return u, nil
 }
 
@@ -58,19 +62,23 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (us
 SELECT id, username, name, COALESCE(email, ''), password_hash, created_at, updated_at
 FROM users
 WHERE username = $1`
+
 	var (
 		u    users.User
 		hash string
 	)
+
 	err := r.db.QueryRowContext(ctx, q, username).Scan(
 		&u.ID, &u.Username, &u.Name, &u.Email, &hash, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.User{}, "", users.ErrNotFound
 	}
+
 	if err != nil {
 		return users.User{}, "", fmt.Errorf("querying user: %w", err)
 	}
+
 	return u, hash, nil
 }
 
@@ -80,5 +88,6 @@ func nullEmpty(s string) any {
 	if s == "" {
 		return nil
 	}
+
 	return s
 }

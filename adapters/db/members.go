@@ -43,6 +43,7 @@ SET user_id    = EXCLUDED.user_id,
 	if _, err := r.db.ExecContext(ctx, q, m.Subject, m.UserID, m.Email, m.Name); err != nil {
 		return fmt.Errorf("upserting member: %w", err)
 	}
+
 	return nil
 }
 
@@ -53,15 +54,19 @@ func (r *MemberRepository) Get(ctx context.Context, subject string) (members.Mem
 SELECT subject, user_id, email, name, created_at, updated_at
 FROM members
 WHERE subject = $1`
+
 	var m members.Member
+
 	err := r.db.QueryRowContext(ctx, q, subject).Scan(
 		&m.Subject, &m.UserID, &m.Email, &m.Name, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return members.Member{}, members.ErrNotFound
 	}
+
 	if err != nil {
 		return members.Member{}, fmt.Errorf("querying member: %w", err)
 	}
+
 	return m, nil
 }

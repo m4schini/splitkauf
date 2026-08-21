@@ -44,14 +44,17 @@ func newCombinedForTest(t *testing.T) (*combinedAuthenticator, *scs.SessionManag
 	}
 
 	sm := scs.New()
+
 	a, err := New(context.Background(), cfg, sm, noopMembers{}, stubUsers{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+
 	ca, ok := a.(*combinedAuthenticator)
 	if !ok {
 		t.Fatalf("New returned %T, want *combinedAuthenticator", a)
 	}
+
 	return ca, sm
 }
 
@@ -62,9 +65,11 @@ func TestCombinedLoginDispatchesOnMethod(t *testing.T) {
 	rec := httptest.NewRecorder()
 	sm.LoadAndSave(http.HandlerFunc(ca.Login)).
 		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/login", nil))
+
 	if rec.Code != http.StatusFound {
 		t.Fatalf("GET login status = %d, want 302", rec.Code)
 	}
+
 	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "/authorize") {
 		t.Errorf("GET login redirects to %q, want the IdP authorization endpoint", loc)
 	}
@@ -75,6 +80,7 @@ func TestCombinedLoginDispatchesOnMethod(t *testing.T) {
 	body := strings.NewReader(`{"username":"ghost","password":"nope"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
 	sm.LoadAndSave(http.HandlerFunc(ca.Login)).ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("POST login (unknown user) status = %d, want 401", rec.Code)
 	}
@@ -93,8 +99,10 @@ func TestCombinedLogoutDispatchesOnSessionOrigin(t *testing.T) {
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
+
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 		t.Errorf("password-session logout = %d %q, want 302 /", rec.Code, rec.Header().Get("Location"))
 	}
@@ -107,11 +115,14 @@ func TestCombinedLogoutDispatchesOnSessionOrigin(t *testing.T) {
 	})
 	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
+
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusFound {
 		t.Fatalf("oidc-session logout status = %d, want 302", rec.Code)
 	}
+
 	loc := rec.Header().Get("Location")
 	if !strings.Contains(loc, "/logout") || !strings.Contains(loc, "id_token_hint=raw-id-token") {
 		t.Errorf("oidc-session logout redirects to %q, want the IdP end-session endpoint with the hint", loc)

@@ -32,12 +32,16 @@ func TestParseSelector(t *testing.T) {
 			} else if !strings.Contains(err.Error(), tt.in) && tt.in != "" {
 				t.Errorf("parseSelector(%q) error %q does not name the selector", tt.in, err)
 			}
+
 			continue
 		}
+
 		if err != nil {
 			t.Errorf("parseSelector(%q): %v", tt.in, err)
+
 			continue
 		}
+
 		if kind != tt.wantKind || value != tt.wantValue {
 			t.Errorf("parseSelector(%q) = %q/%q, want %q/%q", tt.in, kind, value, tt.wantKind, tt.wantValue)
 		}
@@ -46,10 +50,12 @@ func TestParseSelector(t *testing.T) {
 
 func TestConfirmMergeYesSkipsPrompt(t *testing.T) {
 	var out strings.Builder
+
 	ok, err := confirmMerge(true, strings.NewReader(""), &out)
 	if err != nil || !ok {
 		t.Errorf("confirmMerge(--yes) = %v, %v; want true, nil", ok, err)
 	}
+
 	if out.Len() != 0 {
 		t.Errorf("confirmMerge(--yes) printed %q, want no prompt", out.String())
 	}
@@ -58,10 +64,12 @@ func TestConfirmMergeYesSkipsPrompt(t *testing.T) {
 func TestConfirmMergeNonTTYWithoutYesFails(t *testing.T) {
 	// A strings.Reader is not a terminal, mirroring a piped stdin.
 	var out strings.Builder
+
 	ok, err := confirmMerge(false, strings.NewReader("y\n"), &out)
 	if err == nil || ok {
 		t.Fatalf("confirmMerge(non-TTY) = %v, %v; want error", ok, err)
 	}
+
 	if !strings.Contains(err.Error(), "--yes") {
 		t.Errorf("error %q should point at --yes", err)
 	}

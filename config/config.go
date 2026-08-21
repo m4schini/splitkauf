@@ -160,6 +160,7 @@ func (d DatabaseConfig) DSN() string {
 // embedded backslashes and single quotes as required by the libpq parser.
 func quoteDSNValue(v string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, `'`, `\'`)
+
 	return "'" + replacer.Replace(v) + "'"
 }
 
@@ -189,6 +190,7 @@ func Load() error {
 		if err := v.ReadInConfig(); err != nil {
 			if errors.Is(err, viper.ConfigFileNotFoundError{}) {
 				loadErr = fmt.Errorf("reading config file: %w", err)
+
 				return
 			}
 			// Config file not found — rely on defaults + env
@@ -203,12 +205,14 @@ func Load() error {
 		parsedCfg := &Config{}
 		if err := v.Unmarshal(parsedCfg); err != nil {
 			loadErr = fmt.Errorf("unmarshaling config: %w", err)
+
 			return
 		}
 
 		// Validate
 		if err := validate(parsedCfg); err != nil {
 			loadErr = fmt.Errorf("config validation: %w", err)
+
 			return
 		}
 

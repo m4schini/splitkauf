@@ -60,10 +60,12 @@ are not invalidated; they last until session expiry.`,
 		if err != nil {
 			return err
 		}
+
 		target, err := resolveSelector(ctx, conn, args[1])
 		if err != nil {
 			return err
 		}
+
 		if source.UserID == target.UserID {
 			return fmt.Errorf("source and target resolve to the same user id %s", source.UserID)
 		}
@@ -80,9 +82,11 @@ are not invalidated; they last until session expiry.`,
 		fmt.Fprintf(out, "  lists.created_by: %d rows\n", listCount)
 		fmt.Fprintf(out, "  items.added_by:   %d rows\n", added)
 		fmt.Fprintf(out, "  items.bought_by:  %d rows\n", bought)
+
 		for _, line := range cleanupLines(source, target) {
 			fmt.Fprintf(out, "  %s\n", line)
 		}
+
 		if source.Kind != db.IdentityKindLocal {
 			fmt.Fprintln(cmd.ErrOrStderr(), "warning: the source identity can still log in via the IdP; its next OIDC login re-derives the same user id and recreates the member row")
 		}
@@ -91,8 +95,10 @@ are not invalidated; they last until session expiry.`,
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			fmt.Fprintln(out, "Aborted; nothing was changed.")
+
 			return nil
 		}
 
@@ -100,8 +106,10 @@ are not invalidated; they last until session expiry.`,
 		if err != nil {
 			return err
 		}
+
 		fmt.Fprintf(out, "Merged %s into %s (lists: %d, added: %d, bought: %d).\n",
 			args[0], args[1], result.Lists, result.Added, result.Bought)
+
 		return nil
 	},
 }
@@ -114,6 +122,7 @@ func parseSelector(s string) (kind, value string, err error) {
 	if !found || value == "" {
 		return "", "", fmt.Errorf("invalid selector %q: want local:<username>, oidc:<subject>, or uuid:<user_id>", s)
 	}
+
 	switch kind {
 	case "local", "oidc", "uuid":
 		return kind, value, nil
@@ -139,9 +148,11 @@ func resolveSelector(ctx context.Context, conn *sql.DB, selector string) (db.Ide
 		if errors.Is(err, users.ErrNotFound) {
 			return db.Identity{}, fmt.Errorf("selector %q: no local account with username %q", selector, value)
 		}
+
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("selector %q: %w", selector, err)
 		}
+
 		return db.Identity{
 			Kind:       db.IdentityKindLocal,
 			Identifier: u.Username,
@@ -155,14 +166,18 @@ func resolveSelector(ctx context.Context, conn *sql.DB, selector string) (db.Ide
 		if errors.Is(err, members.ErrNotFound) {
 			return db.Identity{}, fmt.Errorf("selector %q: no member with subject %q — the account must have logged in at least once (or use uuid:<user_id>)", selector, value)
 		}
+
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("selector %q: %w", selector, err)
 		}
+
 		identityKind := db.IdentityKindOIDC
 		if m.Subject == auth.DevUser.ID.String() {
 			identityKind = db.IdentityKindDev
 		}
+
 		lastLogin := m.UpdatedAt
+
 		return db.Identity{
 			Kind:       identityKind,
 			Identifier: m.Subject,
@@ -175,12 +190,14 @@ func resolveSelector(ctx context.Context, conn *sql.DB, selector string) (db.Ide
 	default: // "uuid"
 		id, err := uuid.Parse(value)
 		if err != nil {
-			return db.Identity{}, fmt.Errorf("selector %q: not a valid UUID: %v", selector, err)
+			return db.Identity{}, fmt.Errorf("selector %q: not a valid UUID: %w", selector, err)
 		}
+
 		ident, err := db.NewIdentityRepository(conn).ResolveUUID(ctx, id)
 		if err != nil {
 			return db.Identity{}, fmt.Errorf("selector %q: %w", selector, err)
 		}
+
 		return ident, nil
 	}
 }
@@ -189,6 +206,7 @@ func resolveSelector(ctx context.Context, conn *sql.DB, selector string) (db.Ide
 // printout.
 func cleanupLines(source, target db.Identity) []string {
 	var lines []string
+
 	switch source.Kind {
 	case db.IdentityKindLocal:
 		lines = append(lines, fmt.Sprintf("will delete: local account %q, members row of source", source.Identifier))
@@ -197,9 +215,11 @@ func cleanupLines(source, target db.Identity) []string {
 	default:
 		lines = append(lines, "will delete: members row of source")
 	}
+
 	if target.Kind == db.IdentityKindLocal {
 		lines = append(lines, fmt.Sprintf("will seed: members row for target %q (so display names resolve)", target.Identifier))
 	}
+
 	return lines
 }
 
@@ -210,15 +230,20 @@ func confirmMerge(yes bool, in io.Reader, out io.Writer) (bool, error) {
 	if yes {
 		return true, nil
 	}
+
 	if _, ok := terminalFd(in); !ok {
 		return false, errors.New("confirmation required; use --yes")
 	}
+
 	fmt.Fprint(out, "Proceed? [y/N]: ")
+
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, fmt.Errorf("reading confirmation: %w", err)
 	}
+
 	answer := strings.TrimSpace(line)
+
 	return answer == "y" || answer == "Y", nil
 }
 

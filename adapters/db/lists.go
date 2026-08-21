@@ -79,6 +79,7 @@ const itemSelect = `
 // can perform (see listSelect).
 func (r *ListsRepository) CreateList(ctx context.Context, name string, createdBy uuid.UUID) (lists.List, error) {
 	now := time.Now()
+
 	var id uuid.UUID
 	if err := r.db.QueryRowContext(ctx,
 		`INSERT INTO lists (name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $3)
@@ -87,6 +88,7 @@ func (r *ListsRepository) CreateList(ctx context.Context, name string, createdBy
 	).Scan(&id); err != nil {
 		return lists.List{}, fmt.Errorf("create list: %w", err)
 	}
+
 	return r.List(ctx, id)
 }
 
@@ -100,16 +102,20 @@ func (r *ListsRepository) Lists(ctx context.Context) ([]lists.List, error) {
 	defer rows.Close()
 
 	var result []lists.List
+
 	for rows.Next() {
 		l, err := scanList(rows)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, l)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate lists: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -122,9 +128,11 @@ func (r *ListsRepository) List(ctx context.Context, id uuid.UUID) (lists.List, e
 	if errors.Is(err, sql.ErrNoRows) {
 		return lists.List{}, lists.ErrNotFound
 	}
+
 	if err != nil {
 		return lists.List{}, err
 	}
+
 	return l, nil
 }
 
@@ -139,16 +147,20 @@ func (r *ListsRepository) ListItems(ctx context.Context, listID uuid.UUID) ([]li
 	defer rows.Close()
 
 	var result []lists.Item
+
 	for rows.Next() {
 		it, err := scanItem(rows)
 		if err != nil {
 			return nil, err
 		}
+
 		result = append(result, it)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate items: %w", err)
 	}
+
 	return result, nil
 }
 
@@ -161,9 +173,11 @@ func (r *ListsRepository) RenameList(ctx context.Context, id uuid.UUID, name str
 	if err != nil {
 		return lists.List{}, fmt.Errorf("rename list: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.List{}, lists.ErrNotFound
 	}
+
 	return r.List(ctx, id)
 }
 
@@ -174,9 +188,11 @@ func (r *ListsRepository) DeleteList(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("delete list: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.ErrNotFound
 	}
+
 	return nil
 }
 
@@ -205,15 +221,18 @@ func (r *ListsRepository) CopyList(ctx context.Context, sourceID uuid.UUID, name
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
+
 	err = tx.QueryRowContext(ctx, `SELECT 1 FROM lists WHERE id = $1 FOR KEY SHARE`, sourceID).Scan(&exists)
 	if errors.Is(err, sql.ErrNoRows) {
 		return lists.List{}, lists.ErrNotFound
 	}
+
 	if err != nil {
 		return lists.List{}, fmt.Errorf("copy list: load source: %w", err)
 	}
 
 	now := time.Now()
+
 	var newID uuid.UUID
 	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO lists (name, created_by, created_at, updated_at) VALUES ($1, $2, $3, $3)
@@ -264,7 +283,9 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 		checkedAt = now
 		boughtBy = addedBy
 	}
+
 	var id uuid.UUID
+
 	err := r.db.QueryRowContext(ctx,
 		`INSERT INTO items (list_id, name, quantity, unit, note, checked, checked_at, added_by, bought_by, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
@@ -276,8 +297,10 @@ func (r *ListsRepository) AddItem(ctx context.Context, listID uuid.UUID, name st
 		if errors.As(err, &pgErr) && pgErr.Code == pgErrForeignKeyViolation {
 			return lists.Item{}, lists.ErrNotFound
 		}
+
 		return lists.Item{}, fmt.Errorf("add item: %w", err)
 	}
+
 	return r.Item(ctx, listID, id)
 }
 
@@ -290,9 +313,11 @@ func (r *ListsRepository) Item(ctx context.Context, listID, itemID uuid.UUID) (l
 	if errors.Is(err, sql.ErrNoRows) {
 		return lists.Item{}, lists.ErrNotFound
 	}
+
 	if err != nil {
 		return lists.Item{}, err
 	}
+
 	return it, nil
 }
 
@@ -308,16 +333,19 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 		args = append(args, *update.Name)
 		next++
 	}
+
 	if update.Quantity != nil {
 		sets = append(sets, fmt.Sprintf("quantity = $%d", next))
 		args = append(args, *update.Quantity)
 		next++
 	}
+
 	if update.Unit != nil {
 		sets = append(sets, fmt.Sprintf("unit = $%d", next))
 		args = append(args, *update.Unit)
 		next++
 	}
+
 	if update.NoteSet {
 		sets = append(sets, fmt.Sprintf("note = $%d", next))
 		args = append(args, nullString(update.Note))
@@ -330,12 +358,14 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 	query := fmt.Sprintf( //nolint:gosec // G201: only internal fragments are interpolated; values are bound
 		`UPDATE items SET %s WHERE id = $%d AND list_id = $%d AND deleted_at IS NULL`,
 		strings.Join(sets, ", "), next, next+1)
+
 	args = append(args, itemID, listID)
 
 	res, err := r.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("update item: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
@@ -349,15 +379,18 @@ func (r *ListsRepository) UpdateItem(ctx context.Context, listID, itemID uuid.UU
 // or missing item yields lists.ErrNotFound (0 rows affected).
 func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
 	now := time.Now()
+
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE items SET deleted_at = $3, updated_at = $3
 		 WHERE id = $1 AND list_id = $2 AND deleted_at IS NULL`, itemID, listID, now)
 	if err != nil {
 		return fmt.Errorf("delete item: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.ErrNotFound
 	}
+
 	return nil
 }
 
@@ -373,6 +406,7 @@ func (r *ListsRepository) RestoreItem(ctx context.Context, listID, itemID uuid.U
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("restore item: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
@@ -392,9 +426,11 @@ func (r *ListsRepository) SetItemChecked(ctx context.Context, listID, itemID uui
 	if err != nil {
 		return lists.Item{}, fmt.Errorf("set item checked: %w", err)
 	}
+
 	if n, _ := res.RowsAffected(); n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
+
 	return r.Item(ctx, listID, itemID)
 }
 
@@ -416,9 +452,12 @@ func scanList(s scanner) (lists.List, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return lists.List{}, err
 		}
+
 		return lists.List{}, fmt.Errorf("scan list: %w", err)
 	}
+
 	l.CreatedBy = toActor(createdBy, createdByName)
+
 	return l, nil
 }
 
@@ -429,6 +468,7 @@ func toActor(id uuid.NullUUID, name sql.NullString) *lists.Actor {
 	if !id.Valid {
 		return nil
 	}
+
 	return &lists.Actor{ID: id.UUID, Name: name.String}
 }
 
@@ -449,17 +489,22 @@ func scanItem(s scanner) (lists.Item, error) {
 		if errors.Is(err, sql.ErrNoRows) {
 			return lists.Item{}, err
 		}
+
 		return lists.Item{}, fmt.Errorf("scan item: %w", err)
 	}
+
 	if note.Valid {
 		it.Note = &note.String
 	}
+
 	if checkedAt.Valid {
 		t := checkedAt.Time
 		it.CheckedAt = &t
 	}
+
 	it.AddedBy = toActor(addedBy, addedByName)
 	it.BoughtBy = toActor(boughtBy, boughtByName)
+
 	return it, nil
 }
 
@@ -468,6 +513,7 @@ func nullString(s *string) any {
 	if s == nil {
 		return nil
 	}
+
 	return *s
 }
 
@@ -476,6 +522,7 @@ func nullTime(t *time.Time) any {
 	if t == nil {
 		return nil
 	}
+
 	return *t
 }
 
@@ -484,5 +531,6 @@ func nullUUID(id *uuid.UUID) any {
 	if id == nil {
 		return nil
 	}
+
 	return *id
 }

@@ -19,15 +19,19 @@ import (
 // patchJSON PATCHes a JSON body and returns the response; the caller closes it.
 func patchJSON(t *testing.T, url, body string) *http.Response {
 	t.Helper()
+
 	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatalf("new PATCH request: %v", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("PATCH %s: %v", url, err)
 	}
+
 	return resp
 }
 
@@ -42,6 +46,7 @@ func TestCreateListPublishesListEvent(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists", `{"name":"Groceries"}`)
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
 	}
@@ -50,9 +55,11 @@ func TestCreateListPublishesListEvent(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("published %d events, want 1: %+v", len(got), got)
 	}
+
 	if got[0].Type != events.TypeLists {
 		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeLists)
 	}
+
 	if got[0].ListID != "" {
 		t.Errorf("lists event carries listId %q, want empty", got[0].ListID)
 	}
@@ -69,6 +76,7 @@ func TestCopyListPublishesListEvent(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", "")
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)
 	}
@@ -77,9 +85,11 @@ func TestCopyListPublishesListEvent(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("published %d events, want 1: %+v", len(got), got)
 	}
+
 	if got[0].Type != events.TypeLists {
 		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeLists)
 	}
+
 	if got[0].ListID != "" {
 		t.Errorf("lists event carries listId %q, want empty", got[0].ListID)
 	}
@@ -96,9 +106,11 @@ func TestFailedCopyPublishesNothing(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists/"+uuid.New().String()+"/copy", "")
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
+
 	if got := pub.captured(); len(got) != 0 {
 		t.Errorf("published %d events on error, want 0: %+v", len(got), got)
 	}
@@ -116,6 +128,7 @@ func TestCheckItemPublishesItemEvent(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/check", "")
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -124,9 +137,11 @@ func TestCheckItemPublishesItemEvent(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("published %d events, want 1: %+v", len(got), got)
 	}
+
 	if got[0].Type != events.TypeItems {
 		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeItems)
 	}
+
 	if got[0].ListID != listID.String() {
 		t.Errorf("event listId = %q, want %q", got[0].ListID, listID.String())
 	}
@@ -144,6 +159,7 @@ func TestRestoreItemPublishesItemEvent(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/restore", "")
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
@@ -152,9 +168,11 @@ func TestRestoreItemPublishesItemEvent(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("published %d events, want 1: %+v", len(got), got)
 	}
+
 	if got[0].Type != events.TypeItems {
 		t.Errorf("event type = %q, want %q", got[0].Type, events.TypeItems)
 	}
+
 	if got[0].ListID != listID.String() {
 		t.Errorf("event listId = %q, want %q", got[0].ListID, listID.String())
 	}
@@ -172,6 +190,7 @@ func TestNoEventOnMutationError(t *testing.T) {
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String()+"/check", "")
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
 	}
@@ -197,6 +216,7 @@ func newStatefulService() *statefulService {
 func (s *statefulService) put(it lists.Item) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	cp := it
 	s.items[it.ID] = &cp
 }
@@ -204,30 +224,38 @@ func (s *statefulService) put(it lists.Item) {
 func (s *statefulService) get(id uuid.UUID) (lists.Item, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	it, ok := s.items[id]
 	if !ok {
 		return lists.Item{}, false
 	}
+
 	return *it, true
 }
 
 func (s *statefulService) UpdateItem(_ context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	it, ok := s.items[itemID]
 	if !ok || it.ListID != listID {
 		return lists.Item{}, lists.ErrNotFound
 	}
+
 	if update.Name != nil {
 		it.Name = *update.Name
 	}
+
 	if update.Quantity != nil {
 		it.Quantity = *update.Quantity
 	}
+
 	if update.NoteSet {
 		it.Note = update.Note
 	}
+
 	it.UpdatedAt = time.Now()
+
 	return *it, nil
 }
 
@@ -242,10 +270,12 @@ func (s *statefulService) UncheckItem(_ context.Context, listID, itemID, _ uuid.
 func (s *statefulService) setChecked(listID, itemID uuid.UUID, checked bool) (lists.Item, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	it, ok := s.items[itemID]
 	if !ok || it.ListID != listID {
 		return lists.Item{}, lists.ErrNotFound
 	}
+
 	it.Checked = checked
 	if checked {
 		now := time.Now()
@@ -253,7 +283,9 @@ func (s *statefulService) setChecked(listID, itemID uuid.UUID, checked bool) (li
 	} else {
 		it.CheckedAt = nil
 	}
+
 	it.UpdatedAt = time.Now()
+
 	return *it, nil
 }
 
@@ -283,6 +315,7 @@ func (s *statefulService) RestoreItem(_ context.Context, listID, itemID uuid.UUI
 	if !ok || it.ListID != listID {
 		return lists.Item{}, lists.ErrNotFound
 	}
+
 	return it, nil
 }
 
@@ -304,11 +337,14 @@ func TestSequentialUpdatesConvergeLWW(t *testing.T) {
 	// wins.
 	r1 := patchJSON(t, base, `{"name":"oat milk"}`)
 	r1.Body.Close()
+
 	if r1.StatusCode != http.StatusOK {
 		t.Fatalf("first update status = %d, want 200", r1.StatusCode)
 	}
+
 	r2 := patchJSON(t, base, `{"name":"soy milk"}`)
 	r2.Body.Close()
+
 	if r2.StatusCode != http.StatusOK {
 		t.Fatalf("second update status = %d, want 200", r2.StatusCode)
 	}
@@ -317,6 +353,7 @@ func TestSequentialUpdatesConvergeLWW(t *testing.T) {
 	if !ok {
 		t.Fatal("item vanished")
 	}
+
 	if final.Name != "soy milk" {
 		t.Errorf("converged name = %q, want last write %q", final.Name, "soy milk")
 	}
@@ -325,6 +362,7 @@ func TestSequentialUpdatesConvergeLWW(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("published %d events, want 2 (one per update): %+v", len(got), got)
 	}
+
 	for i, e := range got {
 		if e.Type != events.TypeItems || e.ListID != listID.String() {
 			t.Errorf("event %d = %+v, want items/%s", i, e, listID)
@@ -347,15 +385,18 @@ func TestCheckThenUncheckLeavesUnchecked(t *testing.T) {
 
 	rc := postJSON(t, base+"/check", "")
 	rc.Body.Close()
+
 	if rc.StatusCode != http.StatusOK {
 		t.Fatalf("check status = %d, want 200", rc.StatusCode)
 	}
+
 	if it, _ := svc.get(itemID); !it.Checked {
 		t.Fatal("item not checked after check")
 	}
 
 	ru := postJSON(t, base+"/uncheck", "")
 	ru.Body.Close()
+
 	if ru.StatusCode != http.StatusOK {
 		t.Fatalf("uncheck status = %d, want 200", ru.StatusCode)
 	}
@@ -364,6 +405,7 @@ func TestCheckThenUncheckLeavesUnchecked(t *testing.T) {
 	if final.Checked {
 		t.Error("item is checked after check+uncheck, want unchecked")
 	}
+
 	if final.CheckedAt != nil {
 		t.Errorf("checkedAt = %v after uncheck, want nil", final.CheckedAt)
 	}
@@ -372,6 +414,7 @@ func TestCheckThenUncheckLeavesUnchecked(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("published %d events, want 2 (check + uncheck, neither dropped): %+v", len(got), got)
 	}
+
 	for i, e := range got {
 		if e.Type != events.TypeItems || e.ListID != listID.String() {
 			t.Errorf("event %d = %+v, want items/%s", i, e, listID)

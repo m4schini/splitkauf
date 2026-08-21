@@ -70,6 +70,7 @@ func WithUser(ctx context.Context, u User) context.Context {
 // REST handlers in both auth modes.
 func UserFrom(ctx context.Context) (User, bool) {
 	u, ok := ctx.Value(userContextKey{}).(User)
+
 	return u, ok
 }
 
@@ -89,6 +90,7 @@ func New(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, member
 		if err != nil {
 			return nil, err
 		}
+
 		return newCombined(o, newPassword(sm, usersRepo, membersRepo)), nil
 	case cfg.IsOIDCEnabled():
 		return newOIDC(ctx, cfg, sm, membersRepo)

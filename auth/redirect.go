@@ -51,5 +51,6 @@ func safeReturnTo(raw string) string {
 	if u.RawQuery != "" {
 		out += "?" + u.RawQuery
 	}
+
 	return out
 }

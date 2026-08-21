@@ -72,6 +72,7 @@ func sessionStore(oidcEnabled, dbReachable bool) (usePostgres bool, err error) {
 	if oidcEnabled && !dbReachable {
 		return false, errors.New("sessions require a reachable database in OIDC mode")
 	}
+
 	return dbReachable, nil
 }
 
@@ -91,10 +92,12 @@ func newSessionManager(log *zap.Logger, conn *sql.DB, usePostgres bool) *scs.Ses
 	} else {
 		log.Warn("database unavailable; using in-memory session store (sessions are process-local)")
 	}
+
 	sm.Lifetime = config.C.Auth.Session.Lifetime
 	sm.Cookie.HttpOnly = true
 	sm.Cookie.Secure = config.C.Auth.Session.CookieSecure
 	sm.Cookie.SameSite = http.SameSiteLaxMode
+
 	return sm
 }
 
@@ -125,6 +128,7 @@ func serve() error {
 	usePostgres, err := sessionStore(config.C.IsOIDCEnabled(), dbErr == nil)
 	if err != nil {
 		log.Error("cannot start in OIDC mode", zap.Error(err))
+
 		return err
 	}
 
@@ -140,8 +144,10 @@ func serve() error {
 	// fails fast with a clear message.
 	membersRepo := db.NewMemberRepository(conn)
 	usersRepo := db.NewUserRepository(conn)
+
 	discoveryCtx, cancelDiscovery := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancelDiscovery()
+
 	authr, err := auth.New(discoveryCtx, config.C, sm, membersRepo, usersRepo)
 	if err != nil {
 		return fmt.Errorf("building authenticator: %w", err)
@@ -155,6 +161,7 @@ func serve() error {
 		if err := membersRepo.Upsert(ctx, auth.DevMember()); err != nil {
 			log.Warn("could not upsert dev member at startup", zap.Error(err))
 		}
+
 		cancel()
 	}
 
@@ -194,9 +201,11 @@ func runServers(log *zap.Logger, servers []namedServer) error {
 	for _, s := range servers {
 		g.Go(func() error {
 			log.Info("starting server", zap.String("name", s.name), zap.String("addr", s.srv.Addr))
+
 			if err := s.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return fmt.Errorf("%s server: %w", s.name, err)
 			}
+
 			return nil
 		})
 	}
@@ -204,13 +213,16 @@ func runServers(log *zap.Logger, servers []namedServer) error {
 	g.Go(func() error {
 		<-gctx.Done()
 		log.Info("shutdown signal received, stopping servers")
+
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
+
 		for _, s := range servers {
 			if err := s.srv.Shutdown(shutdownCtx); err != nil {
 				log.Warn("server shutdown error", zap.String("name", s.name), zap.Error(err))
 			}
 		}
+
 		return nil
 	})
 

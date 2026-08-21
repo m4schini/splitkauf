@@ -17,6 +17,7 @@ import (
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
 		httpInFlight.Inc()
 		defer httpInFlight.Dec()
 
@@ -42,6 +43,7 @@ func Middleware(next http.Handler) http.Handler {
 
 type recordingWriter struct {
 	http.ResponseWriter
+
 	status int
 	bytes  int
 }
@@ -54,6 +56,7 @@ func (rw *recordingWriter) WriteHeader(status int) {
 func (rw *recordingWriter) Write(b []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(b)
 	rw.bytes += n
+
 	return n, err
 }
 

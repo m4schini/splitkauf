@@ -4,6 +4,7 @@ package db_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -20,9 +21,11 @@ import (
 // without dropping or recreating the schema.
 func newTestMemberRepo(t *testing.T) (*db.MemberRepository, context.Context) {
 	t.Helper()
+
 	if testing.Short() {
 		t.Skip("skipping integration test in -short mode")
 	}
+
 	dsn := os.Getenv("SPLITKAUF_TEST_DATABASE_DSN")
 	if dsn == "" {
 		t.Skip("SPLITKAUF_TEST_DATABASE_DSN not set; skipping integration test")
@@ -32,11 +35,13 @@ func newTestMemberRepo(t *testing.T) (*db.MemberRepository, context.Context) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+
 	t.Cleanup(func() { _ = conn.Close() })
 
 	if _, err := conn.ExecContext(context.Background(), `TRUNCATE TABLE members`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
+
 	return db.NewMemberRepository(conn), context.Background()
 }
 
@@ -44,6 +49,7 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	repo, ctx := newTestMemberRepo(t)
 
 	const subject = "oidc-subject-123"
+
 	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 	// First Upsert inserts a brand-new member.
@@ -60,12 +66,15 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after insert: %v", err)
 	}
+
 	if inserted.Email != "alice@example.com" || inserted.Name != "Alice" {
 		t.Errorf("inserted = %+v, want email alice@example.com name Alice", inserted)
 	}
+
 	if inserted.UserID != userID {
 		t.Errorf("user_id = %v, want %v", inserted.UserID, userID)
 	}
+
 	if inserted.CreatedAt.IsZero() || inserted.UpdatedAt.IsZero() {
 		t.Errorf("timestamps not set: created=%v updated=%v", inserted.CreatedAt, inserted.UpdatedAt)
 	}
@@ -91,6 +100,7 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after update: %v", err)
 	}
+
 	if updated.Email != "alice.new@example.com" || updated.Name != "Alice Cooper" {
 		t.Errorf("updated = %+v, want email alice.new@example.com name Alice Cooper", updated)
 	}
@@ -102,9 +112,11 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	if !updated.UpdatedAt.After(inserted.UpdatedAt) {
 		t.Errorf("updated_at did not advance: was %v, now %v", inserted.UpdatedAt, updated.UpdatedAt)
 	}
+
 	if updated.UserID != corrected {
 		t.Errorf("user_id = %v, want the re-stamped %v", updated.UserID, corrected)
 	}
+
 	if updated.Subject != subject {
 		t.Errorf("subject = %q, want %q", updated.Subject, subject)
 	}
@@ -113,7 +125,7 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 func TestMemberGetNotFound(t *testing.T) {
 	repo, ctx := newTestMemberRepo(t)
 
-	if _, err := repo.Get(ctx, "does-not-exist"); err != members.ErrNotFound {
+	if _, err := repo.Get(ctx, "does-not-exist"); !errors.Is(err, members.ErrNotFound) {
 		t.Errorf("Get err = %v, want ErrNotFound", err)
 	}
 }

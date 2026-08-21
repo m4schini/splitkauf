@@ -34,6 +34,7 @@ func (nopCloserReader) Close() error { return nil }
 func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for an oversized body")
+
 		return lists.List{}, nil
 	}}
 	srv := newServer(t, svc)
@@ -41,7 +42,7 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 	oversized := strings.Repeat("a", (1<<20)+1)
 	body := fmt.Sprintf(`{"name":%q}`, oversized)
 
-	resp, err := http.Post(srv.URL+"/api/v1/lists", "application/json", bytes.NewBufferString(body)) //nolint:gosec // url is test-controlled
+	resp, err := http.Post(srv.URL+"/api/v1/lists", "application/json", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
@@ -50,9 +51,11 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusRequestEntityTooLarge)
 	}
+
 	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
 		t.Errorf("content-type = %q, want application/problem+json", ct)
 	}
+
 	var prob struct {
 		Type   string `json:"type"`
 		Status int    `json:"status"`
@@ -60,9 +63,11 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&prob); err != nil {
 		t.Fatalf("decode problem: %v", err)
 	}
+
 	if !strings.HasSuffix(prob.Type, "/payload-too-large") {
 		t.Errorf("type = %q, want suffix /payload-too-large", prob.Type)
 	}
+
 	if prob.Status != http.StatusRequestEntityTooLarge {
 		t.Errorf("status member = %d, want %d", prob.Status, http.StatusRequestEntityTooLarge)
 	}
@@ -78,6 +83,7 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
 		t.Fatal("service should not be called for an oversized body")
+
 		return lists.List{}, nil
 	}}
 	srv := newServer(t, svc)
@@ -89,7 +95,9 @@ func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
+
 	if req.ContentLength != 0 {
 		t.Fatalf("test setup: ContentLength = %d, want 0 (undeclared)", req.ContentLength)
 	}
@@ -103,6 +111,7 @@ func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 	if resp.StatusCode != http.StatusRequestEntityTooLarge && resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d or %d", resp.StatusCode, http.StatusRequestEntityTooLarge, http.StatusBadRequest)
 	}
+
 	if ct := resp.Header.Get("Content-Type"); ct != "application/problem+json" {
 		t.Errorf("content-type = %q, want application/problem+json", ct)
 	}
@@ -116,6 +125,7 @@ func TestNormalSizedPostStillSucceeds(t *testing.T) {
 		if name != "Groceries" {
 			t.Errorf("service got name %q", name)
 		}
+
 		return want, nil
 	}}
 	srv := newServer(t, svc)

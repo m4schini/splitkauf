@@ -114,11 +114,14 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// response header map (a fatal "concurrent map writes"). Session-scoped
 	// requests still get the full load/save; everything else bypasses it.
 	sessioned := sm.LoadAndSave(r)
+
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if needsSession(req.URL.Path) {
 			sessioned.ServeHTTP(w, req)
+
 			return
 		}
+
 		r.ServeHTTP(w, req)
 	})
 }
@@ -131,6 +134,7 @@ func needsSession(p string) bool {
 	if p == "/api/auth/config" {
 		return false
 	}
+
 	return strings.HasPrefix(p, "/api/auth/") || p == "/api/v1" || strings.HasPrefix(p, "/api/v1/")
 }
 
@@ -152,11 +156,14 @@ func authConfigHandler(w http.ResponseWriter, _ *http.Request) {
 func publicHealth(requireAuth func(http.Handler) http.Handler) v1.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		guarded := requireAuth(next)
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodGet && r.URL.Path == "/api/v1/health" {
 				next.ServeHTTP(w, r)
+
 				return
 			}
+
 			guarded.ServeHTTP(w, r)
 		})
 	}

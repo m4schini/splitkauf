@@ -52,10 +52,12 @@ func getSessionData(ctx context.Context, sm *scs.SessionManager) (SessionData, b
 	if len(raw) == 0 {
 		return SessionData{}, false
 	}
+
 	var d SessionData
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return SessionData{}, false
 	}
+
 	return d, true
 }
 
@@ -66,7 +68,9 @@ func putSessionData(ctx context.Context, sm *scs.SessionManager, d SessionData) 
 	if err != nil {
 		return err
 	}
+
 	sm.Put(ctx, sessionDataKey, raw)
+
 	return nil
 }
 
@@ -93,8 +97,10 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 					zap.Bool("incoming_session_cookie", hasSessionCookie(sm, r)),
 				)
 				problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
+
 				return
 			}
+
 			if data.UserID == uuid.Nil {
 				// A session written before UserID existed in SessionData; the user
 				// must sign in again once after the deploy.
@@ -103,6 +109,7 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 					zap.String("subject", data.Subject),
 				)
 				problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
+
 				return
 			}
 
@@ -122,5 +129,6 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 // of a lost session.
 func hasSessionCookie(sm *scs.SessionManager, r *http.Request) bool {
 	_, err := r.Cookie(sm.Cookie.Name)
+
 	return err == nil
 }

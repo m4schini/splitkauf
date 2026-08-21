@@ -24,11 +24,14 @@ import (
 // devHandler builds the full REST handler in dev-auth mode for these tests.
 func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
 	t.Helper()
+
 	sm := scs.New()
+
 	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
+
 	return rest.New(si, sm, authr, events.NewBroker())
 }
 
@@ -43,10 +46,12 @@ func TestMain(m *testing.M) {
 	if err := config.Load(); err != nil {
 		panic(err)
 	}
+
 	spec, err := os.ReadFile("../../splitkauf.openapi.yaml")
 	if err != nil {
 		panic(err)
 	}
+
 	rest.SetOpenAPISpec(spec)
 	os.Exit(m.Run())
 }
@@ -64,6 +69,7 @@ func TestRootServesIndexHTML(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
+
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("Content-Type = %q, want text/html prefix", ct)
 	}
@@ -82,6 +88,7 @@ func TestSPARouteFallsBackToIndexHTML(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
+
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
 		t.Errorf("Content-Type = %q, want text/html prefix", ct)
 	}
@@ -120,6 +127,7 @@ func TestAPIHealthStillReachable(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
+
 	if got.Status == "" {
 		t.Error("status is empty, want non-empty")
 	}

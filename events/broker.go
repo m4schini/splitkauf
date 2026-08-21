@@ -38,6 +38,7 @@ func (b *Broker) Subscribe() (<-chan Event, func()) {
 	b.mu.Unlock()
 
 	var once sync.Once
+
 	unsubscribe := func() {
 		once.Do(func() {
 			b.mu.Lock()
@@ -46,6 +47,7 @@ func (b *Broker) Subscribe() (<-chan Event, func()) {
 			close(ch)
 		})
 	}
+
 	return ch, unsubscribe
 }
 
@@ -56,6 +58,7 @@ func (b *Broker) Subscribe() (<-chan Event, func()) {
 func (b *Broker) Publish(e Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	for ch := range b.subs {
 		select {
 		case ch <- e:
@@ -69,5 +72,6 @@ func (b *Broker) Publish(e Event) {
 func (b *Broker) Count() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	return len(b.subs)
 }

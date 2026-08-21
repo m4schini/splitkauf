@@ -21,7 +21,7 @@ var (
 	// which collectors are exposed.
 	Registry = prometheus.NewRegistry()
 
-	// ── HTTP (RED) ──────────────────────────────────────────────────────
+	// ── HTTP (RED) ──────────────────────────────────────────────────────.
 
 	httpRequestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -64,7 +64,7 @@ var (
 		},
 	)
 
-	// ── Build info ──────────────────────────────────────────────────────
+	// ── Build info ──────────────────────────────────────────────────────.
 
 	buildInfo = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{

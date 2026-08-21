@@ -114,14 +114,18 @@ func (a *oidcAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Error("login: generating state failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "generating login state"))
+
 		return
 	}
+
 	nonce, err := randomToken()
 	if err != nil {
 		a.logger.Error("login: generating nonce failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "generating login nonce"))
+
 		return
 	}
+
 	verifier := oauth2.GenerateVerifier()
 	returnTo := safeReturnTo(r.URL.Query().Get("return_to"))
 
@@ -159,6 +163,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	)
 
 	wantState := a.sm.GetString(ctx, stateKey)
+
 	gotState := r.URL.Query().Get("state")
 	if wantState == "" || subtle.ConstantTimeCompare([]byte(wantState), []byte(gotState)) != 1 {
 		// A missing session-side state almost always means the pre-login session
@@ -170,6 +175,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 			zap.Bool("incoming_session_cookie", hasSessionCookie(a.sm, r)),
 		)
 		problem.Write(w, r, problem.New(problem.Validation, "invalid or missing state parameter"))
+
 		return
 	}
 
@@ -193,6 +199,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 			zap.String("provider_error_description", r.URL.Query().Get("error_description")),
 		)
 		problem.Write(w, r, problem.New(problem.Validation, "missing authorization code"))
+
 		return
 	}
 
@@ -200,26 +207,32 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Warn("code exchange failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Unavailable, "token exchange with the identity provider failed"))
+
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok || rawIDToken == "" {
 		problem.Write(w, r, problem.New(problem.Unavailable, "identity provider returned no ID token"))
+
 		return
 	}
+
 	idToken, err := a.verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		a.logger.Warn("ID token verification failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Unauthorized, "ID token verification failed"))
+
 		return
 	}
+
 	if nonce == "" || subtle.ConstantTimeCompare([]byte(idToken.Nonce), []byte(nonce)) != 1 {
 		a.logger.Warn("callback: ID token nonce mismatch",
 			zap.Bool("session_nonce_present", nonce != ""),
 			zap.Bool("token_nonce_present", idToken.Nonce != ""),
 		)
 		problem.Write(w, r, problem.New(problem.Unauthorized, "ID token nonce mismatch"))
+
 		return
 	}
 
@@ -230,8 +243,10 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		problem.Write(w, r, problem.New(problem.Internal, "reading ID token claims"))
+
 		return
 	}
+
 	name := claims.Name
 	if name == "" {
 		name = claims.PreferredUsername
@@ -241,6 +256,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	// authenticated state.
 	if err := a.sm.RenewToken(ctx); err != nil {
 		problem.Write(w, r, problem.New(problem.Internal, "renewing session"))
+
 		return
 	}
 
@@ -253,6 +269,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := putSessionData(ctx, a.sm, data); err != nil {
 		problem.Write(w, r, problem.New(problem.Internal, "storing session"))
+
 		return
 	}
 
@@ -264,6 +281,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		a.logger.Error("upserting member", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "recording membership"))
+
 		return
 	}
 
@@ -288,11 +306,13 @@ func (a *oidcAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.sm.Destroy(ctx); err != nil {
 		problem.Write(w, r, problem.New(problem.Internal, "destroying session"))
+
 		return
 	}
 
 	if a.endSessionEndpoint == "" {
 		http.Redirect(w, r, "/", http.StatusFound)
+
 		return
 	}
 
@@ -300,16 +320,21 @@ func (a *oidcAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		a.logger.Warn("parsing end_session_endpoint", zap.Error(err))
 		http.Redirect(w, r, "/", http.StatusFound)
+
 		return
 	}
+
 	q := u.Query()
 	if idTokenHint != "" {
 		q.Set("id_token_hint", idTokenHint)
 	}
+
 	q.Set("client_id", a.clientID)
+
 	if a.postLogoutRedirectURL != "" {
 		q.Set("post_logout_redirect_uri", a.postLogoutRedirectURL)
 	}
+
 	u.RawQuery = q.Encode()
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }

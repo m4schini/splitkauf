@@ -17,15 +17,19 @@ import (
 // returns the committed session token for use as the request's cookie value.
 func seedSession(t *testing.T, sm *scs.SessionManager, seed func(ctx context.Context)) string {
 	t.Helper()
+
 	ctx, err := sm.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
+
 	seed(ctx)
+
 	token, _, err := sm.Commit(ctx)
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
+
 	return token
 }
 
@@ -73,33 +77,43 @@ func TestRequireSession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sm := scs.New()
 
-			var got User
-			var gotOK bool
+			var (
+				got   User
+				gotOK bool
+			)
+
 			handler := sm.LoadAndSave(requireSession(sm, zap.NewNop())(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				got, gotOK = UserFrom(r.Context())
+
 				w.WriteHeader(http.StatusOK)
 			})))
 
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+
 			if tc.seed != nil {
 				token := seedSession(t, sm, func(ctx context.Context) { tc.seed(ctx, sm) })
 				req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
 			}
+
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status = %d, want %d", rec.Code, tc.wantStatus)
 			}
+
 			if tc.wantUser == nil {
 				if gotOK {
 					t.Errorf("next handler ran with user %+v, want request rejected", got)
 				}
+
 				return
 			}
+
 			if !gotOK {
 				t.Fatal("next handler did not receive a user in the context")
 			}
+
 			if got != *tc.wantUser {
 				t.Errorf("injected user = %+v, want %+v", got, *tc.wantUser)
 			}

@@ -35,11 +35,13 @@ var initLogger = sync.OnceFunc(func() {
 	if err != nil {
 		panic(err)
 	}
+
 	zap.ReplaceGlobals(logger)
 })
 
 func Logger(names ...string) *zap.Logger {
 	initLogger()
+
 	l := zap.L()
 	for _, name := range names {
 		l = l.Named(name)

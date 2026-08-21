@@ -44,6 +44,7 @@ func Handler() http.Handler {
 		if _, statErr := fs.Stat(sub, name); statErr != nil {
 			if path.Ext(name) != "" {
 				http.NotFound(w, r)
+
 				return
 			}
 			// No file at this path and no extension: treat as a client-side
@@ -51,6 +52,7 @@ func Handler() http.Handler {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(index)
+
 			return
 		}
 

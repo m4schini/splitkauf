@@ -42,8 +42,10 @@ func dummyHash() string {
 		if err != nil {
 			panic("auth: generating dummy bcrypt hash: " + err.Error())
 		}
+
 		dummyHashValue = h
 	})
+
 	return dummyHashValue
 }
 
@@ -86,19 +88,25 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		// The SPA owns the login form; a GET here is just a navigation.
 		http.Redirect(w, r, "/", http.StatusFound)
+
 		return
 	}
 
 	ctx := r.Context()
 
 	r.Body = http.MaxBytesReader(w, r.Body, loginBodyLimit)
+
 	var req loginRequest
+
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
+
 	if err := dec.Decode(&req); err != nil {
 		problem.Write(w, r, problem.New(problem.Validation, "invalid login request body"))
+
 		return
 	}
+
 	req.Username = strings.TrimSpace(req.Username)
 
 	user, hash, err := a.users.GetByUsername(ctx, req.Username)
@@ -107,6 +115,7 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 			// A real lookup failure (DB down) is not an auth decision.
 			a.logger.Error("login: user lookup failed", zap.Error(err))
 			problem.Write(w, r, problem.New(problem.Unavailable, "could not verify credentials"))
+
 			return
 		}
 		// Unknown user: still run a bcrypt comparison against the dummy hash so
@@ -114,12 +123,14 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 		users.VerifyPassword(dummyHash(), req.Password)
 		a.logger.Info("login: rejected", zap.String("username", req.Username), zap.String("reason", "unknown_user"))
 		problem.Write(w, r, problem.New(problem.Unauthorized, "invalid username or password"))
+
 		return
 	}
 
 	if !users.VerifyPassword(hash, req.Password) {
 		a.logger.Info("login: rejected", zap.String("username", req.Username), zap.String("reason", "bad_password"))
 		problem.Write(w, r, problem.New(problem.Unauthorized, "invalid username or password"))
+
 		return
 	}
 
@@ -128,6 +139,7 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	if err := a.sm.RenewToken(ctx); err != nil {
 		a.logger.Error("login: renewing session failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "establishing session"))
+
 		return
 	}
 
@@ -141,6 +153,7 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	if err := putSessionData(ctx, a.sm, data); err != nil {
 		a.logger.Error("login: storing session failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "storing session"))
+
 		return
 	}
 
@@ -152,6 +165,7 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		a.logger.Error("login: upserting member failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "recording membership"))
+
 		return
 	}
 
@@ -170,8 +184,10 @@ func (a *passwordAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := a.sm.Destroy(r.Context()); err != nil {
 		a.logger.Error("logout: destroying session failed", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, "destroying session"))
+
 		return
 	}
+
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 

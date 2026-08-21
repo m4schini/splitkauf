@@ -30,6 +30,7 @@ func (s *Service) CreateList(ctx context.Context, name string, actor uuid.UUID) 
 	if err != nil {
 		return List{}, err
 	}
+
 	return s.repo.CreateList(ctx, clean, actor)
 }
 
@@ -45,10 +46,12 @@ func (s *Service) GetList(ctx context.Context, id uuid.UUID) (List, []Item, erro
 	if err != nil {
 		return List{}, nil, err
 	}
+
 	items, err := s.repo.ListItems(ctx, id)
 	if err != nil {
 		return List{}, nil, err
 	}
+
 	return list, items, nil
 }
 
@@ -59,6 +62,7 @@ func (s *Service) RenameList(ctx context.Context, id uuid.UUID, name string) (Li
 	if err != nil {
 		return List{}, err
 	}
+
 	return s.repo.RenameList(ctx, id, clean)
 }
 
@@ -73,6 +77,7 @@ func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string, actor
 	if err != nil {
 		return List{}, err
 	}
+
 	clean := copyListName(source.Name)
 	if name != "" {
 		clean, err = validateListName(name)
@@ -80,6 +85,7 @@ func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string, actor
 			return List{}, err
 		}
 	}
+
 	return s.repo.CopyList(ctx, id, clean, actor)
 }
 
@@ -100,14 +106,17 @@ func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, qu
 	if err != nil {
 		return Item{}, err
 	}
+
 	qty, err := normalizeQuantity(quantity)
 	if err != nil {
 		return Item{}, err
 	}
+
 	u, err := validateUnit(unit)
 	if err != nil {
 		return Item{}, err
 	}
+
 	return s.repo.AddItem(ctx, listID, clean, qty, u, normalizeNote(note), checked, actor)
 }
 
@@ -120,23 +129,29 @@ func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, upda
 		if err != nil {
 			return Item{}, err
 		}
+
 		update.Name = &clean
 	}
+
 	if update.Quantity != nil {
 		if *update.Quantity < 1 {
 			return Item{}, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
 		}
 	}
+
 	if update.Unit != nil {
 		u, err := validateUnit(*update.Unit)
 		if err != nil {
 			return Item{}, err
 		}
+
 		update.Unit = &u
 	}
+
 	if update.NoteSet {
 		update.Note = normalizeNote(update.Note)
 	}
+
 	return s.repo.UpdateItem(ctx, listID, itemID, update)
 }
 
@@ -180,17 +195,21 @@ func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, chec
 	if err != nil {
 		return Item{}, err
 	}
+
 	if item.Checked == checked {
 		return item, nil
 	}
+
 	var (
 		checkedAt *time.Time
 		checkedBy *uuid.UUID
 	)
+
 	if checked {
 		t := s.now()
 		checkedAt = &t
 		checkedBy = &actor
 	}
+
 	return s.repo.SetItemChecked(ctx, listID, itemID, checked, checkedAt, checkedBy)
 }

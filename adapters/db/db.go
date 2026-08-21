@@ -28,5 +28,6 @@ func NewSQL(dsn string) (*sql.DB, error) {
 	if err := db.PingContext(ctx); err != nil {
 		return db, err
 	}
+
 	return db, nil
 }

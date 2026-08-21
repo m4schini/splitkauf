@@ -66,14 +66,18 @@ SELECT u.id, u.username, COALESCE(u.name, ''), COALESCE(u.email, ''),
        m.updated_at
 FROM users u
 FULL OUTER JOIN members m ON m.subject = u.id::text`
+
 	rows, err := r.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("listing identities: %w", err)
 	}
+
 	defer func() { _ = rows.Close() }()
 
 	devSubject := auth.DevUser.ID.String()
+
 	var out []Identity
+
 	for rows.Next() {
 		var (
 			userID       *uuid.UUID
@@ -92,6 +96,7 @@ FULL OUTER JOIN members m ON m.subject = u.id::text`
 		}
 
 		var id Identity
+
 		switch {
 		case userID != nil:
 			id = Identity{
@@ -121,8 +126,10 @@ FULL OUTER JOIN members m ON m.subject = u.id::text`
 				LastLogin:  lastLogin,
 			}
 		}
+
 		out = append(out, id)
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("listing identities: %w", err)
 	}
@@ -133,8 +140,10 @@ FULL OUTER JOIN members m ON m.subject = u.id::text`
 		if out[i].Kind != out[j].Kind {
 			return out[i].Kind < out[j].Kind
 		}
+
 		return out[i].Identifier < out[j].Identifier
 	})
+
 	return out, nil
 }
 
@@ -149,13 +158,17 @@ func (r *IdentityRepository) ResolveUUID(ctx context.Context, id uuid.UUID) (Ide
 SELECT username, COALESCE(name, ''), COALESCE(email, '')
 FROM users
 WHERE id = $1`
+
 	var ident Identity
+
 	err := r.db.QueryRowContext(ctx, userQ, id).Scan(&ident.Identifier, &ident.Name, &ident.Email)
 	if err == nil {
 		ident.Kind = IdentityKindLocal
 		ident.UserID = id
+
 		return ident, nil
 	}
+
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Identity{}, fmt.Errorf("resolving uuid against users: %w", err)
 	}
@@ -164,17 +177,22 @@ WHERE id = $1`
 SELECT subject, COALESCE(name, ''), COALESCE(email, ''), updated_at
 FROM members
 WHERE user_id = $1`
+
 	var lastLogin time.Time
+
 	err = r.db.QueryRowContext(ctx, memberQ, id).Scan(&ident.Identifier, &ident.Name, &ident.Email, &lastLogin)
 	if err == nil {
 		ident.Kind = IdentityKindOIDC
 		if ident.Identifier == auth.DevUser.ID.String() {
 			ident.Kind = IdentityKindDev
 		}
+
 		ident.UserID = id
 		ident.LastLogin = &lastLogin
+
 		return ident, nil
 	}
+
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Identity{}, fmt.Errorf("resolving uuid against members: %w", err)
 	}
@@ -192,6 +210,7 @@ SELECT (SELECT count(*) FROM lists WHERE created_by = $1),
 	if err := r.db.QueryRowContext(ctx, q, userID).Scan(&lists, &added, &bought); err != nil {
 		return 0, 0, 0, fmt.Errorf("counting attribution: %w", err)
 	}
+
 	return lists, added, bought, nil
 }
 
@@ -219,6 +238,7 @@ func (r *IdentityRepository) Merge(ctx context.Context, source, target Identity)
 	defer func() { _ = tx.Rollback() }()
 
 	var result MergeResult
+
 	updates := []struct {
 		q    string
 		dest *int64
@@ -232,6 +252,7 @@ func (r *IdentityRepository) Merge(ctx context.Context, source, target Identity)
 		if err != nil {
 			return MergeResult{}, fmt.Errorf("merge: rewriting attribution: %w", err)
 		}
+
 		if *u.dest, err = res.RowsAffected(); err != nil {
 			return MergeResult{}, fmt.Errorf("merge: rewriting attribution: %w", err)
 		}
@@ -240,11 +261,13 @@ func (r *IdentityRepository) Merge(ctx context.Context, source, target Identity)
 	if _, err := tx.ExecContext(ctx, `DELETE FROM members WHERE user_id = $1`, source.UserID); err != nil {
 		return MergeResult{}, fmt.Errorf("merge: deleting source member: %w", err)
 	}
+
 	if source.Kind == IdentityKindLocal {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = $1`, source.UserID); err != nil {
 			return MergeResult{}, fmt.Errorf("merge: deleting source user: %w", err)
 		}
 	}
+
 	if target.Kind == IdentityKindLocal {
 		const seed = `
 INSERT INTO members (subject, user_id, email, name)
@@ -259,5 +282,6 @@ ON CONFLICT (subject) DO NOTHING`
 	if err := tx.Commit(); err != nil {
 		return MergeResult{}, fmt.Errorf("merge: commit: %w", err)
 	}
+
 	return result, nil
 }

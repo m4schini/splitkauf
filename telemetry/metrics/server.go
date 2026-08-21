@@ -28,6 +28,7 @@ func Handler() http.Handler {
 func NewServer(host string, port int, path string) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle(path, Handler())
+
 	return &http.Server{
 		Addr:              net.JoinHostPort(host, strconv.Itoa(port)),
 		Handler:           mux,

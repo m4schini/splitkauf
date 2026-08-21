@@ -83,9 +83,11 @@ func ValidatePassword(plain string) error {
 	if utf8.RuneCountInString(plain) < MinPasswordLen {
 		return ErrPasswordTooShort
 	}
+
 	if len(plain) > MaxPasswordLen {
 		return ErrPasswordTooLong
 	}
+
 	return nil
 }
 
@@ -94,10 +96,12 @@ func HashPassword(plain string) (string, error) {
 	if err := ValidatePassword(plain); err != nil {
 		return "", err
 	}
+
 	h, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
+
 	return string(h), nil
 }
 

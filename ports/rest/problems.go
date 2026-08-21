@@ -62,18 +62,22 @@ func problemPageHandler() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 		t, ok := bySlug[slug]
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
+
 			if err := notFoundPageTemplate.Execute(w, slug); err != nil {
 				log.Error("rendering unknown problem page", zap.String("slug", slug), zap.Error(err))
 			}
+
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
+
 		if err := problemPageTemplate.Execute(w, t); err != nil {
 			log.Error("rendering problem page", zap.String("slug", slug), zap.Error(err))
 		}

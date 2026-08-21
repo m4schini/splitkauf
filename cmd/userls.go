@@ -40,11 +40,13 @@ that has not signed in yet.`,
 
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "KIND\tIDENTIFIER\tUSER_ID\tNAME\tEMAIL\tLAST_LOGIN")
+
 		for _, id := range identities {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				id.Kind, id.Identifier, id.UserID,
 				orDash(id.Name), orDash(id.Email), formatLastLogin(id.LastLogin))
 		}
+
 		return w.Flush()
 	},
 }
@@ -55,6 +57,7 @@ func orDash(s string) string {
 	if s == "" {
 		return "—"
 	}
+
 	return s
 }
 
@@ -64,6 +67,7 @@ func formatLastLogin(t *time.Time) string {
 	if t == nil {
 		return "never"
 	}
+
 	return t.Format("2006-01-02 15:04")
 }
 

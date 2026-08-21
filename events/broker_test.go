@@ -12,17 +12,20 @@ import (
 // recv waits briefly for an event on ch, failing if none arrives.
 func recv(t *testing.T, ch <-chan events.Event) events.Event {
 	t.Helper()
+
 	select {
 	case e := <-ch:
 		return e
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for event")
+
 		return events.Event{}
 	}
 }
 
 func TestSubscriberReceivesEvent(t *testing.T) {
 	b := events.NewBroker()
+
 	ch, unsub := b.Subscribe()
 	defer unsub()
 
@@ -62,8 +65,10 @@ func TestUnsubscribeStopsDeliveryAndDropsSubscriber(t *testing.T) {
 
 func TestMultipleSubscribersEachReceive(t *testing.T) {
 	b := events.NewBroker()
+
 	ch1, unsub1 := b.Subscribe()
 	defer unsub1()
+
 	ch2, unsub2 := b.Subscribe()
 	defer unsub2()
 
@@ -77,6 +82,7 @@ func TestMultipleSubscribersEachReceive(t *testing.T) {
 	if got := recv(t, ch1); got != want {
 		t.Errorf("ch1 got %+v, want %+v", got, want)
 	}
+
 	if got := recv(t, ch2); got != want {
 		t.Errorf("ch2 got %+v, want %+v", got, want)
 	}
@@ -98,10 +104,12 @@ func TestPublishDoesNotBlockOnFullSubscriber(t *testing.T) {
 	// Publish many events; the slow subscriber's buffer fills and further hints
 	// are dropped for it, but this must not block Publish or the fast subscriber.
 	done := make(chan struct{})
+
 	go func() {
 		for i := 0; i < subscriberBufferPlus(); i++ {
 			b.Publish(events.Event{Type: events.TypeItems})
 		}
+
 		close(done)
 	}()
 
@@ -138,17 +146,20 @@ func TestCountReflectsSubscribeUnsubscribe(t *testing.T) {
 	}
 
 	_, unsub1 := b.Subscribe()
+
 	_, unsub2 := b.Subscribe()
 	if b.Count() != 2 {
 		t.Fatalf("Count = %d, want 2", b.Count())
 	}
 
 	unsub1()
+
 	if b.Count() != 1 {
 		t.Fatalf("Count = %d, want 1", b.Count())
 	}
 
 	unsub2()
+
 	if b.Count() != 0 {
 		t.Fatalf("Count = %d, want 0", b.Count())
 	}

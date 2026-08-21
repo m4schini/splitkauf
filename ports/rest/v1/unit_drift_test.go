@@ -22,6 +22,7 @@ func TestUnitEnumMatchesDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSwagger: %v", err)
 	}
+
 	schema, ok := spec.Components.Schemas["Unit"]
 	if !ok || schema.Value == nil {
 		t.Fatal("spec has no Unit schema")
@@ -33,6 +34,7 @@ func TestUnitEnumMatchesDomain(t *testing.T) {
 		if !ok {
 			t.Fatalf("Unit enum value %v is not a string", raw)
 		}
+
 		specUnits = append(specUnits, s)
 	}
 
@@ -53,5 +55,6 @@ func normalise(in []string) string {
 	cp := make([]string, len(in))
 	copy(cp, in)
 	sort.Strings(cp)
+
 	return fmt.Sprintf("%v", cp)
 }

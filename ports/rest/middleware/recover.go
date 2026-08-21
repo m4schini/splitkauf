@@ -19,13 +19,16 @@ import (
 // stack can abort the connection rather than corrupting a partial response.
 func Recover(next http.Handler) http.Handler {
 	log := telemetry.Logger("api")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw := &recoverWriter{ResponseWriter: w}
+
 		defer func() {
 			rec := recover()
 			if rec == nil {
 				return
 			}
+
 			log.Error("panic recovered",
 				zap.String("method", r.Method),
 				zap.String("path", r.URL.Path),
@@ -37,8 +40,10 @@ func Recover(next http.Handler) http.Handler {
 			if rw.wrote {
 				panic(rec)
 			}
+
 			problem.Write(w, r, problem.New(problem.Internal, problem.Internal.Description))
 		}()
+
 		next.ServeHTTP(rw, r)
 	})
 }
@@ -47,6 +52,7 @@ func Recover(next http.Handler) http.Handler {
 // whether a problem body can still be written.
 type recoverWriter struct {
 	http.ResponseWriter
+
 	wrote bool
 }
 
@@ -57,6 +63,7 @@ func (rw *recoverWriter) WriteHeader(status int) {
 
 func (rw *recoverWriter) Write(b []byte) (int, error) {
 	rw.wrote = true
+
 	return rw.ResponseWriter.Write(b)
 }
 

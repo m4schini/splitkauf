@@ -29,13 +29,16 @@ func (v *V1) GetMe(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.UserFrom(r.Context())
 	if !ok {
 		problem.Write(w, r, problem.New(problem.Internal, "no authenticated user in context"))
+
 		return
 	}
+
 	out := User{Id: u.ID, Name: u.Name}
 	if u.Email != "" {
 		email := openapi_types.Email(u.Email)
 		out.Email = &email
 	}
+
 	writeJSON(w, r, http.StatusOK, out)
 }
 
@@ -44,12 +47,15 @@ func (v *V1) ListLists(w http.ResponseWriter, r *http.Request) {
 	all, err := v.Service.Lists(r.Context())
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	out := make([]List, 0, len(all))
 	for _, l := range all {
 		out = append(out, toList(l))
 	}
+
 	writeJSON(w, r, http.StatusOK, out)
 }
 
@@ -59,15 +65,19 @@ func (v *V1) CreateList(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
+
 	u, ok := actor(w, r)
 	if !ok {
 		return
 	}
+
 	l, err := v.Service.CreateList(r.Context(), body.Name, u)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeLists})
 	writeJSON(w, r, http.StatusCreated, toList(l))
 }
@@ -77,8 +87,10 @@ func (v *V1) GetList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	l, items, err := v.Service.GetList(r.Context(), uuid.UUID(listId))
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	writeJSON(w, r, http.StatusOK, toListWithItems(l, items))
 }
 
@@ -88,11 +100,14 @@ func (v *V1) RenameList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
+
 	l, err := v.Service.RenameList(r.Context(), uuid.UUID(listId), body.Name)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeLists})
 	writeJSON(w, r, http.StatusOK, toList(l))
 }
@@ -101,8 +116,10 @@ func (v *V1) RenameList(w http.ResponseWriter, r *http.Request, listId ListId) {
 func (v *V1) DeleteList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if err := v.Service.DeleteList(r.Context(), uuid.UUID(listId)); err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeLists})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -116,21 +133,27 @@ func (v *V1) CopyList(w http.ResponseWriter, r *http.Request, listId ListId) {
 	// so EOF is handled here as "no body"; anything else is malformed JSON.
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		problem.Write(w, r, problem.New(problem.Validation, "request body is not valid JSON"))
+
 		return
 	}
+
 	name := ""
 	if body.Name != nil {
 		name = *body.Name
 	}
+
 	u, ok := actor(w, r)
 	if !ok {
 		return
 	}
+
 	l, err := v.Service.CopyList(r.Context(), uuid.UUID(listId), name, u)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeLists})
 	writeJSON(w, r, http.StatusCreated, toList(l))
 }
@@ -141,24 +164,31 @@ func (v *V1) AddItem(w http.ResponseWriter, r *http.Request, listId ListId) {
 	if !decodeBody(w, r, &body) {
 		return
 	}
+
 	quantity := 0
 	if body.Quantity != nil {
 		quantity = int(*body.Quantity)
 	}
+
 	unit := ""
 	if body.Unit != nil {
 		unit = string(*body.Unit)
 	}
+
 	checked := body.Checked != nil && *body.Checked
+
 	u, ok := actor(w, r)
 	if !ok {
 		return
 	}
+
 	item, err := v.Service.AddItem(r.Context(), uuid.UUID(listId), body.Name, quantity, unit, body.Note, checked, u)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusCreated, toItem(item))
 }
@@ -171,14 +201,19 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		problem.Write(w, r, problem.New(problem.Validation, "could not read request body"))
+
 		return
 	}
+
 	var body UpdateItemJSONRequestBody
 	if err := json.Unmarshal(raw, &body); err != nil {
 		problem.Write(w, r, problem.New(problem.Validation, "request body is not valid JSON"))
+
 		return
 	}
+
 	var keys map[string]json.RawMessage
+
 	_ = json.Unmarshal(raw, &keys)
 
 	update := lists.ItemUpdate{Name: body.Name}
@@ -186,10 +221,12 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 		q := int(*body.Quantity)
 		update.Quantity = &q
 	}
+
 	if body.Unit != nil {
 		u := string(*body.Unit)
 		update.Unit = &u
 	}
+
 	if _, present := keys["note"]; present {
 		update.NoteSet = true
 		update.Note = body.Note
@@ -198,8 +235,10 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 	item, err := v.Service.UpdateItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId), update)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
@@ -208,8 +247,10 @@ func (v *V1) UpdateItem(w http.ResponseWriter, r *http.Request, listId ListId, i
 func (v *V1) DeleteItem(w http.ResponseWriter, r *http.Request, listId ListId, itemId ItemId) {
 	if err := v.Service.DeleteItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId)); err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -221,8 +262,10 @@ func (v *V1) RestoreItem(w http.ResponseWriter, r *http.Request, listId ListId, 
 	item, err := v.Service.RestoreItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId))
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
@@ -233,11 +276,14 @@ func (v *V1) CheckItem(w http.ResponseWriter, r *http.Request, listId ListId, it
 	if !ok {
 		return
 	}
+
 	item, err := v.Service.CheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId), u)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
@@ -248,11 +294,14 @@ func (v *V1) UncheckItem(w http.ResponseWriter, r *http.Request, listId ListId, 
 	if !ok {
 		return
 	}
+
 	item, err := v.Service.UncheckItem(r.Context(), uuid.UUID(listId), uuid.UUID(itemId), u)
 	if err != nil {
 		writeError(w, r, err)
+
 		return
 	}
+
 	v.publish(events.Event{Type: events.TypeItems, ListID: uuid.UUID(listId).String()})
 	writeJSON(w, r, http.StatusOK, toItem(item))
 }
@@ -266,8 +315,10 @@ func actor(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 	u, ok := auth.UserFrom(r.Context())
 	if !ok {
 		problem.Write(w, r, problem.New(problem.Internal, "no authenticated user in context"))
+
 		return uuid.Nil, false
 	}
+
 	return u.ID, true
 }
 
@@ -278,8 +329,10 @@ func actor(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
 func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
 		problem.Write(w, r, problem.New(problem.Validation, "request body is not valid JSON"))
+
 		return false
 	}
+
 	return true
 }
 
@@ -287,6 +340,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 func writeJSON(w http.ResponseWriter, r *http.Request, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		telemetry.Logger("api", "v1").Error("encoding response", zap.Error(err))
 	}
@@ -309,9 +363,12 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 					Pointer: "/" + verr.Field,
 				}}
 			}
+
 			problem.Write(w, r, p)
+
 			return
 		}
+
 		telemetry.Logger("api", "v1").Error("unhandled handler error", zap.Error(err))
 		problem.Write(w, r, problem.New(problem.Internal, problem.Internal.Description))
 	}
@@ -339,11 +396,13 @@ func toAttribution(a *lists.Actor) *Attribution {
 	if a == nil {
 		return nil
 	}
+
 	out := &Attribution{Id: openapi_types.UUID(a.ID)}
 	if a.Name != "" {
 		name := a.Name
 		out.Name = &name
 	}
+
 	return out
 }
 
@@ -375,6 +434,7 @@ func toListWithItems(l lists.List, items []lists.Item) ListWithItems {
 	for _, it := range items {
 		out.Items = append(out.Items, toItem(it))
 	}
+
 	return out
 }
 

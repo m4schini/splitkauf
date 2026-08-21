@@ -46,15 +46,18 @@ func TestSessionStore(t *testing.T) {
 				if err == nil {
 					t.Fatalf("sessionStore() error = nil, want %q", tt.wantErr)
 				}
+
 				if err.Error() != tt.wantErr {
 					t.Fatalf("sessionStore() error = %q, want %q", err.Error(), tt.wantErr)
 				}
+
 				return
 			}
 
 			if err != nil {
 				t.Fatalf("sessionStore() unexpected error = %v", err)
 			}
+
 			if usePostgres != tt.wantPostgres {
 				t.Errorf("sessionStore() usePostgres = %v, want %v", usePostgres, tt.wantPostgres)
 			}

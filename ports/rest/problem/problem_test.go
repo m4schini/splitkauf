@@ -18,6 +18,7 @@ func TestMain(m *testing.M) {
 	if err := config.Load(); err != nil {
 		panic(err)
 	}
+
 	m.Run()
 }
 
@@ -30,6 +31,7 @@ func TestWriteSetsContentTypeAndStatus(t *testing.T) {
 	if got := rec.Code; got != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", got, http.StatusNotFound)
 	}
+
 	if got := rec.Header().Get("Content-Type"); got != problem.ContentType {
 		t.Errorf("Content-Type = %q, want %q", got, problem.ContentType)
 	}
@@ -38,15 +40,19 @@ func TestWriteSetsContentTypeAndStatus(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decoding body: %v", err)
 	}
+
 	if got.Type != "/problems/not-found" {
 		t.Errorf("type = %q, want %q", got.Type, "/problems/not-found")
 	}
+
 	if got.Title != http.StatusText(http.StatusNotFound) {
 		t.Errorf("title = %q, want %q", got.Title, http.StatusText(http.StatusNotFound))
 	}
+
 	if got.Status != http.StatusNotFound {
 		t.Errorf("status member = %d, want %d", got.Status, http.StatusNotFound)
 	}
+
 	if got.Detail != "no resource" {
 		t.Errorf("detail = %q, want %q", got.Detail, "no resource")
 	}
@@ -62,6 +68,7 @@ func TestWriteDefaultsInstanceToRequestPath(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decoding body: %v", err)
 	}
+
 	if got.Instance != "/api/v1/foo/bar" {
 		t.Errorf("instance = %q, want %q", got.Instance, "/api/v1/foo/bar")
 	}
@@ -80,6 +87,7 @@ func TestWriteOmitsEmptyMembers(t *testing.T) {
 			t.Errorf("body %q unexpectedly contains %s", body, member)
 		}
 	}
+
 	if !strings.Contains(body, `"instance":"/"`) {
 		t.Errorf("body %q should contain the defaulted instance", body)
 	}
@@ -115,22 +123,28 @@ func TestFromStatus(t *testing.T) {
 
 func TestRegistrySlugsUniqueAndPopulated(t *testing.T) {
 	seen := map[string]bool{}
+
 	for _, ty := range problem.Types() {
 		if ty.Slug == "" {
 			t.Errorf("type %+v has empty slug", ty)
 		}
+
 		if ty.Title == "" {
 			t.Errorf("type %q has empty title", ty.Slug)
 		}
+
 		if ty.Status == 0 {
 			t.Errorf("type %q has zero status", ty.Slug)
 		}
+
 		if ty.Description == "" {
 			t.Errorf("type %q has empty description", ty.Slug)
 		}
+
 		if seen[ty.Slug] {
 			t.Errorf("duplicate slug %q", ty.Slug)
 		}
+
 		seen[ty.Slug] = true
 		if ty.URI() != "/problems/"+ty.Slug {
 			t.Errorf("URI() = %q, want %q", ty.URI(), "/problems/"+ty.Slug)

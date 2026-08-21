@@ -36,19 +36,24 @@ func TestValidatePassword(t *testing.T) {
 
 func TestHashAndVerifyPassword(t *testing.T) {
 	const pw = "correct horse battery staple"
+
 	hash, err := users.HashPassword(pw)
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
+
 	if hash == pw || hash == "" {
 		t.Fatalf("hash is empty or equals the plaintext: %q", hash)
 	}
+
 	if !users.VerifyPassword(hash, pw) {
 		t.Error("VerifyPassword rejected the correct password")
 	}
+
 	if users.VerifyPassword(hash, "wrong password") {
 		t.Error("VerifyPassword accepted a wrong password")
 	}
+
 	if users.VerifyPassword("not a bcrypt hash", pw) {
 		t.Error("VerifyPassword accepted a malformed hash")
 	}
@@ -58,6 +63,7 @@ func TestHashPasswordRejectsInvalid(t *testing.T) {
 	if _, err := users.HashPassword("short"); !errors.Is(err, users.ErrPasswordTooShort) {
 		t.Errorf("HashPassword(short) err = %v, want ErrPasswordTooShort", err)
 	}
+
 	if _, err := users.HashPassword(strings.Repeat("a", users.MaxPasswordLen+1)); !errors.Is(err, users.ErrPasswordTooLong) {
 		t.Errorf("HashPassword(too long) err = %v, want ErrPasswordTooLong", err)
 	}
@@ -67,14 +73,17 @@ func TestHashPasswordRejectsInvalid(t *testing.T) {
 // (bcrypt salts), so identical passwords are not detectable by equal hashes.
 func TestHashPasswordSaltsEachHash(t *testing.T) {
 	const pw = "correct horse battery staple"
+
 	h1, err := users.HashPassword(pw)
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
+
 	h2, err := users.HashPassword(pw)
 	if err != nil {
 		t.Fatalf("HashPassword: %v", err)
 	}
+
 	if h1 == h2 {
 		t.Error("two hashes of the same password are identical (no salt?)")
 	}

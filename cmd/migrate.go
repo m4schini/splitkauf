@@ -34,21 +34,25 @@ previously crashed migration.`,
 		conn, err := db.NewSQL(config.C.Database.DSN())
 		if err != nil {
 			log.Error("database connection failed", zap.Error(err))
+
 			return err
 		}
 
 		if destroyDatabase {
 			log.Warn("Destroying database and all data contained in it")
+
 			err = database.MigrateDown(conn)
 			if err == nil {
 				log.Warn("Destroyed database and all data contained in it")
 			}
+
 			return err
 		}
 
 		if forceVersion >= 0 {
 			if err := database.OverrideDirty(conn, forceVersion); err != nil {
 				log.Error("migration failed", zap.Error(err))
+
 				return err
 			}
 		}
@@ -56,6 +60,7 @@ previously crashed migration.`,
 		migrationDone, err := database.Migrate(conn, schemaVersion)
 		if err != nil {
 			log.Error("migration failed", zap.Error(err))
+
 			return err
 		}
 

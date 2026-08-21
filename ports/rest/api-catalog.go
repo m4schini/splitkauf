@@ -35,6 +35,7 @@ func ApiDocsHandler() http.Handler {
 	r.Get("/openapi.json", openAPISpecJSONHandler())
 	r.Get("/docs", docsHandler())
 	r.Get("/problems/{slug}", problemPageHandler())
+
 	return r
 }
 
@@ -58,6 +59,7 @@ type linkTarget struct {
 // apiCatalogHandler serves the RFC 9727 well-known API catalog.
 func apiCatalogHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "catalog")
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		base := requestBaseURL(r)
 		catalog := linksetDoc{
@@ -80,8 +82,10 @@ func apiCatalogHandler() http.HandlerFunc {
 				},
 			},
 		}
+
 		w.Header().Set("Content-Type", catalogContentType)
 		w.WriteHeader(http.StatusOK)
+
 		err := json.NewEncoder(w).Encode(catalog)
 		if err != nil {
 			log.Error("serving api-catalog", zap.Error(err))
@@ -92,9 +96,11 @@ func apiCatalogHandler() http.HandlerFunc {
 // openAPISpecHandler serves the raw OpenAPI spec at /openapi.yaml.
 func openAPISpecHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "spec")
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		w.WriteHeader(http.StatusOK)
+
 		_, err := w.Write(openAPISpec)
 		if err != nil {
 			log.Error("serving open api spec", zap.String("format", "yaml"), zap.Error(err))
@@ -105,14 +111,18 @@ func openAPISpecHandler() http.HandlerFunc {
 // openAPISpecJSONHandler serves the OpenAPI spec converted to JSON at /openapi.json.
 func openAPISpecJSONHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "spec")
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		j, err := yamlToJSON(openAPISpec)
 		if err != nil {
 			http.Error(w, "internal server error", http.StatusInternalServerError)
+
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+
 		_, err = w.Write(j)
 		if err != nil {
 			log.Error("serving open api spec", zap.String("format", "json"), zap.Error(err))
@@ -127,6 +137,7 @@ func requestBaseURL(r *http.Request) string {
 	} else if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
 		scheme = proto
 	}
+
 	return scheme + "://" + r.Host
 }
 
@@ -135,5 +146,6 @@ func yamlToJSON(src []byte) ([]byte, error) {
 	if err := yaml.Unmarshal(src, &data); err != nil {
 		return nil, err
 	}
+
 	return json.MarshalIndent(data, "", "  ")
 }

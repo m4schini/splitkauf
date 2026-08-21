@@ -46,6 +46,7 @@ There is no public sign-up: accounts exist only when created here.`,
 		if err != nil {
 			return err
 		}
+
 		hash, err := users.HashPassword(password)
 		if err != nil {
 			return err
@@ -74,10 +75,12 @@ There is no public sign-up: accounts exist only when created here.`,
 			if errors.Is(err, users.ErrUsernameTaken) {
 				return fmt.Errorf("user %q already exists", username)
 			}
+
 			return fmt.Errorf("creating user: %w", err)
 		}
 
 		fmt.Fprintf(cmd.OutOrStdout(), "Created user %q.\n", username)
+
 		return nil
 	},
 }
@@ -92,6 +95,7 @@ func resolvePassword(fromStdin bool, in io.Reader, out io.Writer) (string, error
 		if err != nil {
 			return "", fmt.Errorf("reading password from stdin: %w", err)
 		}
+
 		return strings.TrimRight(string(raw), "\r\n"), nil
 	}
 
@@ -101,20 +105,29 @@ func resolvePassword(fromStdin bool, in io.Reader, out io.Writer) (string, error
 	}
 
 	fmt.Fprint(out, "Password: ")
+
 	first, err := term.ReadPassword(fd)
+
 	fmt.Fprintln(out)
+
 	if err != nil {
 		return "", fmt.Errorf("reading password: %w", err)
 	}
+
 	fmt.Fprint(out, "Confirm password: ")
+
 	second, err := term.ReadPassword(fd)
+
 	fmt.Fprintln(out)
+
 	if err != nil {
 		return "", fmt.Errorf("reading password confirmation: %w", err)
 	}
+
 	if string(first) != string(second) {
 		return "", errors.New("passwords do not match")
 	}
+
 	return string(first), nil
 }
 
@@ -126,10 +139,12 @@ func terminalFd(in io.Reader) (int, bool) {
 	if !ok {
 		return 0, false
 	}
+
 	fd := int(f.Fd())
 	if !term.IsTerminal(fd) {
 		return 0, false
 	}
+
 	return fd, true
 }
 

@@ -23,11 +23,14 @@ import (
 // not go through newServer.
 func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
 	t.Helper()
+
 	sm := scs.New()
+
 	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
+
 	return rest.New(si, sm, authr, events.NewBroker())
 }
 
@@ -43,6 +46,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+
 	rest.SetOpenAPISpec(spec)
 	os.Exit(m.Run())
 }
@@ -97,6 +101,7 @@ func TestGetHealthNilDB(t *testing.T) {
 	if got.Status != "degraded" {
 		t.Errorf("status = %q, want %q", got.Status, "degraded")
 	}
+
 	if got.Checks.Database != "error" {
 		t.Errorf("checks.database = %q, want %q", got.Checks.Database, "error")
 	}

@@ -61,6 +61,7 @@ func (v *V1) publish(e events.Event) {
 	if v.Events == nil {
 		return
 	}
+
 	v.Events.Publish(e)
 }
 
@@ -90,6 +91,7 @@ func (v *V1) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Error("serving health", zap.Error(err))
 	}
@@ -101,7 +103,9 @@ func (v *V1) pingDB(ctx context.Context) error {
 	if v.DB == nil {
 		return sql.ErrConnDone
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, healthPingTimeout)
 	defer cancel()
+
 	return v.DB.PingContext(ctx)
 }

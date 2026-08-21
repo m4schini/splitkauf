@@ -38,9 +38,11 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 		// stream opens is missed. In degraded mode (nil broker) events is nil
 		// and the loop relies solely on the heartbeat and context.
 		var eventsCh <-chan events.Event
+
 		if broker != nil {
 			ch, unsubscribe := broker.Subscribe()
 			defer unsubscribe()
+
 			eventsCh = ch
 		}
 
@@ -48,6 +50,7 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 		// than waiting for the first event or heartbeat.
 		if err := rc.Flush(); err != nil {
 			log.Debug("initial flush failed; client likely gone", zap.Error(err))
+
 			return
 		}
 
@@ -55,6 +58,7 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 		defer ticker.Stop()
 
 		ctx := r.Context()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -62,10 +66,13 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 			case <-ticker.C:
 				if _, err := w.Write([]byte(": ping\n\n")); err != nil {
 					log.Debug("heartbeat write failed; ending stream", zap.Error(err))
+
 					return
 				}
+
 				if err := rc.Flush(); err != nil {
 					log.Debug("heartbeat flush failed; ending stream", zap.Error(err))
+
 					return
 				}
 			case e, ok := <-eventsCh:
@@ -73,25 +80,35 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 					// Broker closed our subscription; end the stream.
 					return
 				}
+
 				payload, err := json.Marshal(e)
 				if err != nil {
 					log.Error("marshalling event", zap.Error(err))
+
 					continue
 				}
+
 				if _, err := w.Write([]byte("data: ")); err != nil {
 					log.Debug("event write failed; ending stream", zap.Error(err))
+
 					return
 				}
+
 				if _, err := w.Write(payload); err != nil {
 					log.Debug("event write failed; ending stream", zap.Error(err))
+
 					return
 				}
+
 				if _, err := w.Write([]byte("\n\n")); err != nil {
 					log.Debug("event write failed; ending stream", zap.Error(err))
+
 					return
 				}
+
 				if err := rc.Flush(); err != nil {
 					log.Debug("event flush failed; ending stream", zap.Error(err))
+
 					return
 				}
 			}

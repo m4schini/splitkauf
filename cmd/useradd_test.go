@@ -26,6 +26,7 @@ func TestResolvePasswordFromStdin(t *testing.T) {
 			if err != nil {
 				t.Fatalf("resolvePassword: %v", err)
 			}
+
 			if got != tt.want {
 				t.Errorf("resolvePassword(%q) = %q, want %q", tt.in, got, tt.want)
 			}
@@ -41,6 +42,7 @@ func TestResolvePasswordInteractiveWithoutTTY(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when no terminal is available")
 	}
+
 	if !strings.Contains(err.Error(), "--password-stdin") {
 		t.Errorf("error %q should point the user at --password-stdin", err)
 	}

@@ -10,6 +10,7 @@ package lists
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ var units = []string{
 func Units() []string {
 	out := make([]string, len(units))
 	copy(out, units)
+
 	return out
 }
 
@@ -169,9 +171,11 @@ func validateName(name string) (string, error) {
 	if trimmed == "" {
 		return "", &ValidationError{Field: "name", Message: "name must not be empty"}
 	}
+
 	if len(trimmed) > maxNameLength {
 		return "", &ValidationError{Field: "name", Message: "name is too long"}
 	}
+
 	return trimmed, nil
 }
 
@@ -188,6 +192,7 @@ func copyListName(original string) string {
 	if len(trimmed)+len(copySuffix) <= maxNameLength {
 		return trimmed + copySuffix
 	}
+
 	runes := []rune(trimmed)
 	for len(runes) > 0 && len(string(runes))+len(copySuffix) > maxNameLength {
 		runes = runes[:len(runes)-1]
@@ -203,9 +208,11 @@ func normalizeQuantity(q int) (int, error) {
 	if q == 0 {
 		return 1, nil
 	}
+
 	if q < 1 {
 		return 0, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
 	}
+
 	return q, nil
 }
 
@@ -216,11 +223,11 @@ func validateUnit(u string) (string, error) {
 	if u == "" {
 		return defaultUnit, nil
 	}
-	for _, valid := range units {
-		if u == valid {
-			return u, nil
-		}
+
+	if slices.Contains(units, u) {
+		return u, nil
 	}
+
 	return "", &ValidationError{Field: "unit", Message: "unit is not a recognised value"}
 }
 
@@ -230,9 +237,11 @@ func normalizeNote(n *string) *string {
 	if n == nil {
 		return nil
 	}
+
 	trimmed := strings.TrimSpace(*n)
 	if trimmed == "" {
 		return nil
 	}
+
 	return &trimmed
 }

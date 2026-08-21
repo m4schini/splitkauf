@@ -58,6 +58,7 @@ func TestValidateAuthOIDC(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := validBase()
 			c.Auth.OIDC = tt.oidc
+
 			err := validate(c)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -93,6 +94,7 @@ func TestIsOIDCEnabled(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := validBase()
+
 			c.Auth.OIDC = tt.oidc
 			if got := c.IsOIDCEnabled(); got != tt.want {
 				t.Errorf("IsOIDCEnabled() = %v, want %v", got, tt.want)
@@ -103,6 +105,7 @@ func TestIsOIDCEnabled(t *testing.T) {
 
 func TestModePrecedence(t *testing.T) {
 	oidc := OIDCConfig{Issuer: "https://idp", ClientID: "c", ClientSecret: "s"}
+
 	tests := []struct {
 		name     string
 		oidc     OIDCConfig
@@ -118,10 +121,12 @@ func TestModePrecedence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := validBase()
 			c.Auth.OIDC = tt.oidc
+
 			c.Auth.Password.Enabled = tt.password
 			if got := c.Mode(); got != tt.want {
 				t.Errorf("Mode() = %q, want %q", got, tt.want)
 			}
+
 			if got := c.IsPasswordEnabled(); got != tt.password {
 				t.Errorf("IsPasswordEnabled() = %v, want %v", got, tt.password)
 			}

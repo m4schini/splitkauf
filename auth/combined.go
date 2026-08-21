@@ -29,8 +29,10 @@ func newCombined(o *oidcAuthenticator, p *passwordAuthenticator) *combinedAuthen
 func (a *combinedAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		a.password.Login(w, r)
+
 		return
 	}
+
 	a.oidc.Login(w, r)
 }
 
@@ -49,8 +51,10 @@ func (a *combinedAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	data, _ := getSessionData(r.Context(), a.oidc.sm)
 	if data.IDToken != "" {
 		a.oidc.Logout(w, r)
+
 		return
 	}
+
 	a.password.Logout(w, r)
 }
 

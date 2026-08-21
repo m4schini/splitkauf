@@ -31,10 +31,12 @@ const (
 // This recovers a database left dirty by a previously crashed migration.
 func OverrideDirty(db *sql.DB, version int) error {
 	log := telemetry.Logger("database", "migrate")
+
 	m, err := newMigrator(db)
 	if err != nil {
 		return err
 	}
+
 	v, dirty, err := m.Version()
 	if err != nil {
 		return err
@@ -51,9 +53,12 @@ func OverrideDirty(db *sql.DB, version int) error {
 			zap.Int("force_version", version),
 			zap.Uint("current_version", v),
 		)
+
 		return fmt.Errorf("forcing version %d: %w", version, err)
 	}
+
 	log.Warn("migration state overridden", zap.Int("version", version))
+
 	return nil
 }
 
@@ -71,6 +76,7 @@ func MigrateDown(db *sql.DB) error {
 	if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
 		return err
 	}
+
 	if dirty {
 		return fmt.Errorf("database is dirty at version %d; re-run with --force <version> first", v)
 	}
@@ -79,12 +85,15 @@ func MigrateDown(db *sql.DB) error {
 	if errors.Is(err, migrate.ErrNoChange) {
 		return nil
 	}
+
 	if err != nil {
 		log.Error("migration sql failed", zap.Error(err))
+
 		return fmt.Errorf("destroying database schema: %w", err)
 	}
 
 	log.Info("destroyed database schema")
+
 	return nil
 }
 
@@ -110,6 +119,7 @@ func Migrate(db *sql.DB, version uint) (bool, error) {
 			zap.Uint("schema_version", v),
 			zap.Bool("dirty", true),
 		)
+
 		return false, dirtyErr
 	}
 
@@ -118,14 +128,17 @@ func Migrate(db *sql.DB, version uint) (bool, error) {
 	} else {
 		err = m.Migrate(version)
 	}
+
 	if errors.Is(err, migrate.ErrNoChange) {
 		return false, nil
 	}
+
 	if err != nil {
 		log.Error("migration sql failed", zap.Error(err),
 			zap.Uint("target_version", version),
 			zap.Uint("schema_version", v),
 		)
+
 		return false, fmt.Errorf("applying migrations: %w", err)
 	}
 

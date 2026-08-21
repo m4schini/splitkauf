@@ -173,6 +173,7 @@ func Write(w http.ResponseWriter, r *http.Request, p Problem) {
 	if p.Instance == "" && r != nil {
 		p.Instance = r.URL.Path
 	}
+
 	status := p.Status
 	if status == 0 {
 		status = http.StatusInternalServerError
@@ -180,6 +181,7 @@ func Write(w http.ResponseWriter, r *http.Request, p Problem) {
 
 	w.Header().Set("Content-Type", ContentType)
 	w.WriteHeader(status)
+
 	if err := json.NewEncoder(w).Encode(p); err != nil {
 		telemetry.Logger("api", "problem").Error("encoding problem response", zap.Error(err))
 	}

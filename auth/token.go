@@ -19,5 +19,6 @@ func randomToken() (string, error) {
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
+
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
