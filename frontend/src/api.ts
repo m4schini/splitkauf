@@ -66,8 +66,9 @@ export function isUnauthorized(err: unknown): boolean {
   return problem.status === 401 || problem.type === unauthorizedProblemType
 }
 
-/** The server's active authentication mode, from GET /api/auth/config. */
-export type AuthMode = 'oidc' | 'password' | 'dev'
+/** The server's active authentication mode, from GET /api/auth/config.
+ * 'oidc+password' (combined mode) offers both sign-in methods at once. */
+export type AuthMode = 'oidc' | 'password' | 'oidc+password' | 'dev'
 
 /**
  * GET /api/auth/config — the active auth mode, so the UI can render the right

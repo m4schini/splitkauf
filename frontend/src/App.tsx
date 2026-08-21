@@ -136,10 +136,18 @@ function App() {
           </p>
         )}
         {unauthorized &&
-          (authConfig?.mode === 'password' ? (
+          (authConfig?.mode === 'password' || authConfig?.mode === 'oidc+password' ? (
             <>
               <p className="hint">Sign in to see your shopping lists.</p>
               <LoginForm />
+              {authConfig.mode === 'oidc+password' && (
+                <div className="sso-login">
+                  <p className="hint">or</p>
+                  <button type="button" className="secondary-button" onClick={() => login()}>
+                    Sign in with SSO
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <>

@@ -88,6 +88,29 @@ describe('App', () => {
     expect(password).toHaveAttribute('type', 'password')
   })
 
+  it('renders the password form plus an SSO button on a 401 in combined mode', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes('/api/v1/me')) {
+          return Promise.resolve(
+            problemResponse({ type: '/problems/unauthorized', title: 'Unauthorized', status: 401 }),
+          )
+        }
+        if (String(input).includes('/api/auth/config')) {
+          return Promise.resolve(jsonResponse({ mode: 'oidc+password' }))
+        }
+        throw new Error(`unexpected fetch: ${String(input)}`)
+      }),
+    )
+
+    render(<App />, { wrapper: withQueryClient() })
+
+    expect(await screen.findByLabelText('Username')).toBeInTheDocument()
+    expect(screen.getByLabelText('Password')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Sign in with SSO' })).toBeInTheDocument()
+  })
+
   it('shows the user name and a log-out button when signed in, and renders the lists UI', async () => {
     const user: User = { id: 'u1', name: 'Dev User' }
     vi.stubGlobal(

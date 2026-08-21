@@ -109,7 +109,7 @@ func TestModePrecedence(t *testing.T) {
 		password bool
 		want     AuthMode
 	}{
-		{"oidc wins over password", oidc, true, AuthModeOIDC},
+		{"both configured is combined", oidc, true, AuthModeCombined},
 		{"oidc only", oidc, false, AuthModeOIDC},
 		{"password when oidc unset", OIDCConfig{}, true, AuthModePassword},
 		{"dev when neither", OIDCConfig{}, false, AuthModeDev},

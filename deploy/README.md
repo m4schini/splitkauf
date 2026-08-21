@@ -34,11 +34,13 @@ systemd-managed containers on a single server.
    SPLITKAUF_DATABASE_NAME=splitkauf
    SPLITKAUF_DATABASE_SSL_MODE=disable
 
-   # Auth mode (precedence OIDC > password > dev — see "Authentication" below).
-   # For local username/password accounts instead of OIDC, leave the OIDC vars
-   # unset and set:
+   # Auth mode (see "Authentication" below). For local username/password
+   # accounts instead of OIDC, leave the OIDC vars unset and set:
    #   SPLITKAUF_AUTH_PASSWORD_ENABLED=true
    # then provision accounts with `useradd` (see "Password authentication").
+   # Setting BOTH (all OIDC vars + PASSWORD_ENABLED) enables the combined
+   # mode: the login page offers the password form and a "Sign in with SSO"
+   # button side by side.
    #
    # OIDC login (Authentik). Leave all SPLITKAUF_AUTH_OIDC_* vars unset to run
    # with password or dev-auth instead.
@@ -77,23 +79,27 @@ systemd-managed containers on a single server.
 
 ## Authentication
 
-Splitkauf selects its auth mode automatically from config, applying the
-precedence **OIDC → password → dev-auth**:
+Splitkauf selects its auth mode automatically from config:
 
 - If `SPLITKAUF_AUTH_OIDC_ISSUER`, `SPLITKAUF_AUTH_OIDC_CLIENT_ID`, and
   `SPLITKAUF_AUTH_OIDC_CLIENT_SECRET` are **all** set, the backend runs the
-  OIDC BFF (backend-for-frontend) flow against that provider.
+  OIDC BFF (backend-for-frontend) flow against that provider. If
+  `SPLITKAUF_AUTH_PASSWORD_ENABLED=true` is **also** set, the backend runs
+  the combined mode instead: OIDC and local username/password sign-in are
+  both offered, and the login page shows the password form plus a
+  "Sign in with SSO" button. Either method establishes the same session.
 - Else, if `SPLITKAUF_AUTH_PASSWORD_ENABLED=true`, the backend runs local
-  username/password authentication (see "Password authentication" below) —
-  the option for a self-hosted instance without an identity provider.
+  username/password authentication only (see "Password authentication"
+  below) — the option for a self-hosted instance without an identity
+  provider.
 - Else, the backend falls back to dev-auth (a single hardcoded dev user, the
   same as local development). This is only suitable for local/test
   deployments — do not leave both OIDC and password unset on a production host.
 
 ### Password authentication
 
-Set `SPLITKAUF_AUTH_PASSWORD_ENABLED=true` (and leave the OIDC vars unset) to
-run local accounts. There is **no public sign-up**: the operator provisions
+Set `SPLITKAUF_AUTH_PASSWORD_ENABLED=true` to run local accounts (on its own,
+or alongside OIDC for the combined mode). There is **no public sign-up**: the operator provisions
 every account with the `useradd` command, which stores only a bcrypt hash.
 
 ```sh

@@ -48,8 +48,9 @@ type AuthConfig struct {
 }
 
 // PasswordConfig holds the local username/password auth settings. Enabled is
-// off by default; when set (and OIDC is not configured) the backend runs the
-// operator-provisioned password flow instead of dev-auth.
+// off by default; when set the backend runs the operator-provisioned password
+// flow — alongside OIDC when a provider is also configured (combined mode),
+// otherwise instead of dev-auth.
 type PasswordConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 }
@@ -81,9 +82,8 @@ func (c *Config) IsOIDCEnabled() bool {
 }
 
 // IsPasswordEnabled reports whether local username/password auth is turned on
-// (SPLITKAUF_AUTH_PASSWORD_ENABLED). It is independent of OIDC; the selection
-// precedence (OIDC → password → dev-auth) is applied by the auth layer, so a
-// deployment that sets both keeps OIDC.
+// (SPLITKAUF_AUTH_PASSWORD_ENABLED). It is independent of OIDC; a deployment
+// that sets both runs the combined mode, offering both sign-in methods.
 func (c *Config) IsPasswordEnabled() bool {
 	return c.Auth.Password.Enabled
 }
@@ -95,13 +95,17 @@ type AuthMode string
 const (
 	AuthModeOIDC     AuthMode = "oidc"
 	AuthModePassword AuthMode = "password"
+	AuthModeCombined AuthMode = "oidc+password"
 	AuthModeDev      AuthMode = "dev"
 )
 
-// Mode returns the resolved authentication mode from config precedence:
-// OIDC when configured, else password when enabled, else dev-auth.
+// Mode returns the resolved authentication mode: combined when both the OIDC
+// provider is configured and password auth is enabled, else OIDC when
+// configured, else password when enabled, else dev-auth.
 func (c *Config) Mode() AuthMode {
 	switch {
+	case c.IsOIDCEnabled() && c.IsPasswordEnabled():
+		return AuthModeCombined
 	case c.IsOIDCEnabled():
 		return AuthModeOIDC
 	case c.IsPasswordEnabled():

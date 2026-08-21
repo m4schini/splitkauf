@@ -256,8 +256,10 @@ From `docs/research/collaborative-lists.md`:
 From `docs/research/oidc-go-pwa-integration.md`. **Decisions committed**
 (Postgres-only stack — no Redis):
 
-**Three auth modes**, selected from config with the precedence
-**OIDC → password → dev-auth** (`config.Mode()`):
+**Auth modes**, selected from config (`config.Mode()`): OIDC and password can
+run **combined** (both configured → mode `oidc+password`, the login page offers
+the password form plus a "Sign in with SSO" button); otherwise whichever one is
+configured, else dev-auth:
 
 - **OIDC BFF** (✅ M2) — the confidential-client Authorization Code + PKCE flow
   below, when the OIDC issuer/client are configured.

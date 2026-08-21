@@ -554,3 +554,18 @@ input {
 .login-form .primary-button {
   margin-top: 8px;
 }
+
+/* Combined auth mode: the SSO alternative below the password form. Matches
+   the form's width so the "or" separator and button align with it. */
+.sso-login {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  margin-top: 8px;
+}
+
+.sso-login .hint {
+  padding: 0;
+  text-align: center;
+}
