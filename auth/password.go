@@ -10,7 +10,6 @@ import (
 	"sync"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/m4schini/splitkauf/members"
@@ -132,8 +131,9 @@ func (a *passwordAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reuse the OIDC SessionData shape; password sessions carry no tokens.
+	// Reuse the shared SessionData shape; password sessions carry no ID token.
 	data := SessionData{
+		UserID:  user.ID,
 		Subject: user.ID.String(),
 		Email:   user.Email,
 		Name:    user.Name,
@@ -175,27 +175,10 @@ func (a *passwordAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-// RequireAuth admits only requests carrying a valid session and injects the
-// auth.User. A missing session, or a subject that is not a parseable user id,
-// yields a 401 problem. There is no token-refresh path (password sessions hold
-// no OAuth tokens); the scs session lifetime governs expiry.
+// RequireAuth admits only requests carrying a valid session, via the shared
+// requireSession middleware: it loads the SessionData and injects the
+// auth.User, or returns a 401 problem. The scs session lifetime governs
+// expiry.
 func (a *passwordAuthenticator) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		data, ok := getSessionData(ctx, a.sm)
-		if !ok {
-			problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
-			return
-		}
-		id, err := uuid.Parse(data.Subject)
-		if err != nil {
-			a.logger.Warn("requireauth: session subject is not a valid user id", zap.String("subject", data.Subject))
-			problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
-			return
-		}
-
-		u := User{ID: id, Name: data.Name, Email: data.Email}
-		next.ServeHTTP(w, r.WithContext(WithUser(ctx, u)))
-	})
+	return requireSession(a.sm, a.logger)(next)
 }

@@ -5,11 +5,9 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/google/uuid"
@@ -23,23 +21,17 @@ import (
 	"go.uber.org/zap"
 )
 
-// refreshThreshold is how close to expiry an access token may get before
-// RequireAuth refreshes it proactively, server-side.
-const refreshThreshold = 30 * time.Second
-
 // subjectNamespace is a fixed, arbitrary UUID namespace used to derive a stable
 // UUIDv5 for each OIDC subject. It only needs to be constant, not secret: the
 // same subject always maps to the same User.ID.
 var subjectNamespace = uuid.MustParse("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 
-// errNoRefreshToken signals that a session has no refresh token, so it cannot be
-// refreshed and must be treated as expired.
-var errNoRefreshToken = errors.New("session has no refresh token")
-
 // oidcAuthenticator is the Backend-for-Frontend OIDC Authenticator: it runs the
-// Authorization Code + PKCE flow as a confidential client, keeps all tokens in
-// the server-side scs session, and refreshes them transparently. The browser
-// only ever holds the opaque session cookie.
+// Authorization Code + PKCE flow as a confidential client, using the identity
+// provider only to authenticate the user at login. The resulting server-side
+// scs session carries no OAuth access or refresh tokens — only the resolved
+// user id and the ID token retained as the RP-initiated-logout hint. The
+// browser only ever holds the opaque session cookie.
 type oidcAuthenticator struct {
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
@@ -111,7 +103,7 @@ func (a *oidcAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	a.logger.Info("login: starting authorization code flow",
-		zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+		zap.Bool("incoming_session_cookie", hasSessionCookie(a.sm, r)),
 		zap.String("raw_return_to", r.URL.Query().Get("return_to")),
 	)
 
@@ -157,7 +149,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	a.logger.Info("callback: received from identity provider",
-		zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+		zap.Bool("incoming_session_cookie", hasSessionCookie(a.sm, r)),
 		zap.Bool("has_state_param", r.URL.Query().Get("state") != ""),
 		zap.Bool("has_code_param", r.URL.Query().Get("code") != ""),
 		zap.String("provider_error", r.URL.Query().Get("error")),
@@ -172,7 +164,7 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 		a.logger.Warn("callback: state validation failed",
 			zap.Bool("session_state_present", wantState != ""),
 			zap.Bool("query_state_present", gotState != ""),
-			zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
+			zap.Bool("incoming_session_cookie", hasSessionCookie(a.sm, r)),
 		)
 		problem.Write(w, r, problem.New(problem.Validation, "invalid or missing state parameter"))
 		return
@@ -250,13 +242,11 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := SessionData{
-		AccessToken:  token.AccessToken,
-		RefreshToken: token.RefreshToken,
-		IDToken:      rawIDToken,
-		Expiry:       token.Expiry,
-		Subject:      idToken.Subject,
-		Email:        claims.Email,
-		Name:         name,
+		UserID:  subjectUUID(idToken.Subject),
+		IDToken: rawIDToken,
+		Subject: idToken.Subject,
+		Email:   claims.Email,
+		Name:    name,
 	}
 	if err := putSessionData(ctx, a.sm, data); err != nil {
 		problem.Write(w, r, problem.New(problem.Internal, "storing session"))
@@ -278,8 +268,6 @@ func (a *oidcAuthenticator) Callback(w http.ResponseWriter, r *http.Request) {
 		zap.String("subject", idToken.Subject),
 		zap.String("email", claims.Email),
 		zap.String("name", name),
-		zap.Time("access_token_expiry", token.Expiry),
-		zap.Bool("has_refresh_token", token.RefreshToken != ""),
 		zap.String("return_to", returnTo),
 	)
 	http.Redirect(w, r, returnTo, http.StatusFound)
@@ -323,126 +311,19 @@ func (a *oidcAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
-// RequireAuth admits only requests carrying a valid session. It loads the
-// SessionData; missing → 401. When the access token is near expiry it refreshes
-// server-side and persists any rotated refresh token; an invalid_grant destroys
-// the session and returns 401, while a transient provider failure returns 503.
-// On success it places the auth.User in the request context.
+// RequireAuth admits only requests carrying a valid session, via the shared
+// requireSession middleware: it loads the SessionData and injects the
+// auth.User, or returns a 401 problem. It never contacts the identity
+// provider — there is no refresh path and no 503 path; the scs session
+// lifetime alone governs expiry.
 func (a *oidcAuthenticator) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		data, ok := getSessionData(ctx, a.sm)
-		if !ok {
-			// The 401 the browser sees on GET /api/v1/me. Whether the request
-			// carried a session cookie tells the two failure modes apart: no
-			// cookie -> the browser isn't sending it (cookie Secure/SameSite/
-			// domain/path, or it was never set); cookie present but no data ->
-			// the server-side session store has no matching session (e.g. an
-			// in-memory store after a restart, or an expired/destroyed session).
-			a.logger.Info("requireauth: no active session, returning 401",
-				zap.String("path", r.URL.Path),
-				zap.Bool("incoming_session_cookie", a.hasSessionCookie(r)),
-			)
-			problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
-			return
-		}
-
-		if time.Until(data.Expiry) < refreshThreshold {
-			a.logger.Debug("requireauth: access token near expiry, refreshing",
-				zap.String("subject", data.Subject),
-				zap.Time("expiry", data.Expiry),
-			)
-			refreshed, err := a.refresh(ctx, data)
-			if err != nil {
-				if isInvalidGrant(err) {
-					// Revoked or expired refresh token: force re-login.
-					if derr := a.sm.Destroy(ctx); derr != nil {
-						a.logger.Error("destroying session after invalid_grant", zap.Error(derr))
-					}
-					a.logger.Info("requireauth: refresh token invalid, session destroyed -> 401",
-						zap.String("subject", data.Subject),
-					)
-					problem.Write(w, r, problem.New(problem.Unauthorized, "session expired, please sign in again"))
-					return
-				}
-				// Transient failure reaching the provider: keep the session.
-				a.logger.Warn("token refresh failed", zap.Error(err))
-				problem.Write(w, r, problem.New(problem.Unavailable, "could not refresh the session"))
-				return
-			}
-			data = refreshed
-		}
-
-		u := User{ID: subjectUUID(data.Subject), Name: data.Name, Email: data.Email}
-		a.logger.Debug("requireauth: authenticated",
-			zap.String("path", r.URL.Path),
-			zap.String("subject", data.Subject),
-		)
-		next.ServeHTTP(w, r.WithContext(WithUser(ctx, u)))
-	})
-}
-
-// refresh exchanges the session's refresh token for a new access token, persists
-// the updated SessionData (including any rotated refresh token), and returns it.
-// A session with no refresh token is treated as unrefreshable.
-func (a *oidcAuthenticator) refresh(ctx context.Context, data SessionData) (SessionData, error) {
-	if data.RefreshToken == "" {
-		return SessionData{}, errNoRefreshToken
-	}
-
-	ts := a.oauth2Config.TokenSource(ctx, &oauth2.Token{
-		RefreshToken: data.RefreshToken,
-		Expiry:       time.Now().Add(-time.Second), // force a refresh
-	})
-	newToken, err := ts.Token()
-	if err != nil {
-		return SessionData{}, err
-	}
-
-	data.AccessToken = newToken.AccessToken
-	data.Expiry = newToken.Expiry
-	if newToken.RefreshToken != "" {
-		// Persist the rotated refresh token; the old one may now be invalid.
-		data.RefreshToken = newToken.RefreshToken
-	}
-	if rawID, ok := newToken.Extra("id_token").(string); ok && rawID != "" {
-		data.IDToken = rawID
-	}
-
-	if err := putSessionData(ctx, a.sm, data); err != nil {
-		return SessionData{}, err
-	}
-	return data, nil
-}
-
-// isInvalidGrant reports whether err is an OAuth2 "invalid_grant" error (a
-// revoked or expired refresh token) or a locally-detected missing refresh
-// token — both mean the session can no longer be refreshed.
-func isInvalidGrant(err error) bool {
-	if errors.Is(err, errNoRefreshToken) {
-		return true
-	}
-	var re *oauth2.RetrieveError
-	if errors.As(err, &re) {
-		return re.ErrorCode == "invalid_grant"
-	}
-	return false
+	return requireSession(a.sm, a.logger)(next)
 }
 
 // subjectUUID derives a stable UUIDv5 from an OIDC subject so that the same
 // account always maps to the same User.ID (used as the API's user id).
 func subjectUUID(subject string) uuid.UUID {
 	return uuid.NewSHA1(subjectNamespace, []byte(subject))
-}
-
-// hasSessionCookie reports whether the request carries the scs session cookie.
-// It only checks presence (not validity), for diagnostic logging of the login
-// flow — a missing cookie on the callback or an API request is the usual cause
-// of a lost session.
-func (a *oidcAuthenticator) hasSessionCookie(r *http.Request) bool {
-	_, err := r.Cookie(a.sm.Cookie.Name)
-	return err == nil
 }
 
 // sameSiteString renders an http.SameSite mode for logging (the type has no

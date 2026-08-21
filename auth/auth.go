@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: CC0-1.0
 
 // Package auth is the authentication port for the splitkauf HTTP API. It
-// exposes an Authenticator with two implementations selected by config: a
-// Backend-for-Frontend OIDC flow (Authorization Code + PKCE, server-side
-// sessions, transparent token refresh) for deployment, and a dev-auth
-// implementation that injects a single fixed user for local development.
+// exposes an Authenticator with implementations selected by config: a
+// Backend-for-Frontend OIDC flow (Authorization Code + PKCE) and a local
+// username/password flow for deployment, plus a dev-auth implementation that
+// injects a single fixed user for local development.
 //
-// Both implementations share the same surface — Login/Callback/Logout HTTP
+// All implementations share the same surface — Login/Callback/Logout HTTP
 // handlers and a RequireAuth middleware — plus the WithUser/UserFrom context
 // helpers, so ports/rest reads the current user uniformly regardless of mode.
-// In the OIDC flow the browser only ever holds an opaque, HttpOnly session
-// cookie; access, refresh, and ID tokens never leave the server.
+// The login flow only authenticates the user; afterwards every mode uses the
+// same server-side scs session (resolved user id plus claims, and in OIDC
+// mode the ID token kept solely as the RP-initiated-logout hint), whose scs
+// lifetime alone governs expiry. RequireAuth never contacts an identity
+// provider. The browser only ever holds an opaque, HttpOnly session cookie.
 package auth
 
 import (

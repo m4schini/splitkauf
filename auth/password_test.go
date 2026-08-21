@@ -113,7 +113,8 @@ func TestPasswordLoginSuccess(t *testing.T) {
 		t.Fatalf("login status = %d, want 204", resp.StatusCode)
 	}
 
-	// The session cookie now authenticates /me.
+	// The session cookie now authenticates /me, and the injected user carries
+	// the account UUID stored as the session's UserID at login.
 	meResp, err := client.Get(srv.URL + "/me")
 	if err != nil {
 		t.Fatalf("GET /me: %v", err)
@@ -121,6 +122,13 @@ func TestPasswordLoginSuccess(t *testing.T) {
 	defer meResp.Body.Close()
 	if meResp.StatusCode != http.StatusOK {
 		t.Fatalf("/me status = %d, want 200", meResp.StatusCode)
+	}
+	body, err := io.ReadAll(meResp.Body)
+	if err != nil {
+		t.Fatalf("reading /me body: %v", err)
+	}
+	if got, want := string(body), "11111111-1111-1111-1111-111111111111"; got != want {
+		t.Errorf("/me user id = %q, want %q", got, want)
 	}
 	if len(fm.upserted) != 1 || fm.upserted[0].Name != "Alex" {
 		t.Errorf("member upsert = %+v, want one upsert for Alex", fm.upserted)

@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/google/uuid"
 
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/members"
@@ -190,13 +190,11 @@ func TestSessionDataRoundTrip(t *testing.T) {
 	}
 
 	want := SessionData{
-		AccessToken:  "access",
-		RefreshToken: "refresh",
-		IDToken:      "id",
-		Expiry:       time.Now().Add(time.Hour).UTC().Truncate(time.Second),
-		Subject:      "sub-123",
-		Email:        "user@example.com",
-		Name:         "User",
+		UserID:  uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+		IDToken: "id",
+		Subject: "sub-123",
+		Email:   "user@example.com",
+		Name:    "User",
 	}
 	if err := putSessionData(ctx, sm, want); err != nil {
 		t.Fatalf("putSessionData: %v", err)
