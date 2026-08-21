@@ -6,12 +6,6 @@ GO ?= go
 GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1
 
-RACE_ENABLED ?=
-GOTESTFLAGS ?=
-ifeq ($(RACE_ENABLED),true)
-    GOTESTFLAGS += -race
-endif
-
 .PHONY: all
 all: build
 
@@ -21,9 +15,10 @@ help:
 	@echo " - build                build everything"
 	@echo " - dist                 build the release binary (real frontend embedded)"
 	@echo " - generate             run code generation"
-	@echo " - test                 run tests"
-	@echo " - test-unit            run unit tests only (race, short, coverage) -- CI test contract"
-	@echo " - coverage             run tests with coverage"
+	@echo " - test                 run full test suite (race, shuffle; DB tests need SPLITKAUF_TEST_DATABASE_DSN)"
+	@echo " - test-short           run short tests (shuffle) -- pre-push budget"
+	@echo " - test-unit            run unit tests (race, short, shuffle, coverage) -- CI test contract"
+	@echo " - coverage             report function coverage from coverage.out"
 	@echo " - fmt                  format Go code (golangci-lint fmt)"
 	@echo " - fmt-check            check Go formatting (non-mutating)"
 	@echo " - lint                 lint Go files"
@@ -71,15 +66,24 @@ dist: frontend-build generate
 
 .PHONY: test
 test: generate
-	$(GO) test $(GOTESTFLAGS) ./...
+	$(GO) test -race -shuffle=on ./...
 
-.PHONY: coverage
-coverage: generate
-	$(GO) test $(GOTESTFLAGS) -cover -coverprofile=coverage.out ./...
+.PHONY: test-short
+test-short: generate
+	$(GO) test -short -shuffle=on ./...
 
 .PHONY: test-unit
 test-unit: generate
-	$(GO) test -race -short -coverprofile=coverage.out ./...
+	$(GO) test -race -short -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
+
+# Report-only: reads the profile test-unit produced; never gates.
+.PHONY: coverage
+coverage:
+	@if [ ! -f coverage.out ]; then \
+		echo "coverage.out not found; run 'make test-unit' first" >&2; \
+		exit 1; \
+	fi
+	$(GO) tool cover -func=coverage.out
 
 .PHONY: fmt
 fmt: generate
@@ -103,17 +107,12 @@ lint-config:
 
 .PHONY: tidy
 tidy:
-	$(eval MIN_GO_VERSION := $(shell grep -Eo '^go\s+[0-9]+\.[0-9.]+' go.mod | cut -d' ' -f2))
-	$(GO) mod tidy -compat=$(MIN_GO_VERSION)
+	$(GO) mod tidy
 
 .PHONY: tidy-check
-tidy-check: tidy
-	@diff=$$(git diff --color=always go.mod go.sum); \
-	if [ -n "$$diff" ]; then \
-		echo "Please run 'make tidy' and commit the result:"; \
-		echo "$${diff}"; \
-		exit 1; \
-	fi
+tidy-check:
+	$(GO) mod verify
+	$(GO) mod tidy -diff
 
 .PHONY: security
 security:
