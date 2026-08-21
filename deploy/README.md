@@ -140,6 +140,32 @@ A wrong username and a wrong password are rejected identically (same 401), so
 the login page never reveals which usernames exist. Keep
 `SPLITKAUF_AUTH_SESSION_COOKIE_SECURE=true` behind HTTPS, exactly as for OIDC.
 
+### Listing accounts
+
+`userls` lists every identity known to the app — local accounts (whether or
+not they have ever logged in), OIDC members, and the dev user:
+
+```sh
+sudo podman run --rm \
+    --network splitkauf.network \
+    --env-file /etc/splitkauf/splitkauf.env \
+    ghcr.io/m4schini/splitkauf:latest userls
+```
+
+```
+KIND   IDENTIFIER       USER_ID                               NAME     EMAIL             LAST_LOGIN
+local  alex             0d9c1e64-…                            Alex     alex@example.com  2026-08-20 19:04
+local  maria            7be20a11-…                            Maria    —                 never
+oidc   238941579532     a3f8c9d2-…                            Alex S.  alex@schink.xyz   2026-08-21 08:12
+```
+
+`KIND` is `local` (username/password account), `oidc` (provider-backed
+member), or `dev` (the fixed dev user). `IDENTIFIER` is the username for
+local accounts and the auth subject otherwise — it is the value used in
+`usermerge` selectors (`local:<username>` / `oidc:<subject>`). `LAST_LOGIN`
+comes from the login-time member record and shows `never` for a local account
+that has not signed in yet.
+
 `SPLITKAUF_AUTH_OIDC_REDIRECT_URL` and
 `SPLITKAUF_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL` are required for the OIDC flow
 to complete correctly, and `SPLITKAUF_APP_BASE_URL` should be set to the
