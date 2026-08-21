@@ -209,15 +209,15 @@ Dependencies: Phase 1 (Makefile layout)
 govulncheck stays the precise, blocking scanner; trivy is the broad one (CI-required); gitleaks gets its config.
 
 **Tasks**:
-- [ ] Add `trivy.yaml`, adapted from the template: keep the header comment explaining the govulncheck/trivy split and the report-only license posture; `scan.skip-dirs: [frontend/node_modules, ports/web/dist]`; `license.full: true` with the copyleft `forbidden` list.
-- [ ] Add `.gitleaks.toml`, near-verbatim from the template: `[extend] useDefault = true`, path-only allowlist for `^docs/agents/` with the template's rationale comment (owner `@m4schini`, review 2027-02). The pre-commit gitleaks hook picks it up automatically from the repo root.
-- [ ] Makefile `security` target: keep `$(GO) run $(GOVULNCHECK_PACKAGE) ./...` (blocking), then the template's trivy block verbatim in make syntax: if `trivy` on PATH → `trivy fs --scanners vuln,secret --exit-code 1 --severity HIGH,CRITICAL .` (blocking) and `trivy fs --scanners license --exit-code 0 .` (report); elif `$(REQUIRE_TRIVY)` non-empty → hard error; else warning + skip. Add `REQUIRE_TRIVY ?=` variable.
-- [ ] Probe trivy's secret scanner against docs/agents/: trivy does **not** read `.gitleaks.toml`, and the research/plan docs quote example credentials — run `trivy fs --scanners secret docs/agents` (any machine with trivy, or defer to the first CI run). If it fires, add `docs/agents` to `trivy.yaml` `scan.skip-dirs` with the same rationale comment as the gitleaks allowlist.
+- [x] Add `trivy.yaml`, adapted from the template: keep the header comment explaining the govulncheck/trivy split and the report-only license posture; `scan.skip-dirs: [frontend/node_modules, ports/web/dist]`; `license.full: true` with the copyleft `forbidden` list.
+- [x] Add `.gitleaks.toml`, near-verbatim from the template: `[extend] useDefault = true`, path-only allowlist for `^docs/agents/` with the template's rationale comment (owner `@m4schini`, review 2027-02). The pre-commit gitleaks hook picks it up automatically from the repo root.
+- [x] Makefile `security` target: keep `$(GO) run $(GOVULNCHECK_PACKAGE) ./...` (blocking), then the template's trivy block verbatim in make syntax: if `trivy` on PATH → `trivy fs --scanners vuln,secret --exit-code 1 --severity HIGH,CRITICAL .` (blocking) and `trivy fs --scanners license --exit-code 0 .` (report); elif `$(REQUIRE_TRIVY)` non-empty → hard error; else warning + skip. Add `REQUIRE_TRIVY ?=` variable.
+- [x] Probe trivy's secret scanner against docs/agents/: (deferred to first CI run — trivy not installed locally; if it fires, add docs/agents to trivy.yaml skip-dirs) trivy does **not** read `.gitleaks.toml`, and the research/plan docs quote example credentials — run `trivy fs --scanners secret docs/agents` (any machine with trivy, or defer to the first CI run). If it fires, add `docs/agents` to `trivy.yaml` `scan.skip-dirs` with the same rationale comment as the gitleaks allowlist.
 
 **Automated Verification**:
-- [ ] `make security` passes locally (trivy skip path: prints the warning, exit 0).
-- [ ] `REQUIRE_TRIVY=1 make security` fails locally with the "trivy is required" error (proves the hard-fail path without trivy installed).
-- [ ] Allowlist actually exercised (the gitleaks hook scans only the staged diff, so a clean-tree `--all-files` run proves nothing): stage a scratch file `docs/agents/research/tmp-allowlist-probe.md` containing a fake high-entropy token (e.g. an obviously fake `ghp_` string), `pre-commit run gitleaks` passes; move the same content to a staged file outside docs/agents/, the hook fails; delete both probes.
+- [x] `make security` passes locally (trivy skip path: prints the warning, exit 0).
+- [x] `REQUIRE_TRIVY=1 make security` fails locally with the "trivy is required" error (proves the hard-fail path without trivy installed).
+- [x] Allowlist actually exercised (the gitleaks hook scans only the staged diff, so a clean-tree `--all-files` run proves nothing): stage a scratch file `docs/agents/research/tmp-allowlist-probe.md` containing a fake high-entropy token (e.g. an obviously fake `ghp_` string), `pre-commit run gitleaks` passes; move the same content to a staged file outside docs/agents/, the hook fails; delete both probes.
 
 ### Phase 4: Git hooks
 
