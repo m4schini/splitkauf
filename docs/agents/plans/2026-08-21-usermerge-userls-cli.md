@@ -275,7 +275,7 @@ identify every account and copy selector values for Phase 2.
   `SPLITKAUF_TEST_DATABASE_DSN` set.
 
 **Manual Verification**:
-- [ ] Against a dev database with a local account and a dev login:
+- [x] Against a dev database with a local account and a dev login:
   `splitkauf userls` shows both, with `never` for a fresh `useradd` account.
 
 ### Phase 2: `usermerge` — merge command
@@ -346,17 +346,25 @@ with cleanup, the confirmation UX with counts and warnings, tests, and docs.
   shows both commands documented.
 
 **Manual Verification**:
-- [ ] End-to-end local→oidc migration on a dev stack: create a local account,
+- [x] End-to-end local→oidc migration on a dev stack: create a local account,
   create lists/items with it, sign in via OIDC once, run
   `usermerge local:<name> oidc:<subject>` — attribution names resolve to the
   OIDC identity in the UI, the local login no longer works, `userls` no
   longer shows the local account.
-- [ ] Abort path: answering `N` performs no changes (`userls` and the UI
+- [x] Abort path: answering `N` performs no changes (`userls` and the UI
   unchanged).
 
 ## Implementation Notes
 
 During implementation, document user feedback, problems, and decisions here.
+
+- Test seeding must use a valid item unit (`amount`): `items.unit` has a CHECK
+  constraint (migration 000005), so an empty string is rejected.
+- Manual verification of both phases confirmed by the user on 2026-08-21.
+- User feedback after verification: restructure the commands as subcommands of
+  a `user` parent — `user add`, `user ls`, `user merge` replace `useradd`,
+  `userls`, `usermerge` (breaking rename of `useradd`; no aliases kept). Docs
+  updated accordingly.
 
 ## References
 
