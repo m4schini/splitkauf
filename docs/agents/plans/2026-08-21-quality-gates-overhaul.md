@@ -255,32 +255,32 @@ Dependencies: Phases 1–4 (workflows call the make targets and hook suite)
 Replace lint.yml with quality.yml, harden ci.yml, add pr-title.yml, bump go.mod, update docs.
 
 **Tasks**:
-- [ ] `go.mod`: change `go 1.25.0` → `go 1.26.0`; run `make tidy-check` to confirm no churn. (Own commit per AGENTS.md is not required — not a migration — but keep it a distinct task inside the phase commit.)
-- [ ] New `.github/workflows/quality.yml` (delete `.github/workflows/lint.yml` in the same commit):
+- [x] `go.mod`: change `go 1.25.0` → `go 1.26.0`; run `make tidy-check` to confirm no churn. (Own commit per AGENTS.md is not required — not a migration — but keep it a distinct task inside the phase commit.)
+- [x] New `.github/workflows/quality.yml` (delete `.github/workflows/lint.yml` in the same commit):
   - `on: pull_request, push (main), schedule (cron "17 6 * * 1"), workflow_dispatch`; `permissions: contents: read`; concurrency group with `cancel-in-progress: true`; every job `timeout-minutes: 20`.
   - Job `hooks` (pull_request/push only): checkout; setup-go with `go-version-file: go.mod` + `cache-dependency-path: "**/go.sum"`; setup-node (frontend hooks need `npm exec`); `npm ci` in frontend/ (prettier/oxlint hooks resolve from there); cache `~/.cache/pre-commit` keyed on the config hash; `pipx install pre-commit`; `pre-commit run --all-files --show-diff-on-failure`.
   - Job `gates` (pull_request/push only): checkout; setup-go (go-version-file); `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` (the greppable pin the drift check reads) followed by `echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"` (on runners' PATH today, explicit is robust); `aquasecurity/setup-trivy`; then `make generate`, `git diff --exit-code` (generated-code drift — moves here from ci.yml; lives in exactly one place), `make fmt-check`, `make lint-config`, `make lint`, `make tidy-check`, `make security REQUIRE_TRIVY=1`.
   - Job `vuln-weekly` (schedule/workflow_dispatch only): checkout, setup-go, setup-trivy, `make generate`, `make security REQUIRE_TRIVY=1`.
-- [ ] New `.github/workflows/pr-title.yml`: `on: pull_request: types [opened, edited, synchronize, reopened]`; single job (timeout 5): checkout, write `${{ github.event.pull_request.title }}` to a temp file via env var (env: TITLE, `printf '%s\n' "$TITLE" > /tmp/title` — env indirection, never inline template into the script, injection risk), run `hack/hooks/check-commit-msg.sh /tmp/title`.
-- [ ] Rework `.github/workflows/ci.yml`:
+- [x] New `.github/workflows/pr-title.yml`: `on: pull_request: types [opened, edited, synchronize, reopened]`; single job (timeout 5): checkout, write `${{ github.event.pull_request.title }}` to a temp file via env var (env: TITLE, `printf '%s\n' "$TITLE" > /tmp/title` — env indirection, never inline template into the script, injection risk), run `hack/hooks/check-commit-msg.sh /tmp/title`.
+- [x] Rework `.github/workflows/ci.yml`:
   - Backend job: setup-go switches to `go-version-file: go.mod`; the generated-drift check (`git diff --exit-code`) moves to the quality `gates` job, but `make generate` stays as the first step because build/test need the embed stub and regeneration is idempotent. Steps: `make generate` → `make build` → `make test-unit`; then coverage summary (`go tool cover -func=coverage.out` into `$GITHUB_STEP_SUMMARY`, `if: always()` guarded by file existence) and `actions/upload-artifact` of `coverage.out`.
   - New `test-full` job: postgres `services:` container (postgres:17 pinned by digest, health-checked, `POSTGRES_PASSWORD`/`POSTGRES_DB` set); checkout, setup-go (go-version-file); `make generate`; apply migrations with `go run . migrate` configured for the service DB via `SPLITKAUF_DATABASE_*` env vars (viper env binding — confirm exact names from `config/config.go` during implementation); then `make test` with `SPLITKAUF_TEST_DATABASE_DSN` pointing at the same DB. This is the first place the `adapters/db` integration tests run.
   - Frontend job: replace inline npm run steps with `make frontend-deps`, `make frontend-check`, `make frontend-build` (adds prettier `format-check` to CI). If `format-check` is red on the current tree, run `npx prettier --write .` in frontend/ and include the diff (formatting fixes are sanctioned, like gofumpt).
   - Docker job unchanged in behavior.
   - Add `timeout-minutes` to all jobs.
-- [ ] Pin every action in all three workflows (and quality/pr-title) by commit SHA with `# vX.Y.Z` comment. Known-good SHAs from the template: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`, `actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0`, `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0`, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`, `aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1`. For the rest (setup-node, docker/*), resolve the SHA of the currently used major's latest release via `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` at implementation time.
-- [ ] Harden `hack/lint/check-golangci-pin.sh`: quality.yml now exists, so a missing workflow file becomes an error instead of a warning (delete the warning branch from Phase 4).
-- [ ] `renovate.json`: add `"pre-commit": {"enabled": true}` so hook revs stay current (actions SHA pins are already covered by `config:recommended`).
-- [ ] `README.md`: rewrite the development-harness section — three hook stages and budgets, `make check` composition, golangci-lint v2.12.2 expected on PATH, trivy optional locally / required in CI, coverage tracked-not-gated, DB integration tests and how to run them locally (compose postgres + `SPLITKAUF_TEST_DATABASE_DSN`), PR titles validated by the same script as commit messages. Delete the stale `gofumpt -w` fmt-check explanation.
+- [x] Pin every action in all three workflows (and quality/pr-title) by commit SHA with `# vX.Y.Z` comment. Known-good SHAs from the template: `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`, `actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0`, `actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0`, `actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1`, `aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1`. For the rest (setup-node, docker/*), resolve the SHA of the currently used major's latest release via `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` at implementation time.
+- [x] Harden `hack/lint/check-golangci-pin.sh`: quality.yml now exists, so a missing workflow file becomes an error instead of a warning (delete the warning branch from Phase 4).
+- [x] `renovate.json`: add `"pre-commit": {"enabled": true}` so hook revs stay current (actions SHA pins are already covered by `config:recommended`).
+- [x] `README.md`: rewrite the development-harness section — three hook stages and budgets, `make check` composition, golangci-lint v2.12.2 expected on PATH, trivy optional locally / required in CI, coverage tracked-not-gated, DB integration tests and how to run them locally (compose postgres + `SPLITKAUF_TEST_DATABASE_DSN`), PR titles validated by the same script as commit messages. Delete the stale `gofumpt -w` fmt-check explanation.
 
 **Automated Verification**:
-- [ ] `actionlint` passes on all workflow files (install via `go run github.com/rhysd/actionlint/cmd/actionlint@latest` if absent).
-- [ ] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing (every action SHA-pinned).
-- [ ] `grep -rL 'timeout-minutes' .github/workflows/*.yml` finds nothing.
-- [ ] `.github/workflows/lint.yml` no longer exists.
-- [ ] `hack/lint/check-golangci-pin.sh` exits 0; with quality.yml version edited to `v2.12.1` it exits 1 (then revert).
-- [ ] `make check` passes end to end.
-- [ ] `pre-commit run --all-files` passes.
+- [x] `actionlint` passes on all workflow files (install via `go run github.com/rhysd/actionlint/cmd/actionlint@latest` if absent).
+- [x] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing (every action SHA-pinned).
+- [x] `grep -rL 'timeout-minutes' .github/workflows/*.yml` finds nothing.
+- [x] `.github/workflows/lint.yml` no longer exists.
+- [x] `hack/lint/check-golangci-pin.sh` exits 0; with quality.yml version edited to `v2.12.1` it exits 1 (then revert).
+- [x] `make check` passes end to end.
+- [x] `pre-commit run --all-files` passes.
 
 **Manual Verification**:
 - [ ] After push: all workflows (CI incl. the new test-full job, quality, pr-title on a test PR, weekly via `workflow_dispatch`) run green on GitHub; coverage table visible in the backend job's step summary; test-full job log shows the `adapters/db` tests ran instead of skipping.
@@ -290,6 +290,7 @@ Replace lint.yml with quality.yml, harden ci.yml, add pr-title.yml, bump go.mod,
 During implementation, document user feedback, problems, and decisions here.
 
 - Probe details (2026-08-21): template config v2.12.2 against splitkauf produced 547 reported issues across 39 linters; per-linter cap 50 means varnamelen/exhaustruct/paralleltest/depguard are undercounted. Probe config lives only in the session scratchpad; the real `.golangci.yml` is written fresh in Phase 1.
+- Phase 5 (2026-08-21): viper env names confirmed from config/config.go (prefix SPLITKAUF, "." → "_"): SPLITKAUF_DATABASE_{HOST,PORT,USER,PASSWORD,NAME,SSL_MODE}. postgres:17 pinned by digest sha256:e38411…0449; setup-node stayed on major v5 (v5.0.0 SHA), docker actions pinned at v3.12.0/v3.7.0/v5.10.0/v6.19.2. frontend format-check was already green — no prettier diff needed.
 - Phase 1 (2026-08-21): `errorlint` fired 4× at gate-install time but was absent from the probe list (probe ran with the template's path exclusions); deferred like the rest — 40 deferred entries total. `make fmt` reformatted 22 Go files (import regrouping under the local-prefix rule plus gofumpt); generated `gen.go`/`client.gen.go` untouched, confirming `formatters.exclusions.generated: lax` works.
 
 ## References
