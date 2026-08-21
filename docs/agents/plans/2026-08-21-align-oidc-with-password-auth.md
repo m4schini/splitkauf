@@ -256,39 +256,39 @@ Stop requesting `offline_access`, finish comment/log cleanup, and align the
 architecture documentation.
 
 **Tasks**:
-- [ ] `auth/oidc.go`: remove `oidc.ScopeOfflineAccess` from
+- [x] `auth/oidc.go`: remove `oidc.ScopeOfflineAccess` from
   `oauth2.Config.Scopes` (leaving `openid profile email`); update the
   construction comment.
-- [ ] `auth/oidc.go`: sweep remaining comments/log messages for stale refresh
+- [x] `auth/oidc.go`: sweep remaining comments/log messages for stale refresh
   or token-storage wording (`newOIDC` startup log, `Callback` doc comment,
   `Logout` doc comment).
-- [ ] `auth/password.go`: update the `passwordAuthenticator` doc comment —
+- [x] `auth/password.go`: update the `passwordAuthenticator` doc comment —
   "same scs session shape" no longer needs the "minus the OAuth tokens"
   qualifier.
-- [ ] `docs/architecture.md` §6: describe the aligned model — IdP
+- [x] `docs/architecture.md` §6: describe the aligned model — IdP
   authenticates only; session = `UserID` + ID-token logout hint + claims; scs
   lifetime governs expiry in all modes; scopes `openid profile email`; note
   that IdP revocation takes effect at next login. Explicitly fix the §6
   mermaid sequence diagram ("ID/access/refresh tokens", "store tokens in
   Postgres session") and delete/rewrite the trailing "Operational note"
   recommending short access-token lifetimes (now irrelevant).
-- [ ] `deploy/README.md:175-186`: remove the `offline_access` scope
+- [x] `deploy/README.md:175-186`: remove the `offline_access` scope
   recommendation and the "Splitkauf refreshes tokens server-side" statement
   plus the short-access-token-lifetime rationale; state that session duration
   is governed by `auth.session.lifetime`.
-- [ ] `auth/auth_test.go`: assert the configured scopes no longer contain
+- [x] `auth/auth_test.go`: assert the configured scopes no longer contain
   `offline_access` — extend the mocked-discovery construction test
   (`TestNewSelectsOIDCWhenEnabled`, `auth/auth_test.go:111`; same package, so
   `oauth2Config.Scopes` is directly assertable).
 
 **Automated Verification**:
-- [ ] `go build ./...` passes.
-- [ ] `go test ./...` passes.
-- [ ] `grep -n "offline_access\|ScopeOfflineAccess" auth/*.go` returns nothing.
-- [ ] `grep -rn "refresh" auth/*.go` returns nothing (case-sensitive, so
+- [x] `go build ./...` passes.
+- [x] `go test ./...` passes.
+- [x] `grep -n "offline_access\|ScopeOfflineAccess" auth/*.go` returns nothing.
+- [x] `grep -rn "refresh" auth/*.go` returns nothing (case-sensitive, so
   `RenewToken`/capitalized identifiers never match; any hit is a stale
   lowercase comment mention).
-- [ ] `grep -n "offline_access\|refreshes tokens" docs/architecture.md deploy/README.md` returns nothing.
+- [x] `grep -n "offline_access\|refreshes tokens" docs/architecture.md deploy/README.md` returns nothing.
 
 **Manual Verification**:
 - [ ] Against a real IdP (Zitadel or Keycloak dev instance): sign in via the
