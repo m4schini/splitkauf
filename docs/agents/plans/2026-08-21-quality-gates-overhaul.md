@@ -226,9 +226,9 @@ Dependencies: Phases 1–3 (hooks call the new make targets)
 Rewrite `.pre-commit-config.yaml`: upstream golangci hooks, pre-push stage, shared commit-msg validator, pin-drift check.
 
 **Tasks**:
-- [ ] New `hack/hooks/check-commit-msg.sh` (executable): takes one argument — path to a file containing the message. Strips comment lines and everything below a scissors line, then validates the subject against `^(feat|fix|chore)(\([a-z0-9./-]+\))?!?: .+` (the repo's AGENTS.md contract, incl. `!` breaking marker). Exempts subjects git generates itself, as the template's validator does: `Merge ...`, `Revert "..."`, `fixup! ...`, `squash! ...` (git runs the commit-msg hook for merge/revert too). On failure prints the expected format to stderr and exits 1. Used by both the commit-msg hook and pr-title.yml (Phase 5 — PR titles hit the same regex; the git-generated exemptions are harmless there).
-- [ ] New `hack/lint/check-golangci-pin.sh` (executable): extracts the `rev:` of the `golangci/golangci-lint` repo from `.pre-commit-config.yaml` and the `golangci-lint/v2/cmd/golangci-lint@vX.Y.Z` version from the workflow file (`WORKFLOW_FILE` env override, default `.github/workflows/quality.yml` — the override exists so the script is testable against a fixture); exits 1 with both values printed if they differ. Until Phase 5 lands quality.yml, a missing default workflow file is a warning + exit 0, so Phases 4 and 5 stay independently committable; Phase 5 hardens this to an error.
-- [ ] Rewrite `.pre-commit-config.yaml`:
+- [x] New `hack/hooks/check-commit-msg.sh` (executable): takes one argument — path to a file containing the message. Strips comment lines and everything below a scissors line, then validates the subject against `^(feat|fix|chore)(\([a-z0-9./-]+\))?!?: .+` (the repo's AGENTS.md contract, incl. `!` breaking marker). Exempts subjects git generates itself, as the template's validator does: `Merge ...`, `Revert "..."`, `fixup! ...`, `squash! ...` (git runs the commit-msg hook for merge/revert too). On failure prints the expected format to stderr and exits 1. Used by both the commit-msg hook and pr-title.yml (Phase 5 — PR titles hit the same regex; the git-generated exemptions are harmless there).
+- [x] New `hack/lint/check-golangci-pin.sh` (executable): extracts the `rev:` of the `golangci/golangci-lint` repo from `.pre-commit-config.yaml` and the `golangci-lint/v2/cmd/golangci-lint@vX.Y.Z` version from the workflow file (`WORKFLOW_FILE` env override, default `.github/workflows/quality.yml` — the override exists so the script is testable against a fixture); exits 1 with both values printed if they differ. Until Phase 5 lands quality.yml, a missing default workflow file is a warning + exit 0, so Phases 4 and 5 stay independently committable; Phase 5 hardens this to an error.
+- [x] Rewrite `.pre-commit-config.yaml`:
   - Header comment: install command, the three stages and their budgets, escape hatches (`SKIP=`, `--no-verify`), the note that CI's hooks job re-runs everything (adapted from the template).
   - `minimum_pre_commit_version: "4.0.0"`, `default_install_hook_types: [pre-commit, commit-msg, pre-push]`, `default_stages: [pre-commit]`.
   - Hygiene repo (`pre-commit-hooks` v6.0.0): keep existing hooks and their splitkauf args (`--maxkb=1024` appicon comment, `--unsafe` yaml, tsconfig JSONC exclude); add `check-toml`, `mixed-line-ending --fix=lf`, `check-symlinks`, `destroyed-symlinks`.
@@ -239,14 +239,14 @@ Rewrite `.pre-commit-config.yaml`: upstream golangci hooks, pre-push stage, shar
   - Keep the frontend prettier/oxlint local hooks unchanged.
   - commit-msg hook: entry `hack/hooks/check-commit-msg.sh`, `stages: [commit-msg]` (replaces the inline grep).
   - pre-push local hooks, each `language: system`, `pass_filenames: false`, `stages: [pre-push]`: `push-build` → `make build`, `push-lint` → `make lint`, `push-tidy-check` → `make tidy-check`, `push-test-short` → `make test-short`.
-- [ ] Reinstall hooks: `pre-commit install --install-hooks` (now installs all three stages).
+- [x] Reinstall hooks: `pre-commit install --install-hooks` (now installs all three stages).
 
 **Automated Verification**:
-- [ ] `pre-commit run --all-files` passes.
-- [ ] `pre-commit run --hook-stage pre-push --all-files` passes.
-- [ ] `printf 'feat(auth): add thing\n' > /tmp/m && hack/hooks/check-commit-msg.sh /tmp/m` exits 0; `docs: nope` exits 1; `Merge branch 'x'`, `Revert "feat: y"`, and `fixup! feat: z` subjects all exit 0.
-- [ ] `hack/lint/check-golangci-pin.sh` exits 0 (warning branch while quality.yml absent).
-- [ ] Fixture check of the drift logic: write a minimal fixture to the scratchpad containing `golangci-lint@v2.12.2` → `WORKFLOW_FILE=<fixture> hack/lint/check-golangci-pin.sh` exits 0; with `@v2.12.1` in the fixture it exits 1.
+- [x] `pre-commit run --all-files` passes.
+- [x] `pre-commit run --hook-stage pre-push --all-files` passes.
+- [x] `printf 'feat(auth): add thing\n' > /tmp/m && hack/hooks/check-commit-msg.sh /tmp/m` exits 0; `docs: nope` exits 1; `Merge branch 'x'`, `Revert "feat: y"`, and `fixup! feat: z` subjects all exit 0.
+- [x] `hack/lint/check-golangci-pin.sh` exits 0 (warning branch while quality.yml absent).
+- [x] Fixture check of the drift logic: write a minimal fixture to the scratchpad containing `golangci-lint@v2.12.2` → `WORKFLOW_FILE=<fixture> hack/lint/check-golangci-pin.sh` exits 0; with `@v2.12.1` in the fixture it exits 1.
 
 ### Phase 5: CI workflows, go.mod, docs
 
