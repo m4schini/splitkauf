@@ -1,17 +1,45 @@
-# Pre-commit hooks for the splitkauf repository.
+# Git hooks for the splitkauf repository, managed by pre-commit
+# (https://pre-commit.com).
 #
-# Install (both pre-commit and commit-msg stages, thanks to
-# default_install_hook_types below):
-#   pre-commit install --install-hooks
+# Install them once with `pre-commit install --install-hooks`. Until you do,
+# none of this runs — pre-commit does not install itself.
 #
-# Run manually:
-#   pre-commit run --all-files
-#   pre-commit run --hook-stage commit-msg --commit-msg-filename <file>
+# Three stages, three budgets:
+#
+#   pre-commit  — formatting, diff-scoped linting, secrets, file hygiene.
+#                 Target: a couple of seconds on a warm cache.
+#   commit-msg  — the Conventional Commits contract (feat|fix|chore, see
+#                 AGENTS.md). Milliseconds.
+#   pre-push    — build, full-repository lint, module tidiness, short tests.
+#                 Tens of seconds; this is the gate that makes CI boring.
+#
+# First run is slow: the golangci-lint and gitleaks hooks are installed by
+# compiling them from source (`language: golang`), which can take several
+# minutes — once.
+#
+# Escape hatches, for when a hook is wrong rather than the code:
+#   SKIP=golangci-lint git commit ...   skip one hook
+#   git commit --no-verify              skip the commit-time hooks
+#   git push --no-verify                skip the pre-push hooks
+# A bypass does not simply disappear: CI's quality workflow runs this suite
+# over every file (`pre-commit run --all-files`), and its gates job runs the
+# repository-wide lint/tidy/security checks via make.
 
-default_install_hook_types: [pre-commit, commit-msg]
+minimum_pre_commit_version: "4.0.0"
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+  - pre-push
+
+default_stages:
+  - pre-commit
 
 repos:
-  # General file hygiene
+  # ---------------------------------------------------------------------
+  # File hygiene. Cheap, language-agnostic, and the reason a diff never
+  # contains a stray CRLF or a 40 MB accident.
+  # ---------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -19,44 +47,91 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents, --unsafe]
+      - id: check-json
+        # tsconfig*.json files are JSONC (allow comments), not strict JSON.
+        exclude: ^frontend/tsconfig.*\.json$
+      - id: check-toml
+      - id: check-merge-conflict
       - id: check-added-large-files
         # frontend/src/assets/appicon.png is the losslessly-optimized 1024px
         # icon source (~613 KiB); it stays above the 500 KB default cap even
         # after oxipng -o max, so raise the limit to accommodate it.
         args: [--maxkb=1024]
-      - id: check-merge-conflict
       - id: detect-private-key
-      - id: check-json
-        # tsconfig*.json files are JSONC (allow comments), not strict JSON.
-        exclude: ^frontend/tsconfig.*\.json$
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-symlinks
+      - id: destroyed-symlinks
 
-  # Secret detection
+  # ---------------------------------------------------------------------
+  # Secrets. Scans the staged diff only, so it stays fast and does not
+  # re-flag whatever is already in history. Config: .gitleaks.toml
+  # (docs/agents/ path allowlist).
+  # ---------------------------------------------------------------------
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.1
     hooks:
       - id: gitleaks
 
-  # Local hooks (Go + frontend formatting/linting, commit message convention)
+  # ---------------------------------------------------------------------
+  # Embed stub. The upstream golangci-lint hook below typechecks the Go
+  # packages, and ports/web embeds the gitignored ports/web/dist directory —
+  # without the stub every commit touching Go code fails to compile. Must run
+  # before the golangci repo block (pre-commit runs hooks in config-file
+  # order across repo blocks).
+  # ---------------------------------------------------------------------
   - repo: local
     hooks:
-      - id: gofumpt
-        name: gofumpt
-        description: Format staged Go files with gofumpt.
-        entry: go run mvdan.cc/gofumpt@v0.7.0 -w
+      - id: embed-stub
+        name: embed stub (ports/web/dist)
+        entry: make ports/web/dist/index.html
         language: system
-        files: \.go$
-        # Generated files are committed as oapi-codegen emits them (the CI
-        # generate-clean check compares against `make generate` output), so
-        # they must not be reformatted here. Mirrors .golangci.yml's exclusions.
-        exclude: (^|/)(gen|client\.gen)\.go$
-
-      - id: golangci-lint
-        name: golangci-lint
-        description: Lint staged Go files with golangci-lint (fast mode).
-        entry: bash -c 'make ports/web/dist/index.html >/dev/null && go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2 run --fast'
-        language: system
-        files: \.go$
+        always_run: true
         pass_filenames: false
+
+  # ---------------------------------------------------------------------
+  # Go formatting and linting.
+  #
+  # This `rev:` is the authoritative golangci-lint pin: pre-commit pins the
+  # hook and the tool together. The version CI installs in
+  # .github/workflows/quality.yml must match it, and the local
+  # `golangci-lint-pin-drift` hook below enforces that.
+  # ---------------------------------------------------------------------
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.12.2
+    hooks:
+      # Formats the repository in place. When it rewrites a file the commit
+      # fails and you re-stage: pre-commit never quietly commits bytes you did
+      # not look at.
+      - id: golangci-lint-fmt
+
+      # Diff-scoped linting. Upstream's entry is already
+      # `golangci-lint run --new-from-rev HEAD --fix`, and pre-commit appends
+      # `args:` to it — so this adds exactly one flag.
+      #
+      # --whole-files is not optional: without it, golangci-lint reports only
+      # issues on the lines the commit touched, and a change that breaks a
+      # function twenty lines below the edit passes the hook and fails CI.
+      - id: golangci-lint
+        args: [--whole-files]
+
+      # Config schema validation. Upstream's `files:` already scopes this to
+      # .golangci.{yml,yaml,toml,json}.
+      - id: golangci-lint-config-verify
+
+  # ---------------------------------------------------------------------
+  # Repository-local hooks. `language: system` means "run what is already on
+  # this machine" — thin wrappers over make or a hack/ script, so there is
+  # exactly one definition of every check.
+  # ---------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: golangci-lint-pin-drift
+        name: golangci-lint pin drift (quality.yml vs .pre-commit-config.yaml)
+        entry: hack/lint/check-golangci-pin.sh
+        language: system
+        pass_filenames: false
+        files: ^(\.pre-commit-config\.yaml|\.github/workflows/quality\.yml)$
 
       - id: frontend-format
         name: frontend format (prettier)
@@ -73,11 +148,42 @@ repos:
         language: system
         files: ^frontend/.*\.(ts|tsx)$
 
-      - id: conventional-commit
-        name: conventional commit message
-        description: Enforce a feat|fix|chore conventional-commit subject line.
-        entry: >-
-          bash -c 'grep -Eq "^(feat|fix|chore)(\([a-z0-9./-]+\))?!?: .+" "$1" ||
-          { echo "Commit message must match ^(feat|fix|chore)(\(scope\))?!?: subject" >&2; exit 1; }' --
+      # commit-msg stage: the Conventional Commits contract. Delegates to
+      # hack/hooks/check-commit-msg.sh, the same validator
+      # .github/workflows/pr-title.yml uses for PR titles, so a local commit
+      # and a squash-merge title can never be judged differently.
+      - id: conventional-commit-msg
+        name: conventional commit message (feat|fix|chore)
+        entry: hack/hooks/check-commit-msg.sh
         language: system
         stages: [commit-msg]
+
+      # pre-push stage: everything CI would tell you, before you make CI say
+      # it. Each is a make target, never an inlined command.
+      - id: push-build
+        name: make build
+        entry: make build
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: push-lint
+        name: make lint (whole repository)
+        entry: make lint
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: push-tidy-check
+        name: make tidy-check
+        entry: make tidy-check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: push-test-short
+        name: make test-short
+        entry: make test-short
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
