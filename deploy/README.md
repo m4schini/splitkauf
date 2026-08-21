@@ -166,6 +166,53 @@ local accounts and the auth subject otherwise — it is the value used in
 comes from the login-time member record and shows `never` for a local account
 that has not signed in yet.
 
+### Merging identities (`usermerge`)
+
+When one person ends up with two identities — most commonly a local account
+from before an identity provider existed, plus the OIDC account they use now
+— their history is split across two user ids. `usermerge` unifies them by
+rewriting all attribution (`lists.created_by`, `items.added_by`,
+`items.bought_by`) from the source identity's user id to the target's, then
+cleaning up the source: its member record is deleted, and a local source's
+account is deleted too (its login stops working). Everything runs in one
+database transaction.
+
+Selectors take the form `local:<username>`, `oidc:<subject>`, or
+`uuid:<user_id>` — copy the values from `userls`. An `oidc:` identity must
+have logged in at least once (its subject is only known after the first
+login); `uuid:` is the escape hatch that addresses any raw user id.
+
+The typical local → OIDC migration:
+
+1. Create the person's account in the identity provider.
+2. Have them sign in to Splitkauf once via OIDC (this records their subject).
+3. Run `userls` and note the local username and the new OIDC subject.
+4. Merge:
+
+   ```sh
+   sudo podman run --rm -it \
+       --network splitkauf.network \
+       --env-file /etc/splitkauf/splitkauf.env \
+       ghcr.io/m4schini/splitkauf:latest usermerge local:alex oidc:238941579532
+   ```
+
+The command prints the resolved identities and per-column row counts, then
+asks for a `y/N` confirmation before writing anything; answering no changes
+nothing. `--yes` skips the prompt for automation (and is required when stdin
+is not a terminal).
+
+Two caveats:
+
+- **Merging away an OIDC identity does not block it.** When the *source* is
+  an `oidc:` identity, the person can still log in at the provider — the next
+  OIDC login derives the same user id again and recreates the member record.
+  The command prints a warning in this case. Remove or disable the account in
+  the identity provider if the person should lose access.
+- **Live sessions of the source keep working until they expire.** Sessions
+  are not queryable per user, so the merge does not invalidate them — the
+  same limitation as deleting an account. They end at the configured session
+  lifetime (`SPLITKAUF_AUTH_SESSION_LIFETIME`, default 168h).
+
 `SPLITKAUF_AUTH_OIDC_REDIRECT_URL` and
 `SPLITKAUF_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL` are required for the OIDC flow
 to complete correctly, and `SPLITKAUF_APP_BASE_URL` should be set to the

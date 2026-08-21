@@ -275,6 +275,20 @@ configured, else dev-auth:
   the right login UI.
 - **Dev-auth** (✅ M1) — a single hardcoded user for local development.
 
+**Operator CLI for identities**: `splitkauf userls` lists every known
+identity — local accounts (even before their first login), OIDC members, and
+the dev user — with kind, identifier (username or subject), user id, and last
+login. `splitkauf usermerge <source> <target>` merges one identity into
+another (selectors `local:<username>` / `oidc:<subject>` / `uuid:<user_id>`)
+by rewriting the attribution columns (`lists.created_by`, `items.added_by`,
+`items.bought_by`) to the target's user id in one transaction and deleting
+the source (members row; users row too for a local source). Identity
+unification is this operator action, not an auth-flow feature: the primary
+use is moving a pre-IdP local account's history onto the person's OIDC
+identity. Live sessions of the merged-away identity are not invalidated
+(sessions are opaque scs rows), and a merged-away OIDC source that can still
+log in at the IdP re-derives the same user id on its next login.
+
 | Concern | Decision |
 |---------|----------|
 | Pattern | **BFF (Backend for Frontend)** — the Go backend completes the login flow; the browser holds only an opaque `HttpOnly`/`Secure`/`SameSite=Lax` session cookie. Tokens never reach the browser. |

@@ -20,3 +20,10 @@ without exposing a public sign-up.
   the operator created them.
 - The command runs against the same database as the server (reusing the
   connection config) and is safe to run before the server starts.
+
+## Related
+
+Account **consolidation** (merging a provisioned local account into another
+identity, e.g. after an identity provider is introduced) is covered by the
+`usermerge` operator command together with `userls` for discovery — see the
+operator guide in `deploy/README.md`. No separate user story.
