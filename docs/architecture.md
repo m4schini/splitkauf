@@ -7,7 +7,7 @@ This is a living document. It describes both the **implemented** foundation and 
 - ✅ **Implemented** — exists in code today.
 - 🔜 **Planned** — decided in research, not yet built.
 
-Last updated: 2026-08-01.
+Last updated: 2026-08-14.
 
 ---
 
@@ -28,17 +28,19 @@ flowchart LR
     subgraph "Go binary"
         WEB["ports/web<br/>embedded SPA"]
         REST["ports/rest<br/>chi + oapi-codegen"]
-        AUTH["auth (BFF)<br/>🔜 planned"]
-        APP["app/<br/>domain logic 🔜"]
+        AUTH["auth (BFF)<br/>✅ OIDC + password + dev"]
+        LISTS["lists/<br/>domain logic ✅"]
+        MEMBERS["members/<br/>domain logic ✅"]
         DB["adapters/db<br/>pgx"]
         MET["telemetry/metrics<br/>:9090"]
     end
     PG[("PostgreSQL 17")]
-    IDP["OIDC IdP<br/>(Zitadel / Keycloak) 🔜"]
+    IDP["OIDC IdP<br/>(Zitadel / Keycloak) external"]
 
     PWA -->|"/api/v1/*"| REST
     PWA -->|"/*"| WEB
-    REST --> APP --> DB --> PG
+    REST --> LISTS --> DB --> PG
+    REST --> MEMBERS --> DB
     AUTH --> IDP
     AUTH --> PG
     MET -.->|Prometheus scrape| MET
@@ -58,7 +60,10 @@ community Go template research (`docs/research/go-backend-community-template.md`
 | `ports/rest/` | Inbound HTTP adapter — chi router, generated handlers, middleware |
 | `ports/web/`  | Inbound adapter serving the embedded SPA (`go:embed all:dist`) |
 | `adapters/db/`| Outbound adapter — pgx v5 stdlib `*sql.DB` |
-| `app/`        | Domain/application logic (currently empty — reserved 🔜) |
+| `lists/`      | Domain/application logic for shopping lists and items ✅ |
+| `members/`    | Domain/application logic for member profiles ✅          |
+| `users/`      | Domain/application logic for password-provisioned accounts ✅ |
+| `app/`        | Not used; domain logic is intentionally split by aggregate |
 | `telemetry/`  | Named Zap logging, custom Prometheus registry |
 | `database/`   | golang-migrate migrations, embedded via `iofs` |
 | `client/`     | Generated typed Go client for the API |
@@ -128,62 +133,96 @@ custom `offline_queue` recommendation in `docs/research/collaborative-lists.md` 
   reusing the existing optimistic `onMutate`/`onError` code as the source of truth
   collapses local store + sync queue into one state layer (the mutation cache).
 
-**UX foundations** 🔜 (from
+**UX foundations** ✅ / 🔜 (from
 `docs/agents/research/2026-07-31-mobile-first-shopping-list-ux.md`; binding for
 all UI work via the user-stories UX guardrails):
 
-- Mobile-first, one-handed in-store use: bottom-anchored quick-add that keeps
-  the keyboard open for chained adds; full-row tap targets ≥48dp; checked
-  items collapse into a "done" section.
-- No confirmation dialogs or blocking spinners in the core loop — optimistic
-  updates with undo snackbars (soft delete).
-- M3 list-component anatomy + Apple HIG ergonomics; 8pt spacing grid, ≥16px
-  body text, WCAG 2.2 AA contrast in light and dark mode (system-following
-  dark mode).
+- ✅ Mobile-first, one-handed in-store use: bottom-anchored quick-add that keeps
+  the keyboard open for chained adds; full-row tap targets ≥48dp (`.row-tap-target`,
+  `.primary-button`, `.icon-button`, `.quick-add input`); checked items collapse
+  into a "done" section (`ListDetail.tsx`).
+- ✅ No confirmation dialogs or blocking spinners in the core loop — optimistic
+  updates with undo snackbars for soft delete (`useUndoQueue.ts`, `Snackbar.tsx`).
+- ✅ 8pt spacing grid, ≥16px body text, safe-area insets, system-following dark
+  mode, and WCAG 2.2 AA contrast in both themes — enforced by
+  `frontend/src/accentContrast.test.ts` parsing the actual CSS tokens.
+- 🔜 Material 3 list-component anatomy is not explicitly followed; the current
+  UI is a custom mobile-first style rather than an M3 component set.
 
 ---
 
-## 4. Domain Model 🔜
+## 4. Domain Model ✅ / 🔜
 
-Nothing beyond `CREATE EXTENSION pgcrypto` exists in migrations yet. The target model
-comes from the collaborative-lists research:
+The implemented schema (migrations 000001–000007) is below. It is a subset of the
+target model from `docs/research/collaborative-lists.md`:
 
 ```mermaid
 erDiagram
-    users ||--o{ list_members : "joins"
-    lists ||--o{ list_members : "has"
+    users ||--o{ members : "mapped to"
+    members ||--o{ lists : "created"
+    members ||--o{ items : "added"
+    members ||--o{ items : "bought"
     lists ||--o{ items : "contains"
-    categories ||--o{ items : "classifies"
+
+    users {
+        uuid id PK
+        text username
+        text password_hash
+        text name
+        text email
+    }
+
+    members {
+        text subject PK
+        uuid user_id UK
+        text email
+        text name
+    }
+
+    lists {
+        uuid id PK
+        text name
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
 
     items {
         uuid id PK
         uuid list_id FK
         text name
-        numeric quantity
+        int quantity
         text unit
-        float sort_order "fractional index"
-        uuid assignee_id FK
-        uuid checked_by FK
+        text note
+        boolean checked
         timestamptz checked_at
-        timestamptz updated_at "LWW authority"
         timestamptz deleted_at "soft delete"
+        uuid added_by FK
+        uuid bought_by FK
+        timestamptz created_at
+        timestamptz updated_at "LWW authority"
     }
 ```
 
-Key decisions (from `docs/research/collaborative-lists.md`):
+**Implemented** ✅:
 
-- **Soft deletes**: list items use `deleted_at`, keeping checked/removed items
-  recoverable for undo and history.
-- **Ordering**: fractional float `sort_order` for drag-reorder without renumbering.
-- **Check = record, not delete**: `checked_by`/`checked_at` capture who completed an
-  item and when; unchecking restores it.
+- `lists` and `items` with full CRUD, copy, check/uncheck, and restore.
+- **Soft deletes** on items (`deleted_at`) with server-backed restore; list delete
+  remains a hard cascade.
+- **Units** (migration 000005): a curated German/European set enforced by a domain
+  allow-list, an OpenAPI enum, and a PostgreSQL `CHECK` constraint.
+- **Attribution** (migration 000007): `lists.created_by`, `items.added_by`,
+  `items.bought_by` store the actor's UUID; display names resolve at read time by
+  joining `members.user_id`, so renames propagate to past actions.
+- **Sessions** and **members** tables for the BFF auth layer.
 
-Attribution has since shipped (US-L.11, migration 000007), with `checked_by`
-landing as `bought_by` alongside `lists.created_by` and `items.added_by`. All
-three store only the acting user's UUID; the display name is resolved at read
-time by joining `members.user_id`, so renaming a member updates every past
-action rather than leaving a stale snapshot. Unchecking clears `bought_by`.
-The rest of the model above remains the target, not the built state.
+**Not yet implemented** 🔜:
+
+- `categories` table and item categorization.
+- Fractional `sort_order` for drag-to-reorder; items currently render in creation
+  order.
+- Per-item `assignee_id`; attribution only records who added/bought an item.
+- List-level membership/roles table beyond the provider-derived `members` rows.
 
 ---
 
