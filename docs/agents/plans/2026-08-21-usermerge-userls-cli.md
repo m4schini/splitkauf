@@ -286,7 +286,7 @@ Deliver the merge: selector parsing and resolution, the transactional merge
 with cleanup, the confirmation UX with counts and warnings, tests, and docs.
 
 **Tasks**:
-- [ ] `adapters/db/identity.go`: add `ResolveUUID(ctx, id)` (classify a raw
+- [x] `adapters/db/identity.go`: add `ResolveUUID(ctx, id)` (classify a raw
   UUID via `users` then `members`; zero matches ⇒ `Kind: "unknown"` with the
   id set), `CountAttribution(ctx, userID)` (three counts), and
   `Merge(ctx, source, target Identity) (MergeResult, error)` — one
@@ -297,7 +297,7 @@ with cleanup, the confirmation UX with counts and warnings, tests, and docs.
   `INSERT INTO members … ON CONFLICT (subject) DO NOTHING` seeding
   `(target.UserID.String(), target.UserID, target.Email, target.Name)`.
   Rollback on any error.
-- [ ] `cmd/usermerge.go` (new): `usermergeCmd` with `cobra.ExactArgs(2)` and
+- [x] `cmd/usermerge.go` (new): `usermergeCmd` with `cobra.ExactArgs(2)` and
   `--yes`; `parseSelector` (`local:`/`oidc:`/`uuid:` prefixes, error naming
   the bad selector otherwise); resolution per kind (`local:` via
   `GetByUsername` mapping `users.ErrNotFound` to a clear error; `oidc:` via
@@ -305,7 +305,7 @@ with cleanup, the confirmation UX with counts and warnings, tests, and docs.
   the operator the account must have logged in once, kind `dev` when the
   subject is the dev UUID string; `uuid:` via `uuid.Parse` +
   `ResolveUUID`); error when both resolve to the same user id.
-- [ ] `cmd/usermerge.go`: confirmation flow — print the merge plan (resolved
+- [x] `cmd/usermerge.go`: confirmation flow — print the merge plan (resolved
   identities with kind, user id, name, email; counts from
   `CountAttribution`; the cleanup lines that apply), print the
   source-can-still-log-in warning to stderr when `source.Kind != "local"`,
@@ -314,35 +314,35 @@ with cleanup, the confirmation UX with counts and warnings, tests, and docs.
   `--yes` ⇒ error `confirmation required; use --yes`. On success print one
   line with the `MergeResult` counts:
   `Merged <source> into <target> (lists: N, added: N, bought: N).`
-- [ ] `adapters/db/identity_test.go`: integration tests for the merge
+- [x] `adapters/db/identity_test.go`: integration tests for the merge
   (TRUNCATE `users`, `members`, `lists`, `items`): local→oidc merge rewrites
   all three attribution columns, deletes the source users and members rows,
   and leaves the target member row intact; oidc→local merge seeds the target
   members row (display-name JOIN resolves) and deletes the source members
   row; `ResolveUUID` classification for local, member-only, and unknown ids;
   `CountAttribution` counts; merge with zero attribution rows succeeds.
-- [ ] `cmd/usermerge_test.go` (new): unit tests for `parseSelector` (valid
+- [x] `cmd/usermerge_test.go` (new): unit tests for `parseSelector` (valid
   prefixes, missing prefix, empty value) and the non-TTY-without-`--yes`
   error path.
-- [ ] `deploy/README.md`: operator guide section for `usermerge` — selector
+- [x] `deploy/README.md`: operator guide section for `usermerge` — selector
   syntax, the local→oidc migration walkthrough (create IdP account, user
   logs in once, `userls`, `usermerge local:<name> oidc:<subject>`), the
   still-can-log-in warning, and the sessions limitation (live source
   sessions last until scs expiry).
-- [ ] `docs/architecture.md`: add both commands to the CLI/operations
+- [x] `docs/architecture.md`: add both commands to the CLI/operations
   coverage (same place `useradd` is described); note that attribution merge
   rewrites `created_by`/`added_by`/`bought_by` and that identity unification
   is an operator action, not an auth-flow feature.
-- [ ] `docs/user-stories/US-A.7-operator-provisions-accounts.md`: add a
+- [x] `docs/user-stories/US-A.7-operator-provisions-accounts.md`: add a
   cross-reference note that account consolidation is covered by
   `usermerge` (no new user story).
 
 **Automated Verification**:
-- [ ] `go build ./...` passes.
-- [ ] `go vet ./...` passes.
-- [ ] `go test ./...` passes (unit); integration tests pass with
+- [x] `go build ./...` passes.
+- [x] `go vet ./...` passes.
+- [x] `go test ./...` passes (unit); integration tests pass with
   `SPLITKAUF_TEST_DATABASE_DSN` set.
-- [ ] `grep -n "usermerge\|userls" deploy/README.md docs/architecture.md`
+- [x] `grep -n "usermerge\|userls" deploy/README.md docs/architecture.md`
   shows both commands documented.
 
 **Manual Verification**:
