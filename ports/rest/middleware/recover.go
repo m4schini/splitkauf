@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 // Recover is chi middleware that recovers from handler panics. It logs the

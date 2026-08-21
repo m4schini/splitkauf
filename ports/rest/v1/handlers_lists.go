@@ -12,12 +12,13 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 // GetMe returns the authenticated user placed in the request context by the

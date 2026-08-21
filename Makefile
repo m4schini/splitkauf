@@ -1,7 +1,9 @@
 GO ?= go
 
-GOFUMPT_PACKAGE ?= mvdan.cc/gofumpt@v0.7.0
-GOLANGCI_LINT_PACKAGE ?= github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
+# golangci-lint is expected on PATH (v2.12.2 — the pin lives in
+# .pre-commit-config.yaml and .github/workflows/quality.yml, kept in sync by
+# hack/lint/check-golangci-pin.sh).
+GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1
 
 RACE_ENABLED ?=
@@ -22,11 +24,11 @@ help:
 	@echo " - test                 run tests"
 	@echo " - test-unit            run unit tests only (race, short, coverage) -- CI test contract"
 	@echo " - coverage             run tests with coverage"
-	@echo " - fmt                  format Go code"
-	@echo " - fmt-check            check Go formatting"
+	@echo " - fmt                  format Go code (golangci-lint fmt)"
+	@echo " - fmt-check            check Go formatting (non-mutating)"
 	@echo " - lint                 lint Go files"
 	@echo " - lint-fix             lint Go files and fix issues"
-	@echo " - lint-vet             run go vet"
+	@echo " - lint-config          verify .golangci.yml"
 	@echo " - tidy                 run go mod tidy"
 	@echo " - tidy-check           check go.mod/go.sum are tidy"
 	@echo " - security             run vulnerability check"
@@ -80,30 +82,24 @@ test-unit: generate
 	$(GO) test -race -short -coverprofile=coverage.out ./...
 
 .PHONY: fmt
-fmt:
-	$(GO) run $(GOFUMPT_PACKAGE) -w .
+fmt: generate
+	$(GOLANGCI_LINT) fmt
 
 .PHONY: fmt-check
-fmt-check: fmt
-	@diff=$$(git diff --color=always); \
-	if [ -n "$$diff" ]; then \
-		echo "Please run 'make fmt' and commit the result:"; \
-		echo "$${diff}"; \
-		exit 1; \
-	fi
+fmt-check: generate
+	$(GOLANGCI_LINT) fmt --diff
 
 .PHONY: lint
-lint:
-	$(GO) run $(GOLANGCI_LINT_PACKAGE) run
+lint: generate
+	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
-lint-fix:
-	$(GO) run $(GOLANGCI_LINT_PACKAGE) run --fix
+lint-fix: generate
+	$(GOLANGCI_LINT) run --fix
 
-.PHONY: lint-vet
-lint-vet:
-	@echo "Running go vet..."
-	@$(GO) vet ./...
+.PHONY: lint-config
+lint-config:
+	$(GOLANGCI_LINT) config verify
 
 .PHONY: tidy
 tidy:
@@ -126,9 +122,9 @@ security:
 .PHONY: deps
 deps:
 	$(GO) install tool
-	$(GO) install $(GOFUMPT_PACKAGE)
-	$(GO) install $(GOLANGCI_LINT_PACKAGE)
 	$(GO) install $(GOVULNCHECK_PACKAGE)
+	@echo "note: golangci-lint v2.12.2 is expected on PATH:"
+	@echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"
 
 # ── Frontend (implemented in Phase 3) ──────────────────────────────────
 .PHONY: frontend-deps
@@ -152,4 +148,4 @@ frontend-check:
 
 # ── Aggregate local gate ───────────────────────────────────────────────
 .PHONY: check
-check: fmt-check lint lint-vet tidy-check test-unit security frontend-check
+check: fmt-check lint-config lint tidy-check test-unit security frontend-check

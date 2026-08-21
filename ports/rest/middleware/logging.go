@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
+
+	"github.com/m4schini/splitkauf/telemetry"
 )
 
 type responseWriter struct {

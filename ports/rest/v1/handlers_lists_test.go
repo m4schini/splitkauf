@@ -38,8 +38,8 @@ type fakeService struct {
 	updateItem  func(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	deleteItem  func(ctx context.Context, listID, itemID uuid.UUID) error
 	restoreItem func(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	checkItem   func(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
-	uncheckItem func(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
+	checkItem   func(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error)
+	uncheckItem func(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error)
 }
 
 func (f *fakeService) CreateList(ctx context.Context, name string, actor uuid.UUID) (lists.List, error) {
@@ -82,11 +82,11 @@ func (f *fakeService) RestoreItem(ctx context.Context, listID, itemID uuid.UUID)
 	return f.restoreItem(ctx, listID, itemID)
 }
 
-func (f *fakeService) CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error) {
+func (f *fakeService) CheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error) {
 	return f.checkItem(ctx, listID, itemID, actor)
 }
 
-func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error) {
+func (f *fakeService) UncheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error) {
 	return f.uncheckItem(ctx, listID, itemID, actor)
 }
 
@@ -586,7 +586,7 @@ func TestUpdateItemUnit(t *testing.T) {
 func TestCheckItemHappyPath(t *testing.T) {
 	listID, itemID := uuid.New(), uuid.New()
 	now := time.Now()
-	svc := &fakeService{checkItem: func(_ context.Context, lid, iid uuid.UUID, _ uuid.UUID) (lists.Item, error) {
+	svc := &fakeService{checkItem: func(_ context.Context, lid, iid, _ uuid.UUID) (lists.Item, error) {
 		if lid != listID || iid != itemID {
 			t.Errorf("service got lid=%v iid=%v", lid, iid)
 		}

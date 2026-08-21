@@ -16,6 +16,10 @@ import (
 
 	"github.com/alexedwards/scs/postgresstore"
 	"github.com/alexedwards/scs/v2"
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
@@ -25,9 +29,6 @@ import (
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 	"github.com/m4schini/splitkauf/telemetry"
 	"github.com/m4schini/splitkauf/telemetry/metrics"
-	"github.com/spf13/cobra"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 const shutdownTimeout = 10 * time.Second

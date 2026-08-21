@@ -7,9 +7,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 // problemPageTemplate renders the human-readable explanation page for one

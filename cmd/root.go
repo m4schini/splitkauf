@@ -5,8 +5,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/m4schini/splitkauf/config"
 	"github.com/spf13/cobra"
+
+	"github.com/m4schini/splitkauf/config"
 )
 
 // rootCmd represents the base command when called without any subcommands.

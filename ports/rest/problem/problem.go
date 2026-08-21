@@ -10,8 +10,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
+
+	"github.com/m4schini/splitkauf/telemetry"
 )
 
 // ContentType is the RFC 9457 media type for problem responses.

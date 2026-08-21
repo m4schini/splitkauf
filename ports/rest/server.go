@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/events"

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/members"
 )

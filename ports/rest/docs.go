@@ -7,8 +7,9 @@ import (
 	"net/http"
 
 	scalargo "github.com/bdpiprava/scalar-go"
-	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
+
+	"github.com/m4schini/splitkauf/telemetry"
 )
 
 func docsHandler() http.HandlerFunc {

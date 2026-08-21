@@ -3,12 +3,13 @@
 package cmd
 
 import (
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/adapters/db"
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/database"
 	"github.com/m4schini/splitkauf/telemetry"
-	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 var (

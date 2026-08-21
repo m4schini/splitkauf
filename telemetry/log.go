@@ -5,9 +5,10 @@ package telemetry
 import (
 	"sync"
 
-	"github.com/m4schini/splitkauf/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/m4schini/splitkauf/config"
 )
 
 var initLogger = sync.OnceFunc(func() {

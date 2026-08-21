@@ -7,9 +7,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
+
+	"github.com/m4schini/splitkauf/telemetry"
 )
 
 // openAPISpec holds the raw OpenAPI spec bytes, registered via SetOpenAPISpec.

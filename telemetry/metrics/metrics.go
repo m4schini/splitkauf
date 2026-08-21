@@ -7,9 +7,10 @@
 package metrics
 
 import (
-	"github.com/m4schini/splitkauf/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+
+	"github.com/m4schini/splitkauf/config"
 )
 
 const namespace = config.ServiceName

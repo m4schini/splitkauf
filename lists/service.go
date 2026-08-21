@@ -157,13 +157,13 @@ func (s *Service) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (It
 // CheckItem marks an item as checked, crediting actor as its buyer. It is an
 // idempotent state transition: an already-checked item is returned unchanged
 // (its checkedAt and original buyer are preserved).
-func (s *Service) CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (Item, error) {
+func (s *Service) CheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (Item, error) {
 	return s.setChecked(ctx, listID, itemID, true, actor)
 }
 
 // UncheckItem returns a checked item to the open list, clearing its buyer. It
 // is idempotent: an already-open item is returned unchanged.
-func (s *Service) UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (Item, error) {
+func (s *Service) UncheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (Item, error) {
 	return s.setChecked(ctx, listID, itemID, false, actor)
 }
 

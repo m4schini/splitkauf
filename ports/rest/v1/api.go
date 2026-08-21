@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/lists"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 const healthPingTimeout = time.Second
@@ -37,8 +38,8 @@ type ListService interface {
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update lists.ItemUpdate) (lists.Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
 	RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (lists.Item, error)
-	CheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
-	UncheckItem(ctx context.Context, listID, itemID uuid.UUID, actor uuid.UUID) (lists.Item, error)
+	CheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error)
+	UncheckItem(ctx context.Context, listID, itemID, actor uuid.UUID) (lists.Item, error)
 }
 
 // V1 implements the generated ServerInterface. It carries the process-level

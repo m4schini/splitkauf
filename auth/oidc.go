@@ -14,11 +14,12 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/alexedwards/scs/v2"
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/members"
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 // subjectNamespace is a fixed, arbitrary UUID namespace used to derive a stable

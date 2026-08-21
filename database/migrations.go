@@ -12,8 +12,9 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/m4schini/splitkauf/telemetry"
 	"go.uber.org/zap"
+
+	"github.com/m4schini/splitkauf/telemetry"
 )
 
 //go:embed migrations

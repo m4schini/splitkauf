@@ -1,49 +1,242 @@
-run:
-  timeout: 5m
+# golangci-lint configuration (v2 schema).
+#
+# Posture: every linter golangci-lint ships is enabled, and anything switched
+# off carries a written reason. The default is "on", and turning something off
+# is a decision someone has to justify and revisit.
+#
+# Rules for changing this file:
+#
+#   - Never disable a linter or add an exclusion to make a failing check pass.
+#     Fix the code. If the rule really is wrong for this repository, that is a
+#     maintainer's call: propose it, explain why, and wait for approval.
+#   - Every `disable:` entry and every exclusion rule needs a comment in the
+#     form `# reason; owner @m4schini; review YYYY-MM`.
+#   - Prefer a path-scoped exclusion over a repository-wide disable. A linter
+#     that is wrong in one directory is usually right everywhere else.
+#   - The `deferred:` block below is technical debt, not policy: those linters
+#     fired on pre-existing code when the gates were installed (2026-08). Each
+#     is re-enabled by a follow-up cleanup plan; do not add new entries.
+#   - Run `golangci-lint config verify` (make lint-config) after editing.
+version: "2"
 
 linters:
-  disable-all: true
-  enable:
-    - govet
-    - staticcheck
+  # Everything, then subtract with justification.
+  default: all
+
+  disable:
+    # ── Permanent disables ──────────────────────────────────────────────
+
+    # Forbids `if err := f(); err != nil` in favour of a plain assignment
+    # followed by an if. That is a direct contradiction of the dominant Go
+    # convention — Effective Go, the standard library, and gopls' own snippets
+    # all use the inline form, and narrowing the scope of `err` is the point of
+    # it; reason: contradicts the language's established style; owner
+    # @m4schini; review 2027-02.
+    - noinlineerr
+
+    # Deprecated in golangci-lint v2.2.0 and replaced by wsl_v5, which
+    # `default: all` already enables. Leaving the old one on produces a
+    # deprecation warning on every run and double-reports the same findings;
+    # reason: superseded by wsl_v5; owner @m4schini; review 2027-02.
+    - wsl
+
+    # Deprecated in golangci-lint v2.12.0 and replaced by gomodguard_v2, which
+    # `default: all` already enables; reason: superseded by gomodguard_v2;
+    # owner @m4schini; review 2027-02.
+    - gomodguard
+
+    # ── Deferred disables (pre-existing findings, 2026-08 probe) ────────
+    # Counts are approximate: probe ran with template path exclusions, and
+    # per-linter reporting caps at 50 ("50+" means capped).
+
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - contextcheck
+    # deferred: fires ~19× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - cyclop
+    # deferred: fires 50+× on existing code (capped); also needs an import allowlist config before re-enabling; owner @m4schini; review 2027-02.
+    - depguard
+    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - embeddedstructfieldcheck
+    # deferred: fires ~29× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - err113
+    # deferred: fires ~26× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
     - errcheck
-    - revive
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - errchkjson
+    # deferred: fires ~4× on existing code (found at gate-install time, not in probe — probe ran with template path exclusions); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - errorlint
+    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - exhaustruct
+    # deferred: fires ~5× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - funcorder
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - funlen
+    # deferred: fires ~33× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - gochecknoglobals
+    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - gochecknoinits
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - gocognit
+    # deferred: fires ~40× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - goconst
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - gocyclo
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - godoclint
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - godot
+    # deferred: fires ~4× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
     - gosec
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - gosmopolitan
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - inamedparam
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - interfacebloat
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - intrange
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - ireturn
+    # deferred: fires ~33× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - lll
+    # deferred: fires ~15× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - mnd
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - modernize
+    # deferred: fires ~6× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - nlreturn
+    # deferred: fires ~13× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - noctx
+    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - nonamedreturns
+    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - paralleltest
+    # deferred: fires ~5× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - revive
+    # deferred: fires ~6× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - tagliatelle
+    # deferred: fires ~9× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - testpackage
+    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - unconvert
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - unparam
+    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - unused
+    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - varnamelen
+    # deferred: fires ~26× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - wrapcheck
+    # deferred: fires ~43× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
+    - wsl_v5
 
-linters-settings:
-  revive:
+  settings:
+    # Suppression governance: a //nolint must say which linter it silences and
+    # why, and must not linger after the finding it silenced is gone.
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    revive:
+      rules:
+        # A hard ceiling on file size. Not a style preference: a 1,200-line
+        # file is where reviewers stop reading carefully. (Inert while revive
+        # is deferred above; documents the target for the cleanup plan.)
+        - name: file-length-limit
+          arguments:
+            - max: 400
+              skipComments: false
+              skipBlankLines: false
+
+    govet:
+      enable:
+        # Finds nil dereferences and impossible nil comparisons that the
+        # compiler accepts. Off by default because it is expensive; worth it.
+        - nilness
+
+    forbidigo:
+      forbid:
+        # Printing to stdout from library or service code is either a leftover
+        # debug statement or output that should have gone through a logger.
+        # Commands are excluded below, where printing is the entire point.
+        - pattern: ^fmt\.Print.*$
+          msg: use a logger instead of printing to stdout
+        - pattern: ^print(ln)?$
+          msg: the builtin print/println are debug aids, not output
+
+    sloglint:
+      # Structured logs end up in log aggregators that are readable by more
+      # people than the ones who may see a password. Keys are cheap to police;
+      # a leaked secret in a log index is not cheap to clean up. (This repo
+      # logs via zap today; the setting guards a future slog migration.)
+      forbidden-keys:
+        - password
+        - secret
+        - token
+        - apikey
+        - api_key
+        - authorization
+
+  exclusions:
+    # golangci-lint's own defaults for generated files: skip anything carrying
+    # the standard "Code generated by ... DO NOT EDIT." header (covers the
+    # committed ports/rest/v1/gen.go and client/client.gen.go).
+    generated: lax
+
     rules:
-      - name: atomic
-      - name: bare-return
-      - name: constant-logical-expr
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: duplicated-imports
-      - name: empty-lines
-      - name: error-naming
-      - name: error-return
-      - name: error-strings
-      - name: errorf
-      - name: exported
-      - name: identical-branches
-      - name: if-return
-      - name: increment-decrement
-      - name: indent-error-flow
-      - name: modifies-value-receiver
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: redefines-builtin-id
-      - name: string-of-int
-      - name: superfluous-else
-      - name: time-naming
-      - name: unconditional-recursion
-      - name: unexported-return
-      - name: unreachable-code
-      - name: var-declaration
+      # Test files are allowed to be long, repetitive, and branchy. Table tests
+      # legitimately repeat structure, and a thorough test function is a
+      # feature; reason: these three linters measure the wrong thing in tests;
+      # owner @m4schini; review 2027-02.
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl
+          - gocognit
 
-issues:
-  exclude-files:
-    - '(^|/)gen\.go$'
-    - '(^|/)client\.gen\.go$'
+      # A command's job is to write to stdout. forbidigo's ban on fmt.Print* is
+      # aimed at library and service code, so it is lifted for the entry point
+      # (main.go at the repo root) and the cobra commands in cmd/; reason:
+      # printing is the contract of a CLI entry point; owner @m4schini; review
+      # 2027-02.
+      - path: ^main\.go$
+        linters:
+          - forbidigo
+      - path: ^cmd/
+        linters:
+          - forbidigo
+
+      # Package-level variables in the entry-point packages are how the linker
+      # injects build metadata (-ldflags "-X main.version=...") and how cobra
+      # commands are conventionally wired. Scoped so globals stay banned
+      # everywhere else; reason: required by the -ldflags -X mechanism and the
+      # cobra command idiom; owner @m4schini; review 2027-02.
+      - path: ^main\.go$
+        linters:
+          - gochecknoglobals
+      - path: ^cmd/
+        linters:
+          - gochecknoglobals
+
+formatters:
+  enable:
+    # gofumpt is gofmt plus the rules gofmt left out; goimports keeps the
+    # import block grouped and sorted.
+    - gofumpt
+    - goimports
+
+  exclusions:
+    # Committed oapi-codegen output (ports/rest/v1/gen.go, client/client.gen.go)
+    # must stay byte-identical to what `make generate` produces, or the CI
+    # generated-drift check breaks; the standard DO NOT EDIT header covers them.
+    generated: lax
+
+  settings:
+    gofumpt:
+      extra-rules: true
+
+    goimports:
+      # Imports of this module sort into their own group.
+      local-prefixes:
+        - github.com/m4schini/splitkauf

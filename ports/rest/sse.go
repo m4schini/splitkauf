@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/m4schini/splitkauf/events"
 	"github.com/m4schini/splitkauf/telemetry"
-	"go.uber.org/zap"
 )
 
 // heartbeatInterval is how often the stream emits a comment line to keep the
