@@ -1,3 +1,10 @@
+# Build/test pipeline. Quality gates (lint, formatting, security, hooks) live
+# in quality.yml; PR titles are validated by pr-title.yml.
+#
+# Third-party actions are pinned by commit SHA, not by tag: a tag is mutable
+# and a compromised tag would run arbitrary code with this workflow's token.
+# Renovate keeps the SHAs current (see renovate.json).
+
 name: CI
 
 on:
@@ -17,21 +24,21 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
-          cache: true
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
 
+      # Build/test need the embed stub and generated code; regeneration is
+      # idempotent. The generated-code drift check lives in quality.yml.
       - name: Generate
         run: make generate
-
-      - name: Fail on generated-code drift
-        run: git diff --exit-code
 
       - name: Build
         run: make build
@@ -39,58 +46,125 @@ jobs:
       - name: Unit tests
         run: make test-unit
 
+      # Coverage is tracked, never gated: no threshold, by decision. The number
+      # is here to be looked at, not to be gamed.
+      - name: Publish the coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            {
+              echo '## Coverage'
+              echo
+              echo '```'
+              go tool cover -func=coverage.out
+              echo '```'
+            } >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the coverage profile
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: warn
+
+  # The only place the adapters/db integration tests run: the full suite
+  # against a real PostgreSQL, migrations applied first. Locally: compose up a
+  # postgres and set SPLITKAUF_TEST_DATABASE_DSN (see README).
+  test-full:
+    name: Test (full, postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17@sha256:e38411452a464af89e5adadb8d223bf53b898d47d6ef918b2d58c08707350449 # 17
+        env:
+          POSTGRES_USER: splitkauf
+          POSTGRES_PASSWORD: splitkauf
+          POSTGRES_DB: splitkauf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U splitkauf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      - name: Generate
+        run: make generate
+
+      # The service container matches config/config.yaml's dev defaults
+      # (localhost:5432, splitkauf/splitkauf), so migrate needs no overrides;
+      # the SPLITKAUF_DATABASE_* env vars are still set explicitly so this job
+      # does not silently depend on the committed dev config.
+      - name: Apply migrations
+        env:
+          SPLITKAUF_DATABASE_HOST: localhost
+          SPLITKAUF_DATABASE_PORT: "5432"
+          SPLITKAUF_DATABASE_USER: splitkauf
+          SPLITKAUF_DATABASE_PASSWORD: splitkauf
+          SPLITKAUF_DATABASE_NAME: splitkauf
+          SPLITKAUF_DATABASE_SSL_MODE: disable
+        run: go run . migrate
+
+      - name: Full tests (incl. DB integration)
+        env:
+          SPLITKAUF_TEST_DATABASE_DSN: postgres://splitkauf:splitkauf@localhost:5432/splitkauf?sslmode=disable
+        run: make test
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
+        run: make frontend-deps
 
-      - name: Lint
-        run: npm run lint
-        working-directory: frontend
-
-      - name: Typecheck
-        run: npm run typecheck
-        working-directory: frontend
-
-      - name: Test
-        run: npm run test
-        working-directory: frontend
+      - name: Check (lint, format, typecheck, test)
+        run: make frontend-check
 
       - name: Build
-        run: npm run build
-        working-directory: frontend
+        run: make frontend-build
 
   docker:
     name: Docker Build & Publish
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       # Only authenticate when we intend to push (main or a tag): pull requests
       # — including from forks — build without registry credentials.
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -98,7 +172,7 @@ jobs:
 
       - name: Image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -111,7 +185,7 @@ jobs:
       # Build on every event (validates the Dockerfile on PRs) but push only on
       # a branch/tag push, never on a pull_request.
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}

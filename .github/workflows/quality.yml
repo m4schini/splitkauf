@@ -1,0 +1,168 @@
+# Quality gates: the CI half of the checks that pre-commit runs locally.
+#
+# Everything here calls a make target. The definition of each check lives in
+# the Makefile and .golangci.yml, so "green locally" and "green in CI" cannot
+# mean two different things — this file only decides *when* things run.
+#
+# Third-party actions are pinned by commit SHA, not by tag: a tag is mutable
+# and a compromised tag would run arbitrary code with this workflow's token.
+# Renovate keeps the SHAs current (see renovate.json).
+
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly, Monday 06:17 UTC. An off-the-hour minute avoids the congestion
+    # (and the scheduling delays) of the top of the hour.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+# Superseded runs are pointless for a quality gate — the newest commit is the
+# only one whose result matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Proves the hook suite passes over the whole repository. A contributor
+  # who habitually commits with --no-verify is caught here rather than by a
+  # reviewer.
+  # ---------------------------------------------------------------------
+  hooks:
+    name: pre-commit hooks
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      # The frontend prettier/oxlint hooks run through `npm exec` and resolve
+      # from frontend/node_modules.
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      # The golangci-lint and gitleaks hooks are `language: golang`: pre-commit
+      # builds them from source on first use. Caching that keeps this job in
+      # the tens of seconds instead of the minutes.
+      - name: Cache pre-commit environments
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      - name: Install pre-commit
+        run: pipx install pre-commit
+
+      - name: Run every hook over every file
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  # ---------------------------------------------------------------------
+  # The repository-wide gates: formatting, config, lint, module tidiness,
+  # security. Same make targets a human runs.
+  # ---------------------------------------------------------------------
+  gates:
+    name: quality gates
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      # This version is the greppable pin hack/lint/check-golangci-pin.sh
+      # compares against the .pre-commit-config.yaml rev.
+      - name: Install the pinned golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # trivy is not preinstalled on GitHub-hosted runners.
+      - name: Install trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      # Generate embeds a placeholder ports/web/dist so the //go:embed in
+      # ports/web compiles; the Go-compiling steps below need it.
+      - name: Generate
+        run: make generate
+
+      # Committed generated code must match what `make generate` produces.
+      # This check lives here and nowhere else.
+      - name: Fail on generated-code drift
+        run: git diff --exit-code
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Verify lint config
+        run: make lint-config
+
+      - name: Lint
+        run: make lint
+
+      - name: Check go.mod/go.sum tidiness
+        run: make tidy-check
+
+      # REQUIRE_TRIVY turns a missing trivy from a local convenience skip into
+      # a hard failure, so a broken install cannot quietly disable the scan.
+      - name: Security scan
+        run: make security REQUIRE_TRIVY=1
+
+  # ---------------------------------------------------------------------
+  # New advisories appear against code that has not changed. Nothing else in
+  # this workflow would ever notice.
+  # ---------------------------------------------------------------------
+  vuln-weekly:
+    name: scheduled vulnerability scan
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      - name: Install trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+
+      - name: Generate
+        run: make generate
+
+      - name: Security scan
+        run: make security REQUIRE_TRIVY=1

@@ -2,38 +2,72 @@
 
 ## Development harness
 
-This repo enforces its quality gates at three points: edit time (a Claude
-Code hook), commit time (`pre-commit`), and on demand (`make check`).
+The Makefile and `.golangci.yml` define *what* runs; git hooks and CI only
+decide *when*. Quality gates fire at edit time (a Claude Code hook), commit
+time, push time, and in CI — all calling the same make targets.
 
 ### One-time setup
 
+`golangci-lint` v2.12.2 is expected on PATH (the authoritative pin is the
+`golangci/golangci-lint` `rev:` in `.pre-commit-config.yaml`; CI installs the
+same version, and `hack/lint/check-golangci-pin.sh` fails the commit if the
+two drift):
+
 ```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 pre-commit install --install-hooks
 ```
 
-`.pre-commit-config.yaml` sets `default_install_hook_types: [pre-commit, commit-msg]`,
-so this single command installs both the pre-commit hook (file hygiene,
-secret scanning, `gofumpt`/`golangci-lint` on staged Go files,
-`prettier`/`oxlint` on staged frontend files) and the commit-msg hook
-(enforces a `feat|fix|chore` conventional-commit subject line).
+`.pre-commit-config.yaml` installs three hook stages, three budgets:
+
+- **pre-commit** — file hygiene, secret scanning (gitleaks with
+  `.gitleaks.toml`; `docs/agents/` is path-allowlisted), diff-scoped
+  `golangci-lint` fmt/lint/config-verify, `prettier`/`oxlint` on staged
+  frontend files. Seconds.
+- **commit-msg** — `hack/hooks/check-commit-msg.sh` enforces the
+  `feat|fix|chore` conventional-commit subject. The **same script** validates
+  PR titles in CI (`.github/workflows/pr-title.yml`), so a local commit and a
+  squash-merge title are judged identically. Milliseconds.
+- **pre-push** — `make build`, `make lint`, `make tidy-check`,
+  `make test-short`. Tens of seconds; this is the gate that makes CI boring.
 
 ### Running the gates manually
 
 ```sh
 pre-commit run --all-files   # everything pre-commit checks, across the whole tree
-make check                   # fmt-check, lint, lint-vet, tidy-check, test-unit, security, frontend-check
+make check                   # fmt-check, lint-config, lint, tidy-check, test-unit, security, frontend-check
 ```
 
-`make check`'s `fmt-check` step runs `gofumpt -w .` and then diffs the whole
-working tree; on a tree with unrelated uncommitted changes it can report a
-false positive even when the Go code itself is correctly formatted — verify
-with `gofumpt -l .` (should print nothing) if `fmt-check` fails on a dirty
-tree.
+`make fmt-check` and `make tidy-check` are non-mutating (`golangci-lint fmt
+--diff`, `go mod tidy -diff`) — safe on a dirty tree.
 
-`make security` runs `govulncheck`. It may report vulnerabilities that stem
+`make security` runs `govulncheck` (blocking, call-graph-aware) and, when
+`trivy` is installed, a broad trivy vuln+secret scan (blocking at
+HIGH/CRITICAL) plus a report-only licence scan (`trivy.yaml`). Locally trivy
+is optional and skipped with a warning; CI sets `REQUIRE_TRIVY=1` to make a
+missing trivy a hard failure. govulncheck may report vulnerabilities that stem
 from the *host's installed Go toolchain* (stdlib CVEs fixed in a later Go
 patch release) rather than from repository code — check whether the reported
 module is `stdlib` before treating a `security` failure as a real issue.
+
+### Tests and coverage
+
+- `make test-unit` — race, short, shuffled, atomic coverage profile; the CI
+  contract. Coverage is **tracked, never gated**: CI publishes the
+  `go tool cover -func` table in the job summary and uploads `coverage.out`;
+  there is no threshold. `make coverage` prints the table locally.
+- `make test-short` — the pre-push budget.
+- `make test` — the full suite. The `adapters/db` integration tests self-skip
+  unless `SPLITKAUF_TEST_DATABASE_DSN` is set; CI runs them in the `test-full`
+  job against a postgres service container. Locally:
+
+  ```sh
+  docker run -d --name splitkauf-pg -p 5432:5432 \
+    -e POSTGRES_USER=splitkauf -e POSTGRES_PASSWORD=splitkauf -e POSTGRES_DB=splitkauf \
+    postgres:17
+  go run . migrate
+  SPLITKAUF_TEST_DATABASE_DSN='postgres://splitkauf:splitkauf@localhost:5432/splitkauf?sslmode=disable' make test
+  ```
 
 ### Claude Code edit-time formatting
 

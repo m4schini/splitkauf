@@ -1,0 +1,37 @@
+# Thin GitHub Actions wrapper around hack/hooks/check-commit-msg.sh.
+#
+# This repository squash-merges pull requests and GitHub uses the PR title as
+# the squash commit message. The commit-msg hook and this workflow call the
+# same validator, so a local commit and a squash-merge title can never be
+# judged by two different implementations.
+
+name: pr-title
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: pr-title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate PR title against Conventional Commits rules
+        env:
+          # Passed via the environment, never interpolated into the shell
+          # script, so a malicious title cannot inject commands.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          printf '%s\n' "$TITLE" > /tmp/title
+          hack/hooks/check-commit-msg.sh /tmp/title

@@ -42,12 +42,9 @@ if [ ! -f "$PRE_COMMIT_CONFIG" ]; then
   exit "$EXIT_ERROR"
 fi
 
-# TEMPORARY (until quality.yml lands): a missing default workflow file is a
-# warning, not an error, so this hook can ship before the workflow does.
-# Hardened to an error together with .github/workflows/quality.yml.
 if [ ! -f "$WORKFLOW_FILE" ]; then
-  printf 'warning: workflow file not found (%s); skipping pin drift check\n' "$WORKFLOW_FILE" >&2
-  exit "$EXIT_OK"
+  err "missing workflow file: $WORKFLOW_FILE"
+  exit "$EXIT_ERROR"
 fi
 
 # Walk the pre-commit config looking for the golangci-lint repo entry, then
