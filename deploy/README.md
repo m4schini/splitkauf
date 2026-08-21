@@ -110,6 +110,26 @@ printf '%s' "$PASSWORD" | sudo podman run --rm -i \
     ghcr.io/m4schini/splitkauf:latest useradd alex --password-stdin
 ```
 
+`useradd` creates exactly one account per invocation, so provisioning several
+users means one run each:
+
+```sh
+# Two accounts, interactive:
+sudo podman run --rm -it \
+    --network splitkauf.network \
+    --env-file /etc/splitkauf/splitkauf.env \
+    ghcr.io/m4schini/splitkauf:latest useradd alex --name "Alex"
+
+sudo podman run --rm -it \
+    --network splitkauf.network \
+    --env-file /etc/splitkauf/splitkauf.env \
+    ghcr.io/m4schini/splitkauf:latest useradd bob --name "Bob"
+```
+
+Prefer the interactive form for ad-hoc provisioning; a password passed through a
+shell variable ends up in the environment and possibly the shell history. When
+automating, pipe it straight from a secret store into `--password-stdin`.
+
 A wrong username and a wrong password are rejected identically (same 401), so
 the login page never reveals which usernames exist. Keep
 `SPLITKAUF_AUTH_SESSION_COOKIE_SECURE=true` behind HTTPS, exactly as for OIDC.
