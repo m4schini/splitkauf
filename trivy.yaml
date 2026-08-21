@@ -1,0 +1,48 @@
+# Trivy configuration.
+#
+# Trivy is the broad, defence-in-depth scanner here. govulncheck is the precise
+# one: it understands Go call graphs and only reports vulnerabilities the code
+# can actually reach, which is why it is the blocking gate in `make security`.
+# Trivy sees things govulncheck cannot — secrets on disk, dependency licences,
+# advisories for non-Go artefacts (like the npm frontend) — at the cost of more
+# noise.
+#
+# Invoked only through `make security`, so the hooks and CI share one flagset:
+#
+#   trivy fs --scanners vuln,secret --exit-code 1 --severity HIGH,CRITICAL .
+#   trivy fs --scanners license --exit-code 0 .
+#
+# NOTE — the licence scanner is REPORT ONLY.
+#
+# The `license.forbidden` list below does NOT fail a build. It runs with
+# --exit-code 0 and exists to make licence problems visible. Do not read the
+# word "forbidden" as "enforced". Turning it into a gate is a maintainer
+# decision — change the --exit-code in the Makefile's `security` target and
+# delete this note.
+#
+# Severity filtering is deliberately not set here: the Makefile passes
+# --severity explicitly for the blocking scan, so the flags that decide whether
+# a build fails are all visible in one place.
+
+scan:
+  skip-dirs:
+    # Third-party frontend dependencies; advisories for them surface through
+    # npm audit / renovate, and scanning the tree is pure noise and time.
+    - frontend/node_modules
+    # Build output (embedded frontend bundle / stub), not source.
+    - ports/web/dist
+
+license:
+  # Inspect file headers as well as package metadata. Slower, but a vendored
+  # file with a GPL header is exactly the finding this is meant to surface.
+  full: true
+
+  forbidden:
+    # Strong copyleft. A Go binary links its dependencies statically, so a
+    # GPL/AGPL dependency's obligations reach the whole binary — which is why
+    # these are the licences worth naming explicitly, even report-only.
+    - AGPL-1.0
+    - AGPL-3.0
+    - GPL-1.0
+    - GPL-2.0
+    - GPL-3.0

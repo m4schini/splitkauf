@@ -1,0 +1,44 @@
+# Gitleaks configuration.
+#
+# The upstream ruleset is the baseline; this file only extends it. The
+# pre-commit hook scans the staged diff, so the cost is proportional to the
+# change rather than to the history.
+#
+# ---------------------------------------------------------------------------
+# Allowlisting policy: PATHS ONLY. No regex allowlists.
+# ---------------------------------------------------------------------------
+#
+# Gitleaks evaluates allowlist conditions as OR, not AND: a regex allowlist
+# suppresses every matching finding *everywhere* in the repository, not just at
+# the place someone was trying to unblock. Regex allowlists are therefore a
+# permanent, invisible hole in the scanner, added under time pressure and never
+# revisited.
+#
+# A path allowlist is auditable — you can see exactly which files stopped being
+# scanned. If a real secret has to live somewhere scanned, the answer is a
+# secret manager, not an entry in this file.
+#
+# Adding an entry here is a maintainer decision, never a way to get a red check
+# to go green. Each entry carries a reason, an owner, and a review date.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Agent notes, plans, and research reports under docs/agents/. These quote example
+credentials, forbidden key names, and scanner output verbatim, which trips the
+generic high-entropy rules. Nothing here is deployed, and no real credential may
+be written here — this allowlist makes the scanner quiet, not the rule
+permissive.
+
+Scoped to docs/agents/ rather than all of docs/ on purpose: human-authored
+documentation — runbooks, deployment guides — is exactly where somebody pastes a
+real token while writing up a procedure, and it must stay scanned. If a specific
+human-written document trips on an illustrative example, allowlist that file's
+path, not the tree.
+reason: illustrative examples in agent-authored prose; owner @m4schini; review 2027-02.
+"""
+paths = [
+  '''^docs/agents/''',
+]

@@ -26,7 +26,7 @@ help:
 	@echo " - lint-config          verify .golangci.yml"
 	@echo " - tidy                 run go mod tidy"
 	@echo " - tidy-check           check go.mod/go.sum are tidy"
-	@echo " - security             run vulnerability check"
+	@echo " - security             run govulncheck + trivy (trivy optional; REQUIRE_TRIVY=1 to enforce)"
 	@echo " - deps                 install tool dependencies"
 	@echo " - frontend-deps        install frontend dependencies"
 	@echo " - frontend-build       build the frontend into ports/web/dist"
@@ -114,9 +114,22 @@ tidy-check:
 	$(GO) mod verify
 	$(GO) mod tidy -diff
 
+# Set REQUIRE_TRIVY=1 to hard-fail when trivy is missing (CI does this);
+# locally trivy is optional and skipped with a warning.
+REQUIRE_TRIVY ?=
+
 .PHONY: security
 security:
 	$(GO) run $(GOVULNCHECK_PACKAGE) ./...
+	@if command -v trivy >/dev/null 2>&1; then \
+		trivy fs --scanners vuln,secret --exit-code 1 --severity HIGH,CRITICAL . && \
+		trivy fs --scanners license --exit-code 0 .; \
+	elif [ -n "$(REQUIRE_TRIVY)" ]; then \
+		echo "error: trivy is required (REQUIRE_TRIVY is set) but not installed" >&2; \
+		exit 1; \
+	else \
+		echo "warning: trivy not installed; skipping trivy scans (see trivy.yaml)" >&2; \
+	fi
 
 .PHONY: deps
 deps:
