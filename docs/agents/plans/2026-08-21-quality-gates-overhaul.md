@@ -183,24 +183,24 @@ Dependencies: Phase 1 (Makefile layout)
 Bring the test flags to template parity and make tidy-check non-mutating.
 
 **Tasks**:
-- [ ] Makefile test targets:
+- [x] Makefile test targets:
   - `test: generate` → `$(GO) test -race -shuffle=on ./...` (full suite, no profile; the `adapters/db` integration tests self-skip unless `SPLITKAUF_TEST_DATABASE_DSN` is set — Phase 5 wires this target into a postgres-backed CI job so they actually run somewhere).
   - New `test-short: generate` → `$(GO) test -short -shuffle=on ./...` (pre-push budget).
   - `test-unit: generate` → `$(GO) test -race -short -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...` (stays the CI contract).
   - `coverage:` → fail with a hint if `coverage.out` is missing, else `$(GO) tool cover -func=coverage.out` (report-only, like the template; no longer re-runs tests).
   - Delete the old `coverage` test invocation and `GOTESTFLAGS`/`RACE_ENABLED` knobs (superseded by explicit flags per target).
-- [ ] Fix any test that fails under `-shuffle=on` (order-dependence is a bug; expected blast radius: small or zero).
-- [ ] Module targets:
+- [x] Fix any test that fails under `-shuffle=on` (order-dependence is a bug; expected blast radius: small or zero). (None failed — no changes needed.)
+- [x] Module targets:
   - `tidy:` → plain `$(GO) mod tidy` (drop the `-compat` extraction; go 1.26 toolchain).
   - `tidy-check:` → `$(GO) mod verify` then `$(GO) mod tidy -diff` (non-mutating; drop the git-diff dance).
-- [ ] Update `help` text.
+- [x] Update `help` text.
 
 **Automated Verification**:
-- [ ] `make test-unit` passes and produces `coverage.out`.
-- [ ] `make coverage` prints the function coverage table.
-- [ ] `make test-short` passes.
-- [ ] `make test` passes (DB integration tests report skipped without `SPLITKAUF_TEST_DATABASE_DSN`).
-- [ ] `make tidy-check` passes and is non-mutating: `git diff | sha256sum` identical before and after running it.
+- [x] `make test-unit` passes and produces `coverage.out`.
+- [x] `make coverage` prints the function coverage table.
+- [x] `make test-short` passes.
+- [x] `make test` passes (DB integration tests report skipped without `SPLITKAUF_TEST_DATABASE_DSN`).
+- [x] `make tidy-check` passes and is non-mutating: `git diff | sha256sum` identical before and after running it.
 
 ### Phase 3: Security scanning
 
