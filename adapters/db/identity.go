@@ -42,7 +42,7 @@ type Identity struct {
 
 // IdentityRepository answers the operator CLI's cross-table questions about
 // account identities (users + members + attribution columns). It is operator
-// tooling, not a domain port: userls/usermerge are its only callers.
+// tooling, not a domain port: "user ls"/"user merge" are its only callers.
 type IdentityRepository struct {
 	db *sql.DB
 }

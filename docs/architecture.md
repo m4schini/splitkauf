@@ -265,7 +265,7 @@ configured, else dev-auth:
   below, when the OIDC issuer/client are configured.
 - **Username/password** (✅ M7) — local accounts for instances without an
   identity provider, enabled by `SPLITKAUF_AUTH_PASSWORD_ENABLED`. Accounts are
-  operator-provisioned via the `useradd` CLI (no public sign-up) and stored in a
+  operator-provisioned via the `user add` CLI (no public sign-up) and stored in a
   `users` table (unique username + bcrypt `password_hash`). Login POSTs
   credentials to `/api/auth/login`; on success it establishes the **same scs
   session** the OIDC flow uses, so `RequireAuth`, logout, and durable Postgres
@@ -275,10 +275,10 @@ configured, else dev-auth:
   the right login UI.
 - **Dev-auth** (✅ M1) — a single hardcoded user for local development.
 
-**Operator CLI for identities**: `splitkauf userls` lists every known
+**Operator CLI for identities**: `splitkauf user ls` lists every known
 identity — local accounts (even before their first login), OIDC members, and
 the dev user — with kind, identifier (username or subject), user id, and last
-login. `splitkauf usermerge <source> <target>` merges one identity into
+login. `splitkauf user merge <source> <target>` merges one identity into
 another (selectors `local:<username>` / `oidc:<subject>` / `uuid:<user_id>`)
 by rewriting the attribution columns (`lists.created_by`, `items.added_by`,
 `items.bought_by`) to the target's user id in one transaction and deleting

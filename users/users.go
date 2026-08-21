@@ -2,7 +2,7 @@
 
 // Package users is the local-account domain for password authentication
 // (US-A.6/US-A.7). A user is a credential record — a unique username and a
-// bcrypt password hash — provisioned by the operator via the `useradd` CLI.
+// bcrypt password hash — provisioned by the operator via the `user add` CLI.
 // There is no self-registration: the Repository only creates accounts on
 // explicit operator action, and reads them back for the login flow. Password
 // hashing lives here so the plaintext never travels beyond this package's

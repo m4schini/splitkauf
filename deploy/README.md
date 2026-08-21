@@ -37,7 +37,7 @@ systemd-managed containers on a single server.
    # Auth mode (see "Authentication" below). For local username/password
    # accounts instead of OIDC, leave the OIDC vars unset and set:
    #   SPLITKAUF_AUTH_PASSWORD_ENABLED=true
-   # then provision accounts with `useradd` (see "Password authentication").
+   # then provision accounts with `user add` (see "Password authentication").
    # Setting BOTH (all OIDC vars + PASSWORD_ENABLED) enables the combined
    # mode: the login page offers the password form and a "Sign in with SSO"
    # button side by side.
@@ -100,23 +100,23 @@ Splitkauf selects its auth mode automatically from config:
 
 Set `SPLITKAUF_AUTH_PASSWORD_ENABLED=true` to run local accounts (on its own,
 or alongside OIDC for the combined mode). There is **no public sign-up**: the operator provisions
-every account with the `useradd` command, which stores only a bcrypt hash.
+every account with the `user add` command, which stores only a bcrypt hash.
 
 ```sh
 # Interactive (prompts for the password, twice, with no echo):
 sudo podman run --rm -it \
     --network splitkauf.network \
     --env-file /etc/splitkauf/splitkauf.env \
-    ghcr.io/m4schini/splitkauf:latest useradd alex
+    ghcr.io/m4schini/splitkauf:latest user add alex
 
 # Non-interactive (e.g. from a secret store), password on stdin:
 printf '%s' "$PASSWORD" | sudo podman run --rm -i \
     --network splitkauf.network \
     --env-file /etc/splitkauf/splitkauf.env \
-    ghcr.io/m4schini/splitkauf:latest useradd alex --password-stdin
+    ghcr.io/m4schini/splitkauf:latest user add alex --password-stdin
 ```
 
-`useradd` creates exactly one account per invocation, so provisioning several
+`user add` creates exactly one account per invocation, so provisioning several
 users means one run each:
 
 ```sh
@@ -124,12 +124,12 @@ users means one run each:
 sudo podman run --rm -it \
     --network splitkauf.network \
     --env-file /etc/splitkauf/splitkauf.env \
-    ghcr.io/m4schini/splitkauf:latest useradd alex --name "Alex"
+    ghcr.io/m4schini/splitkauf:latest user add alex --name "Alex"
 
 sudo podman run --rm -it \
     --network splitkauf.network \
     --env-file /etc/splitkauf/splitkauf.env \
-    ghcr.io/m4schini/splitkauf:latest useradd bob --name "Bob"
+    ghcr.io/m4schini/splitkauf:latest user add bob --name "Bob"
 ```
 
 Prefer the interactive form for ad-hoc provisioning; a password passed through a
@@ -142,14 +142,14 @@ the login page never reveals which usernames exist. Keep
 
 ### Listing accounts
 
-`userls` lists every identity known to the app — local accounts (whether or
+`user ls` lists every identity known to the app — local accounts (whether or
 not they have ever logged in), OIDC members, and the dev user:
 
 ```sh
 sudo podman run --rm \
     --network splitkauf.network \
     --env-file /etc/splitkauf/splitkauf.env \
-    ghcr.io/m4schini/splitkauf:latest userls
+    ghcr.io/m4schini/splitkauf:latest user ls
 ```
 
 ```
@@ -162,15 +162,15 @@ oidc   238941579532     a3f8c9d2-…                            Alex S.  alex@sc
 `KIND` is `local` (username/password account), `oidc` (provider-backed
 member), or `dev` (the fixed dev user). `IDENTIFIER` is the username for
 local accounts and the auth subject otherwise — it is the value used in
-`usermerge` selectors (`local:<username>` / `oidc:<subject>`). `LAST_LOGIN`
+`user merge` selectors (`local:<username>` / `oidc:<subject>`). `LAST_LOGIN`
 comes from the login-time member record and shows `never` for a local account
 that has not signed in yet.
 
-### Merging identities (`usermerge`)
+### Merging identities (`user merge`)
 
 When one person ends up with two identities — most commonly a local account
 from before an identity provider existed, plus the OIDC account they use now
-— their history is split across two user ids. `usermerge` unifies them by
+— their history is split across two user ids. `user merge` unifies them by
 rewriting all attribution (`lists.created_by`, `items.added_by`,
 `items.bought_by`) from the source identity's user id to the target's, then
 cleaning up the source: its member record is deleted, and a local source's
@@ -178,7 +178,7 @@ account is deleted too (its login stops working). Everything runs in one
 database transaction.
 
 Selectors take the form `local:<username>`, `oidc:<subject>`, or
-`uuid:<user_id>` — copy the values from `userls`. An `oidc:` identity must
+`uuid:<user_id>` — copy the values from `user ls`. An `oidc:` identity must
 have logged in at least once (its subject is only known after the first
 login); `uuid:` is the escape hatch that addresses any raw user id.
 
@@ -186,14 +186,14 @@ The typical local → OIDC migration:
 
 1. Create the person's account in the identity provider.
 2. Have them sign in to Splitkauf once via OIDC (this records their subject).
-3. Run `userls` and note the local username and the new OIDC subject.
+3. Run `user ls` and note the local username and the new OIDC subject.
 4. Merge:
 
    ```sh
    sudo podman run --rm -it \
        --network splitkauf.network \
        --env-file /etc/splitkauf/splitkauf.env \
-       ghcr.io/m4schini/splitkauf:latest usermerge local:alex oidc:238941579532
+       ghcr.io/m4schini/splitkauf:latest user merge local:alex oidc:238941579532
    ```
 
 The command prints the resolved identities and per-column row counts, then

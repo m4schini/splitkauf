@@ -52,7 +52,7 @@ func dummyHash() string {
 // scs server-side session the OIDC flow uses, so RequireAuth, logout, and
 // durable Postgres sessions behave identically. There
 // is no self-registration: accounts are provisioned out of band via the
-// `useradd` CLI.
+// `user add` CLI.
 type passwordAuthenticator struct {
 	users   users.Repository
 	members members.Repository

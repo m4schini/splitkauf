@@ -26,7 +26,7 @@ var (
 )
 
 var useraddCmd = &cobra.Command{
-	Use:   "useradd <username>",
+	Use:   "add <username>",
 	Short: "Create a local username/password account",
 	Long: `Creates a local account for username/password authentication
 (SPLITKAUF_AUTH_PASSWORD_ENABLED). The password is read from an interactive
@@ -134,7 +134,7 @@ func terminalFd(in io.Reader) (int, bool) {
 }
 
 func init() {
-	rootCmd.AddCommand(useraddCmd)
+	userCmd.AddCommand(useraddCmd)
 	useraddCmd.Flags().BoolVar(&useraddPasswordStdin, "password-stdin", false, "read the password from standard input instead of prompting")
 	useraddCmd.Flags().StringVar(&useraddName, "name", "", "display name (defaults to the username)")
 	useraddCmd.Flags().StringVar(&useraddEmail, "email", "", "optional email address")

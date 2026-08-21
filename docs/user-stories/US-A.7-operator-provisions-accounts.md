@@ -9,7 +9,7 @@ without exposing a public sign-up.
 
 ## Acceptance criteria
 
-- A `splitkauf useradd <username>` command creates an account, reading the
+- A `splitkauf user add <username>` command creates an account, reading the
   password from an interactive no-echo prompt or, for automation, from stdin
   (`--password-stdin`).
 - The password is stored only as a bcrypt hash; the plaintext is never written
@@ -25,5 +25,5 @@ without exposing a public sign-up.
 
 Account **consolidation** (merging a provisioned local account into another
 identity, e.g. after an identity provider is introduced) is covered by the
-`usermerge` operator command together with `userls` for discovery — see the
+`user merge` operator command together with `user ls` for discovery — see the
 operator guide in `deploy/README.md`. No separate user story.

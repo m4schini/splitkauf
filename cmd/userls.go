@@ -15,11 +15,11 @@ import (
 )
 
 var userlsCmd = &cobra.Command{
-	Use:   "userls",
+	Use:   "ls",
 	Short: "List all known user identities",
 	Long: `Lists every identity known to the app: local username/password accounts,
 OIDC members, and the dev user. IDENTIFIER is the username for local accounts
-and the auth subject otherwise — it is the selector value for usermerge
+and the auth subject otherwise — it is the selector value for "user merge"
 (local:<username> / oidc:<subject>). LAST_LOGIN is "never" for a local account
 that has not signed in yet.`,
 	Args: cobra.NoArgs,
@@ -68,5 +68,5 @@ func formatLastLogin(t *time.Time) string {
 }
 
 func init() {
-	rootCmd.AddCommand(userlsCmd)
+	userCmd.AddCommand(userlsCmd)
 }

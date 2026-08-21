@@ -25,20 +25,20 @@ import (
 var usermergeYes bool
 
 var usermergeCmd = &cobra.Command{
-	Use:   "usermerge <source> <target>",
+	Use:   "merge <source> <target>",
 	Short: "Merge one user identity into another",
 	Long: `Merges the source identity into the target: every attribution row
 (lists.created_by, items.added_by, items.bought_by) is rewritten from the
 source's user id to the target's, then the source identity is cleaned up (its
 members row is deleted; a local source's account is deleted too).
 
-Selectors: local:<username>, oidc:<subject>, uuid:<user_id>. Use userls to
+Selectors: local:<username>, oidc:<subject>, uuid:<user_id>. Use "user ls" to
 discover the values. An oidc: identity must have logged in at least once;
 uuid: bypasses that check.
 
 The primary use case is migrating a local-only account to an OIDC account
 after an identity provider is introduced: the person logs in once via OIDC,
-then "usermerge local:<name> oidc:<subject>" moves their history over.
+then "user merge local:<name> oidc:<subject>" moves their history over.
 
 The merge prints its plan and asks for confirmation; --yes skips the prompt
 (required on a non-interactive stdin). Live sessions of the source identity
@@ -106,7 +106,7 @@ are not invalidated; they last until session expiry.`,
 	},
 }
 
-// parseSelector splits a usermerge selector into its kind prefix and value.
+// parseSelector splits a "user merge" selector into its kind prefix and value.
 // Valid kinds are local, oidc and uuid; anything else (including a missing
 // prefix or empty value) is an error naming the bad selector.
 func parseSelector(s string) (kind, value string, err error) {
@@ -204,7 +204,7 @@ func cleanupLines(source, target db.Identity) []string {
 }
 
 // confirmMerge gates the merge: --yes bypasses the prompt; otherwise stdin
-// must be a terminal (mirroring useradd's --password-stdin guard) and the
+// must be a terminal (mirroring "user add"'s --password-stdin guard) and the
 // operator must answer y/Y to one "Proceed? [y/N]:" prompt.
 func confirmMerge(yes bool, in io.Reader, out io.Writer) (bool, error) {
 	if yes {
@@ -223,6 +223,6 @@ func confirmMerge(yes bool, in io.Reader, out io.Writer) (bool, error) {
 }
 
 func init() {
-	rootCmd.AddCommand(usermergeCmd)
+	userCmd.AddCommand(usermergeCmd)
 	usermergeCmd.Flags().BoolVar(&usermergeYes, "yes", false, "skip the confirmation prompt")
 }
