@@ -33,9 +33,6 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          # go.mod pins the minimum; resolve the latest patch so govulncheck does
-          # not flag stdlib CVEs already fixed in a newer 1.x.y toolchain.
-          check-latest: true
           cache-dependency-path: "**/go.sum"
 
       # Build/test need the embed stub and generated code; regeneration is
@@ -101,9 +98,6 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          # go.mod pins the minimum; resolve the latest patch so govulncheck does
-          # not flag stdlib CVEs already fixed in a newer 1.x.y toolchain.
-          check-latest: true
           cache-dependency-path: "**/go.sum"
 
       - name: Generate

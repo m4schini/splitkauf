@@ -2,6 +2,11 @@ module github.com/m4schini/splitkauf
 
 go 1.26.0
 
+// setup-go reads this exact toolchain from go-version-file: go.mod; without it
+// CI installs bare 1.26.0 and govulncheck flags stdlib CVEs fixed in later
+// patches. Renovate keeps it current.
+toolchain go1.26.6
+
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/alexedwards/scs/postgresstore v0.0.0-20251002162104-209de6e426de
