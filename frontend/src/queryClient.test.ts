@@ -5,7 +5,7 @@ import {
   persistQueryClientRestore,
   persistQueryClientSave,
 } from '@tanstack/query-persist-client-core'
-import { queryClient } from './queryClient'
+import { queryClient, dehydrateOptions, authConfigKey } from './queryClient'
 
 /**
  * Persister smoke test (US-O.2 Key Decision 1): a fake async storage stands
@@ -67,6 +67,37 @@ describe('IndexedDB-style persister', () => {
     await persistQueryClientRestore({ queryClient: reader, persister, buster: 'new-build' })
 
     expect(reader.getQueryData(['lists'])).toBeUndefined()
+  })
+
+  it('never persists the auth-mode query, but persists other queries', async () => {
+    const store = new Map<string, string>()
+    const persister = createAsyncStoragePersister({
+      storage: {
+        getItem: (key) => Promise.resolve(store.get(key) ?? null),
+        setItem: (key, value) => {
+          store.set(key, value)
+          return Promise.resolve()
+        },
+        removeItem: (key) => {
+          store.delete(key)
+          return Promise.resolve()
+        },
+      },
+    })
+
+    const writer = new QueryClient()
+    writer.setQueryData([...authConfigKey], { mode: 'password' })
+    writer.setQueryData(['lists'], [{ id: 'l1', name: 'Groceries' }])
+    await persistQueryClientSave({ queryClient: writer, persister, buster: 'v1', dehydrateOptions })
+
+    const reader = new QueryClient()
+    await persistQueryClientRestore({ queryClient: reader, persister, buster: 'v1' })
+
+    // The auth mode must be re-asked from the server on every fresh load — a
+    // persisted answer froze the signed-out UI in the old mode after a deploy
+    // switched the server's auth mode.
+    expect(reader.getQueryData([...authConfigKey])).toBeUndefined()
+    expect(reader.getQueryData(['lists'])).toEqual([{ id: 'l1', name: 'Groceries' }])
   })
 })
 

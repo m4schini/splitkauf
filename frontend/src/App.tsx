@@ -6,6 +6,7 @@ import { ListDetail } from './ListDetail'
 import { LoginForm } from './LoginForm'
 import { OfflineIndicator } from './OfflineIndicator'
 import { randomId, subscribeSyncNotice, useMe } from './queries'
+import { authConfigKey } from './queryClient'
 
 const SYNC_NOTICE_MS = 6000
 
@@ -72,8 +73,6 @@ function SyncNotices({
 
 type View = { screen: 'overview' } | { screen: 'list'; listId: string }
 
-const authConfigKey = ['authConfig'] as const
-
 /**
  * Auth gate (US-A.2/A.4): resolves `GET /me` once and renders one of three
  * states — quiet loading (no blocking spinner), signed-in (account bar + the
@@ -86,8 +85,11 @@ function App() {
   const { notices, dismiss } = useSyncNotices()
   const { data: user, error, isPending } = useMe()
   // The auth mode decides the signed-out UI (password form vs OIDC redirect).
-  // It's public and rarely changes, so cache it and never retry; an
-  // unresolved/failed lookup falls back to the OIDC redirect button below.
+  // It's public and rarely changes, so cache it for the page's lifetime and
+  // never retry; an unresolved/failed lookup falls back to the OIDC redirect
+  // button below. Deliberately NOT persisted to IndexedDB (queryClient.ts's
+  // dehydrateOptions), so every fresh load re-asks the server and a deploy
+  // that switches auth modes is picked up.
   const { data: authConfig } = useQuery({
     queryKey: authConfigKey,
     queryFn: getAuthConfig,

@@ -14,7 +14,11 @@ RUN --mount=type=cache,target=/root/.npm \
 
 COPY frontend frontend/
 COPY splitkauf.openapi.yaml ./
-RUN npm run build --prefix frontend
+# Per-build cache buster for the frontend's persisted query cache
+# (frontend/src/queryClient.ts). CI passes the git SHA; .git is dockerignored,
+# so it cannot be derived here. An empty value falls back to 'dev' in the app.
+ARG VITE_BUILD_ID=
+RUN VITE_BUILD_ID="$VITE_BUILD_ID" npm run build --prefix frontend
 
 # ── Go build ────────────────────────────────────────────────────────────
 FROM golang:1.26 AS builder

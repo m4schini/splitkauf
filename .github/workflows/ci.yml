@@ -117,5 +117,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Busts the frontend's persisted query cache once per build (see
+          # frontend/src/queryClient.ts).
+          build-args: |
+            VITE_BUILD_ID=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

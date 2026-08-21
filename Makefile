@@ -135,9 +135,13 @@ deps:
 frontend-deps:
 	npm ci --prefix frontend
 
+# Per-build cache buster for the frontend's persisted query cache (see
+# frontend/src/queryClient.ts); overridable for reproducible builds.
+VITE_BUILD_ID ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+
 .PHONY: frontend-build
 frontend-build:
-	npm run build --prefix frontend
+	VITE_BUILD_ID=$(VITE_BUILD_ID) npm run build --prefix frontend
 
 .PHONY: frontend-check
 frontend-check:
