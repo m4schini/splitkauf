@@ -1,0 +1,61 @@
+# Rebuilds the "Quality Dashboard" GitHub issue after CI or quality finish on
+# main, so coverage, lint debt, test counts, and the security scan status
+# live in one place instead of buried in per-run step summaries.
+#
+# workflow_run (not push) is the trigger: it lets this workflow read the
+# producer artifacts CI/quality just uploaded, and it never runs with a fork
+# PR's read-only token — only main pushes and the scheduled quality run
+# (which also reports head_branch: main) reach it. A push to main fires two
+# runs of this workflow (CI completes, then quality completes); the rebuild
+# is idempotent and concurrency-grouped, so the double run is harmless.
+#
+# Because it writes to the repository (issues, a label), it is the only
+# workflow in this repository with anything beyond `contents: read` — ci.yml
+# and quality.yml stay read-only.
+#
+# Third-party actions are pinned by commit SHA, not by tag: a tag is mutable
+# and a compromised tag would run arbitrary code with this workflow's token.
+# Renovate keeps the SHAs current (see renovate.json).
+
+name: dashboard
+
+on:
+  workflow_run:
+    workflows: [CI, quality]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: dashboard
+  cancel-in-progress: true
+
+jobs:
+  update:
+    name: update
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Belt-and-braces with the trigger's own branches filter: a manual
+    # workflow_dispatch run has no workflow_run event to check.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      - name: Rebuild the dashboard issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: hack/dashboard/update.sh

@@ -69,6 +69,34 @@ module is `stdlib` before treating a `security` failure as a real issue.
   SPLITKAUF_TEST_DATABASE_DSN='postgres://splitkauf:splitkauf@localhost:5432/splitkauf?sslmode=disable' make test
   ```
 
+### Quality dashboard
+
+The "Quality Dashboard" issue (label `dashboard`) is a single, living
+summary of the project's quality posture: Go coverage (total and per
+package), lint debt per deferred linter, Go test pass/skip/fail counts, and
+the latest security scan status — plus a trend table, one row per commit,
+capped at 20 rows. It is rebuilt automatically after every CI or quality run
+on `main` completes, and after the weekly scheduled vulnerability scan.
+
+The bot owns the issue body: it is fully overwritten on every update, so any
+manual edit is discarded on the next rebuild (only the trend rows between the
+`<!-- trend-start -->`/`<!-- trend-end -->` markers are read back and carried
+forward). History beyond 20 rows is lost by design — the repository's git
+history still has everything.
+
+To force a rebuild without waiting for the next CI run, use
+`workflow_dispatch` on the `dashboard` workflow. To run the rebuild locally
+(useful for debugging), with `gh` logged in:
+
+```sh
+REPO=owner/repo GH_TOKEN="$(gh auth token)" hack/dashboard/update.sh
+```
+
+The rendering/parsing logic lives in the Go tool `hack/dashboard/`
+(`go run ./hack/dashboard render|strip-deferred`, unit-tested); the workflow
+orchestration (finding runs, downloading artifacts, upserting the issue) is
+`hack/dashboard/update.sh`, called by `.github/workflows/dashboard.yml`.
+
 ### Claude Code edit-time formatting
 
 `.claude/settings.json` registers a `PostToolUse` hook that runs
