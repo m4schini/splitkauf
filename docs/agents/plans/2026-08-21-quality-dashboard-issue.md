@@ -214,25 +214,25 @@ Dependencies: Phases 1–2
 The consumer: workflow, orchestration script, README. After this phase the issue goes live.
 
 **Tasks**:
-- [ ] New `hack/dashboard/update.sh` (executable, `set -euo pipefail`), env: `GH_TOKEN`, `REPO` (owner/name), `TRIGGER_HEAD_SHA` (optional, logging only). Stages, each echoed:
+- [x] New `hack/dashboard/update.sh` (executable, `set -euo pipefail`), env: `GH_TOKEN`, `REPO` (owner/name), `TRIGGER_HEAD_SHA` (optional, logging only). Stages, each echoed:
   1. For each (workflow file, artifact name) pair — (`ci.yml`, `coverage`), (`ci.yml`, `test-report`), (`quality.yml`, `lint-debt`) — list the last ~10 completed runs on main (`gh api "repos/$REPO/actions/workflows/<wf>/runs?branch=main&status=completed&per_page=10"`), pick the newest run whose artifact list contains the name, `gh run download <id> -n <name> -D <dir>`. Missing everywhere ⇒ warn, leave file absent. Record the head_sha and html_url of the run that supplied `coverage` — that commit keys the trend row and fills `--meta`.
   2. Security status: from the same quality.yml run list, find the newest run whose jobs (`gh api repos/$REPO/actions/runs/<id>/jobs`) contain a step named `Security scan` with conclusion `success` or `failure`; write `{status, completed_at, run_url}` to `security.json`. None found ⇒ skip (renders `n/a`).
   3. Previous body: `gh issue list --repo "$REPO" --label dashboard --state open --json number --jq '.[0].number'`; if an issue exists, save its body (`gh issue view --json body`) to `prev-body.md`.
   4. Assemble `meta.json` (`commit` = coverage-run head_sha or `n/a`, `run_url`, `updated` = `date -u`), run `go run ./hack/dashboard render …` to `body.md`.
   5. Upsert: if no issue, `gh label create dashboard --repo "$REPO" --force --description "Auto-updated quality dashboard" --color 0E8A16`, then `gh issue create --repo "$REPO" --title "Quality Dashboard" --label dashboard --body "initializing"` and capture the number; finally `gh issue edit <n> --repo "$REPO" --body-file body.md`.
-- [ ] New `.github/workflows/dashboard.yml`:
+- [x] New `.github/workflows/dashboard.yml`:
   - Header comment in the house style (what it does, why workflow_run, why the token split).
   - `on: workflow_run: workflows: [CI, quality], types: [completed], branches: [main]` plus `workflow_dispatch` (manual rebuild).
   - `permissions: { contents: read, issues: write, actions: read }`; `concurrency: { group: dashboard, cancel-in-progress: true }`.
   - One job `update` (`timeout-minutes: 10`), gated `if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.head_branch == 'main'` (belt-and-braces with the trigger filter): checkout (pinned SHA), setup-go with `go-version-file: go.mod` + `cache-dependency-path: "**/go.sum"` (pinned SHA), then `run: hack/dashboard/update.sh` with `env: GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`, `REPO: ${{ github.repository }}`, `TRIGGER_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}`.
-- [ ] `README.md`: add a "Quality dashboard" paragraph to the development-harness section — what the issue shows, when it updates, that the body is bot-owned (edits are overwritten), that trend history is capped at 20 rows, and how to force a rebuild (`workflow_dispatch` on the dashboard workflow) or run `hack/dashboard/update.sh` locally with `gh` logged in.
+- [x] `README.md`: add a "Quality dashboard" paragraph to the development-harness section — what the issue shows, when it updates, that the body is bot-owned (edits are overwritten), that trend history is capped at 20 rows, and how to force a rebuild (`workflow_dispatch` on the dashboard workflow) or run `hack/dashboard/update.sh` locally with `gh` logged in.
 
 **Automated Verification**:
-- [ ] `actionlint` passes on all workflow files.
-- [ ] `shellcheck hack/dashboard/update.sh` passes.
-- [ ] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing; `grep -rL 'timeout-minutes' .github/workflows/*.yml` finds nothing.
-- [ ] `pre-commit run --all-files` passes.
-- [ ] `make check` passes end to end.
+- [x] `actionlint` passes on all workflow files.
+- [x] `shellcheck hack/dashboard/update.sh` passes.
+- [x] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing; `grep -rL 'timeout-minutes' .github/workflows/*.yml` finds nothing.
+- [x] `pre-commit run --all-files` passes.
+- [x] `make check` passes end to end.
 
 **Manual Verification**:
 - [ ] After merging to main: dashboard workflow runs green (twice — once per completed producer workflow); the issue "Quality Dashboard" exists with label `dashboard`, all four summary rows populated (no `n/a`), per-package and per-linter tables filled, one trend row for the merge commit.
@@ -263,6 +263,12 @@ The repo's deferred-linter debt is genuinely zero today (documented in this plan
 
 - The local debt pass (`golangci-lint run -c .golangci.debt.yml ...`) exits 0 with `lint-debt.json` containing 0 issues, not the ">400" the plan's verification step expected when it was written against the pre-cleanup repo. Confirmed working end to end with real data instead: `make test-unit GOTESTFLAGS=-json` on this repo produces 187 pass / 32 skip, and `hack/dashboard render --tests ...` renders that correctly.
 - Until a linter is deferred again, the dashboard's "Lint debt" row and per-linter table will show "0 findings across 0 deferred linters" / an empty table — expected, not a bug.
+
+### Phase 3
+
+- `shellcheck` was not installed and package installation needed `sudo` (password required, unavailable non-interactively); installed it into a throwaway Python venv (`shellcheck-py`) instead of touching the system — `hack/dashboard/update.sh` passes with 0 findings.
+- Validated the whole read path against the real `m4schini/splitkauf` repo on GitHub (read-only `gh api`/`gh run download` calls: listing `ci.yml`/`quality.yml` runs, downloading the real `coverage` artifact, finding the real `Security scan` step outcome, listing for an existing `dashboard`-labeled issue) and ran `go run ./hack/dashboard render` end to end against that real data — output looked correct (per-package coverage matched the local `make test-unit` run exactly). Deliberately did **not** run `update.sh`'s mutating stage (issue/label create) against the real repo — that is an outward-facing, hard-to-reverse action and belongs to the Manual Verification step below, after this branch is reviewed and merged.
+- The Manual Verification checklist below needs a real merge to `main` and is left unchecked here; the user should perform it once this branch lands.
 
 ## Assisted-by Trailer Breakdown
 
