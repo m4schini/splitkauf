@@ -11,6 +11,10 @@ import (
 	"github.com/m4schini/splitkauf/config"
 )
 
+// initLogger installs the zap global logger exactly once, on first use of
+// Logger.
+//
+//nolint:gochecknoglobals // package-level logger singleton by design
 var initLogger = sync.OnceFunc(func() {
 	var cfg zap.Config
 

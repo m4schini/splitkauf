@@ -4,6 +4,7 @@ package lists
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,25 +32,35 @@ func (s *Service) CreateList(ctx context.Context, name string, actor uuid.UUID) 
 		return List{}, err
 	}
 
-	return s.repo.CreateList(ctx, clean, actor)
+	list, err := s.repo.CreateList(ctx, clean, actor)
+	if err != nil {
+		return List{}, fmt.Errorf("creating list: %w", err)
+	}
+
+	return list, nil
 }
 
 // Lists returns every list with its item-count summary.
 func (s *Service) Lists(ctx context.Context) ([]List, error) {
-	return s.repo.Lists(ctx)
+	lists, err := s.repo.Lists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting lists: %w", err)
+	}
+
+	return lists, nil
 }
 
 // GetList returns a single list together with all of its items. It returns
 // ErrNotFound when the list does not exist.
-func (s *Service) GetList(ctx context.Context, id uuid.UUID) (List, []Item, error) {
-	list, err := s.repo.List(ctx, id)
+func (s *Service) GetList(ctx context.Context, listID uuid.UUID) (List, []Item, error) {
+	list, err := s.repo.List(ctx, listID)
 	if err != nil {
-		return List{}, nil, err
+		return List{}, nil, fmt.Errorf("getting list: %w", err)
 	}
 
-	items, err := s.repo.ListItems(ctx, id)
+	items, err := s.repo.ListItems(ctx, listID)
 	if err != nil {
-		return List{}, nil, err
+		return List{}, nil, fmt.Errorf("getting list items: %w", err)
 	}
 
 	return list, items, nil
@@ -57,13 +68,18 @@ func (s *Service) GetList(ctx context.Context, id uuid.UUID) (List, []Item, erro
 
 // RenameList validates the new name and renames the list. It returns
 // ErrNotFound when the list does not exist.
-func (s *Service) RenameList(ctx context.Context, id uuid.UUID, name string) (List, error) {
+func (s *Service) RenameList(ctx context.Context, listID uuid.UUID, name string) (List, error) {
 	clean, err := validateListName(name)
 	if err != nil {
 		return List{}, err
 	}
 
-	return s.repo.RenameList(ctx, id, clean)
+	list, err := s.repo.RenameList(ctx, listID, clean)
+	if err != nil {
+		return List{}, fmt.Errorf("renaming list: %w", err)
+	}
+
+	return list, nil
 }
 
 // CopyList creates a new list holding a copy of every non-deleted item of the
@@ -72,10 +88,10 @@ func (s *Service) RenameList(ctx context.Context, id uuid.UUID, name string) (Li
 // other list name. The copy (and every item on it) is attributed to actor, not
 // to whoever created the source. It returns ErrNotFound when the source does
 // not exist.
-func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string, actor uuid.UUID) (List, error) {
-	source, err := s.repo.List(ctx, id)
+func (s *Service) CopyList(ctx context.Context, listID uuid.UUID, name string, actor uuid.UUID) (List, error) {
+	source, err := s.repo.List(ctx, listID)
 	if err != nil {
-		return List{}, err
+		return List{}, fmt.Errorf("getting source list: %w", err)
 	}
 
 	clean := copyListName(source.Name)
@@ -86,13 +102,22 @@ func (s *Service) CopyList(ctx context.Context, id uuid.UUID, name string, actor
 		}
 	}
 
-	return s.repo.CopyList(ctx, id, clean, actor)
+	list, err := s.repo.CopyList(ctx, listID, clean, actor)
+	if err != nil {
+		return List{}, fmt.Errorf("copying list: %w", err)
+	}
+
+	return list, nil
 }
 
 // DeleteList deletes a list and (via the repository's cascade) all its items.
 // It returns ErrNotFound when the list does not exist.
 func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
-	return s.repo.DeleteList(ctx, id)
+	if err := s.repo.DeleteList(ctx, id); err != nil {
+		return fmt.Errorf("deleting list: %w", err)
+	}
+
+	return nil
 }
 
 // AddItem validates the name, applies the quantity default, validates the unit
@@ -101,7 +126,16 @@ func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
 // already checked off (used when an offline check folds into a queued create);
 // the repository sets checkedAt at insert. It returns ErrNotFound when the list
 // does not exist.
-func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, actor uuid.UUID) (Item, error) {
+func (s *Service) AddItem(
+	ctx context.Context,
+	listID uuid.UUID,
+	name string,
+	quantity int,
+	unit string,
+	note *string,
+	checked bool,
+	actor uuid.UUID,
+) (Item, error) {
 	clean, err := validateItemName(name)
 	if err != nil {
 		return Item{}, err
@@ -112,12 +146,17 @@ func (s *Service) AddItem(ctx context.Context, listID uuid.UUID, name string, qu
 		return Item{}, err
 	}
 
-	u, err := validateUnit(unit)
+	cleanUnit, err := validateUnit(unit)
 	if err != nil {
 		return Item{}, err
 	}
 
-	return s.repo.AddItem(ctx, listID, clean, qty, u, normalizeNote(note), checked, actor)
+	item, err := s.repo.AddItem(ctx, listID, clean, qty, cleanUnit, normalizeNote(note), checked, actor)
+	if err != nil {
+		return Item{}, fmt.Errorf("adding item: %w", err)
+	}
+
+	return item, nil
 }
 
 // UpdateItem applies a partial update to an item: only the fields present in
@@ -135,38 +174,52 @@ func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, upda
 
 	if update.Quantity != nil {
 		if *update.Quantity < 1 {
-			return Item{}, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
+			return Item{}, &ValidationError{Field: fieldQuantity, Message: "quantity must be at least 1"}
 		}
 	}
 
 	if update.Unit != nil {
-		u, err := validateUnit(*update.Unit)
+		cleanUnit, err := validateUnit(*update.Unit)
 		if err != nil {
 			return Item{}, err
 		}
 
-		update.Unit = &u
+		update.Unit = &cleanUnit
 	}
 
 	if update.NoteSet {
 		update.Note = normalizeNote(update.Note)
 	}
 
-	return s.repo.UpdateItem(ctx, listID, itemID, update)
+	item, err := s.repo.UpdateItem(ctx, listID, itemID, update)
+	if err != nil {
+		return Item{}, fmt.Errorf("updating item: %w", err)
+	}
+
+	return item, nil
 }
 
 // DeleteItem removes an item from a list. The removal is a soft delete: the row
 // is kept with deleted_at set so the action replays offline and can be undone.
 // It returns ErrNotFound when the item does not exist (or is already deleted).
 func (s *Service) DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error {
-	return s.repo.DeleteItem(ctx, listID, itemID)
+	if err := s.repo.DeleteItem(ctx, listID, itemID); err != nil {
+		return fmt.Errorf("deleting item: %w", err)
+	}
+
+	return nil
 }
 
 // RestoreItem clears a soft delete, returning the restored item. It is
 // idempotent: restoring an item that is not deleted returns it unchanged. It
 // returns ErrNotFound when the item does not exist on the list.
 func (s *Service) RestoreItem(ctx context.Context, listID, itemID uuid.UUID) (Item, error) {
-	return s.repo.RestoreItem(ctx, listID, itemID)
+	item, err := s.repo.RestoreItem(ctx, listID, itemID)
+	if err != nil {
+		return Item{}, fmt.Errorf("restoring item: %w", err)
+	}
+
+	return item, nil
 }
 
 // CheckItem marks an item as checked, crediting actor as its buyer. It is an
@@ -190,10 +243,15 @@ func (s *Service) UncheckItem(ctx context.Context, listID, itemID, actor uuid.UU
 //
 // The early return on an unchanged state is what keeps a re-check from
 // reassigning an item someone else already bought.
-func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, actor uuid.UUID) (Item, error) {
+func (s *Service) setChecked(
+	ctx context.Context,
+	listID, itemID uuid.UUID,
+	checked bool,
+	actor uuid.UUID,
+) (Item, error) {
 	item, err := s.repo.Item(ctx, listID, itemID)
 	if err != nil {
-		return Item{}, err
+		return Item{}, fmt.Errorf("getting item: %w", err)
 	}
 
 	if item.Checked == checked {
@@ -211,5 +269,10 @@ func (s *Service) setChecked(ctx context.Context, listID, itemID uuid.UUID, chec
 		checkedBy = &actor
 	}
 
-	return s.repo.SetItemChecked(ctx, listID, itemID, checked, checkedAt, checkedBy)
+	result, err := s.repo.SetItemChecked(ctx, listID, itemID, checked, checkedAt, checkedBy)
+	if err != nil {
+		return Item{}, fmt.Errorf("setting item checked: %w", err)
+	}
+
+	return result, nil
 }

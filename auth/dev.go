@@ -4,6 +4,7 @@ package auth
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -13,22 +14,28 @@ import (
 // devUserID is the stable, hardcoded identifier for the dev user. It matches
 // the M1 middleware.DevAuth user's UUID so lists/items created across the M1→M2
 // transition remain attributed to the same principal.
+//
+//nolint:gochecknoglobals // fixed UUID constant; uuid.UUID cannot be a Go const
 var devUserID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
 
 // DevUser is the fixed user injected by the dev authenticator. It is exported so
 // the wiring layer can upsert it as a member at startup (dev-auth mode has no
 // login through which membership would otherwise be recorded). Its Subject in
 // the members table is the UUID string.
-var DevUser = User{ID: devUserID, Name: "Dev User"}
+//
+//nolint:gochecknoglobals // fixed dev principal; struct value cannot be a Go const
+var DevUser = User{ID: devUserID, Name: "Dev User", Email: ""}
 
 // DevMember returns the members.Member representation of the dev user, keyed by
 // its UUID string, for the startup upsert in dev-auth mode.
 func DevMember() members.Member {
 	return members.Member{
-		Subject: DevUser.ID.String(),
-		UserID:  DevUser.ID,
-		Email:   DevUser.Email,
-		Name:    DevUser.Name,
+		Subject:   DevUser.ID.String(),
+		UserID:    DevUser.ID,
+		Email:     DevUser.Email,
+		Name:      DevUser.Name,
+		CreatedAt: time.Time{}, // set by the repository on upsert
+		UpdatedAt: time.Time{}, // set by the repository on upsert
 	}
 }
 

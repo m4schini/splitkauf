@@ -27,10 +27,21 @@ func Validator() func(http.Handler) http.Handler {
 		panic(fmt.Sprintf("v1.Validator: loading embedded OpenAPI spec: %v", err))
 	}
 
-	return nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &nethttpmiddleware.Options{
-		SilenceServersWarning: true,
-		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, opts nethttpmiddleware.ErrorHandlerOpts) {
-			problem.Write(w, r, problem.New(problem.FromStatus(opts.StatusCode), err.Error()))
-		},
-	})
+	// Built as a zero value plus field assignments (rather than a literal) so
+	// the untouched options keep their documented defaults without spelling out
+	// every field of the middleware's option surface here.
+	var options nethttpmiddleware.Options
+
+	options.SilenceServersWarning = true
+	options.ErrorHandlerWithOpts = func(
+		_ context.Context,
+		handlerErr error,
+		writer http.ResponseWriter,
+		req *http.Request,
+		opts nethttpmiddleware.ErrorHandlerOpts,
+	) {
+		problem.Write(writer, req, problem.New(problem.FromStatus(opts.StatusCode), handlerErr.Error()))
+	}
+
+	return nethttpmiddleware.OapiRequestValidatorWithOptions(spec, &options)
 }

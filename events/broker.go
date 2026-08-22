@@ -22,7 +22,10 @@ type Broker struct {
 
 // NewBroker returns an empty Broker ready to accept subscribers.
 func NewBroker() *Broker {
-	return &Broker{subs: make(map[chan Event]struct{})}
+	return &Broker{
+		mu:   sync.Mutex{},
+		subs: make(map[chan Event]struct{}),
+	}
 }
 
 // Subscribe registers a new subscriber and returns a buffered receive channel
@@ -31,10 +34,10 @@ func NewBroker() *Broker {
 // to call exactly once (subsequent calls are no-ops). Callers must call
 // unsubscribe (e.g. via defer) to avoid leaking the subscriber.
 func (b *Broker) Subscribe() (<-chan Event, func()) {
-	ch := make(chan Event, subscriberBuffer)
+	sub := make(chan Event, subscriberBuffer)
 
 	b.mu.Lock()
-	b.subs[ch] = struct{}{}
+	b.subs[sub] = struct{}{}
 	b.mu.Unlock()
 
 	var once sync.Once
@@ -42,26 +45,26 @@ func (b *Broker) Subscribe() (<-chan Event, func()) {
 	unsubscribe := func() {
 		once.Do(func() {
 			b.mu.Lock()
-			delete(b.subs, ch)
+			delete(b.subs, sub)
 			b.mu.Unlock()
-			close(ch)
+			close(sub)
 		})
 	}
 
-	return ch, unsubscribe
+	return sub, unsubscribe
 }
 
-// Publish delivers e to every current subscriber with a non-blocking send: if a
+// Publish delivers event to every current subscriber with a non-blocking send: if a
 // subscriber's buffer is full the event is dropped for that subscriber only,
 // never blocking Publish or the other subscribers. Delivery order across
 // subscribers is unspecified.
-func (b *Broker) Publish(e Event) {
+func (b *Broker) Publish(event Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	for ch := range b.subs {
+	for sub := range b.subs {
 		select {
-		case ch <- e:
+		case sub <- event:
 		default:
 			// Subscriber buffer full: drop this hint for that subscriber.
 		}

@@ -10,27 +10,30 @@ import (
 	"github.com/m4schini/splitkauf/config"
 )
 
-// rootCmd represents the base command when called without any subcommands.
-// It only prints help; runnable behaviour lives in subcommands (e.g. serve).
-var rootCmd = &cobra.Command{
-	Use:   config.ServiceName,
-	Short: "Splitkauf service",
-	RunE: func(cmd *cobra.Command, _ []string) error {
+// newRootCmd builds the base command and wires every subcommand under it in
+// one place. The root itself only prints help; runnable behaviour lives in
+// subcommands (e.g. serve).
+func newRootCmd() *cobra.Command {
+	rootCmd := new(cobra.Command)
+	rootCmd.Use = config.ServiceName
+	rootCmd.Short = "Splitkauf service"
+	rootCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return cmd.Help()
-	},
-}
-
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
 	}
+
+	rootCmd.AddCommand(newServeCmd(), newMigrateCmd(), newUserCmd())
+
+	return rootCmd
 }
 
-func init() {
+// Execute builds the command tree, loads configuration and runs the command
+// named on the command line. This is called by main.main().
+func Execute() {
 	cobra.OnInitialize(func() {
 		cobra.CheckErr(config.Load())
 	})
+
+	if err := newRootCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
 }

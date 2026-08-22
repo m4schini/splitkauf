@@ -5,6 +5,8 @@ package cmd
 import "testing"
 
 func TestSessionStore(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		oidcEnabled  bool
@@ -17,38 +19,44 @@ func TestSessionStore(t *testing.T) {
 			oidcEnabled:  true,
 			dbReachable:  true,
 			wantPostgres: true,
+			wantErr:      "",
 		},
 		{
-			name:        "oidc with unreachable db fails fast",
-			oidcEnabled: true,
-			dbReachable: false,
-			wantErr:     "sessions require a reachable database in OIDC mode",
+			name:         "oidc with unreachable db fails fast",
+			oidcEnabled:  true,
+			dbReachable:  false,
+			wantPostgres: false,
+			wantErr:      "sessions require a reachable database in OIDC mode",
 		},
 		{
 			name:         "dev-auth with reachable db uses postgres",
 			oidcEnabled:  false,
 			dbReachable:  true,
 			wantPostgres: true,
+			wantErr:      "",
 		},
 		{
 			name:         "dev-auth with unreachable db falls back to memory",
 			oidcEnabled:  false,
 			dbReachable:  false,
 			wantPostgres: false,
+			wantErr:      "",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			usePostgres, err := sessionStore(tt.oidcEnabled, tt.dbReachable)
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
 
-			if tt.wantErr != "" {
+			usePostgres, err := sessionStore(tst.oidcEnabled, tst.dbReachable)
+
+			if tst.wantErr != "" {
 				if err == nil {
-					t.Fatalf("sessionStore() error = nil, want %q", tt.wantErr)
+					t.Fatalf("sessionStore() error = nil, want %q", tst.wantErr)
 				}
 
-				if err.Error() != tt.wantErr {
-					t.Fatalf("sessionStore() error = %q, want %q", err.Error(), tt.wantErr)
+				if err.Error() != tst.wantErr {
+					t.Fatalf("sessionStore() error = %q, want %q", err.Error(), tst.wantErr)
 				}
 
 				return
@@ -58,8 +66,8 @@ func TestSessionStore(t *testing.T) {
 				t.Fatalf("sessionStore() unexpected error = %v", err)
 			}
 
-			if usePostgres != tt.wantPostgres {
-				t.Errorf("sessionStore() usePostgres = %v, want %v", usePostgres, tt.wantPostgres)
+			if usePostgres != tst.wantPostgres {
+				t.Errorf("sessionStore() usePostgres = %v, want %v", usePostgres, tst.wantPostgres)
 			}
 		})
 	}

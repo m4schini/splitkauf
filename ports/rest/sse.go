@@ -25,14 +25,14 @@ const heartbeatInterval = 25 * time.Second
 // it never leaks the subscription or the ticker. It is nil-safe: with a nil
 // broker it degrades to a heartbeat-only stream rather than panicking.
 func sseHandler(broker *events.Broker) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(writer http.ResponseWriter, req *http.Request) {
 		log := telemetry.Logger("sse")
 
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.Header().Set("Cache-Control", "no-cache")
+		writer.Header().Set("Connection", "keep-alive")
 
-		rc := http.NewResponseController(w)
+		respCtrl := http.NewResponseController(writer)
 
 		// Subscribe before the first flush so no event published after the
 		// stream opens is missed. In degraded mode (nil broker) events is nil
@@ -48,7 +48,7 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 
 		// Flush the headers so the client's EventSource opens immediately rather
 		// than waiting for the first event or heartbeat.
-		if err := rc.Flush(); err != nil {
+		if err := respCtrl.Flush(); err != nil {
 			log.Debug("initial flush failed; client likely gone", zap.Error(err))
 
 			return
@@ -57,61 +57,75 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 		ticker := time.NewTicker(heartbeatInterval)
 		defer ticker.Stop()
 
-		ctx := r.Context()
+		ctx := req.Context()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if _, err := w.Write([]byte(": ping\n\n")); err != nil {
-					log.Debug("heartbeat write failed; ending stream", zap.Error(err))
-
+				if !writeHeartbeat(writer, respCtrl, log) {
 					return
 				}
-
-				if err := rc.Flush(); err != nil {
-					log.Debug("heartbeat flush failed; ending stream", zap.Error(err))
-
-					return
-				}
-			case e, ok := <-eventsCh:
+			case event, ok := <-eventsCh:
 				if !ok {
 					// Broker closed our subscription; end the stream.
 					return
 				}
 
-				payload, err := json.Marshal(e)
-				if err != nil {
-					log.Error("marshalling event", zap.Error(err))
-
-					continue
-				}
-
-				if _, err := w.Write([]byte("data: ")); err != nil {
-					log.Debug("event write failed; ending stream", zap.Error(err))
-
-					return
-				}
-
-				if _, err := w.Write(payload); err != nil {
-					log.Debug("event write failed; ending stream", zap.Error(err))
-
-					return
-				}
-
-				if _, err := w.Write([]byte("\n\n")); err != nil {
-					log.Debug("event write failed; ending stream", zap.Error(err))
-
-					return
-				}
-
-				if err := rc.Flush(); err != nil {
-					log.Debug("event flush failed; ending stream", zap.Error(err))
-
+				if !writeEventFrame(writer, respCtrl, log, event) {
 					return
 				}
 			}
 		}
 	}
+}
+
+// writeHeartbeat emits a `: ping` comment line and flushes it. It reports
+// whether the stream is still usable; a write or flush failure means the
+// client is gone and the stream should end.
+func writeHeartbeat(writer http.ResponseWriter, respCtrl *http.ResponseController, log *zap.Logger) bool {
+	if _, err := writer.Write([]byte(": ping\n\n")); err != nil {
+		log.Debug("heartbeat write failed; ending stream", zap.Error(err))
+
+		return false
+	}
+
+	if err := respCtrl.Flush(); err != nil {
+		log.Debug("heartbeat flush failed; ending stream", zap.Error(err))
+
+		return false
+	}
+
+	return true
+}
+
+// writeEventFrame marshals event and writes it as a `data: <json>` frame,
+// flushing so the browser sees it immediately. It reports whether the stream
+// is still usable: a marshal failure skips the event but keeps the stream
+// alive, while a write or flush failure ends it.
+func writeEventFrame(
+	writer http.ResponseWriter, respCtrl *http.ResponseController, log *zap.Logger, event events.Event,
+) bool {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		log.Error("marshalling event", zap.Error(err))
+
+		return true
+	}
+
+	frame := append(append([]byte("data: "), payload...), "\n\n"...)
+	if _, err := writer.Write(frame); err != nil {
+		log.Debug("event write failed; ending stream", zap.Error(err))
+
+		return false
+	}
+
+	if err := respCtrl.Flush(); err != nil {
+		log.Debug("event flush failed; ending stream", zap.Error(err))
+
+		return false
+	}
+
+	return true
 }

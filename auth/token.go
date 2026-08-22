@@ -5,6 +5,7 @@ package auth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 )
 
 // randomTokenBytes is the entropy, in bytes, of the state and nonce values.
@@ -15,10 +16,10 @@ const randomTokenBytes = 32
 // OIDC state and nonce parameters. It reads from crypto/rand and returns an
 // error only when the system entropy source fails.
 func randomToken() (string, error) {
-	b := make([]byte, randomTokenBytes)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+	buf := make([]byte, randomTokenBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("reading random bytes: %w", err)
 	}
 
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }

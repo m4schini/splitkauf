@@ -3,6 +3,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"runtime/debug"
 
@@ -20,8 +21,8 @@ import (
 func Recover(next http.Handler) http.Handler {
 	log := telemetry.Logger("api")
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rw := &recoverWriter{ResponseWriter: w}
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		wrapped := &recoverWriter{ResponseWriter: writer, wrote: false}
 
 		defer func() {
 			rec := recover()
@@ -30,21 +31,21 @@ func Recover(next http.Handler) http.Handler {
 			}
 
 			log.Error("panic recovered",
-				zap.String("method", r.Method),
-				zap.String("path", r.URL.Path),
+				zap.String("method", req.Method),
+				zap.String("path", req.URL.Path),
 				zap.Any("panic", rec),
 				zap.ByteString("stack", debug.Stack()),
 			)
 			// If the handler already wrote a response, we cannot safely emit a
 			// problem body; re-panic so chi aborts the connection.
-			if rw.wrote {
+			if wrapped.wrote {
 				panic(rec)
 			}
 
-			problem.Write(w, r, problem.New(problem.Internal, problem.Internal.Description))
+			problem.Write(writer, req, problem.New(problem.Internal, problem.Internal.Description))
 		}()
 
-		next.ServeHTTP(rw, r)
+		next.ServeHTTP(wrapped, req)
 	})
 }
 
@@ -64,7 +65,12 @@ func (rw *recoverWriter) WriteHeader(status int) {
 func (rw *recoverWriter) Write(b []byte) (int, error) {
 	rw.wrote = true
 
-	return rw.ResponseWriter.Write(b)
+	n, err := rw.ResponseWriter.Write(b)
+	if err != nil {
+		return n, fmt.Errorf("writing response: %w", err)
+	}
+
+	return n, nil
 }
 
 // Flush forwards to the underlying ResponseWriter when it supports

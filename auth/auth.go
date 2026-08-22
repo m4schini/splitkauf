@@ -79,23 +79,28 @@ func UserFrom(ctx context.Context) (User, bool) {
 // combined authenticator offering both sign-in methods; else the OIDC BFF
 // authenticator when cfg.IsOIDCEnabled() (discovering the provider via ctx);
 // else the local username/password authenticator when cfg.IsPasswordEnabled();
-// else dev-auth. sm is the shared session manager (used by OIDC and password
+// else dev-auth. sessionManager is the shared session manager (used by OIDC and password
 // modes, ignored in dev mode); membersRepo receives the upsert of every
 // account that signs in; usersRepo backs credential lookup in password mode
 // (may be nil otherwise).
-func New(ctx context.Context, cfg *config.Config, sm *scs.SessionManager, membersRepo members.Repository, usersRepo users.Repository) (Authenticator, error) {
+//
+//nolint:ireturn // factory selects between multiple Authenticator implementations at runtime
+func New(
+	ctx context.Context, cfg *config.Config, sessionManager *scs.SessionManager,
+	membersRepo members.Repository, usersRepo users.Repository,
+) (Authenticator, error) {
 	switch {
 	case cfg.IsOIDCEnabled() && cfg.IsPasswordEnabled():
-		o, err := newOIDC(ctx, cfg, sm, membersRepo)
+		o, err := newOIDC(ctx, cfg, sessionManager, membersRepo)
 		if err != nil {
 			return nil, err
 		}
 
-		return newCombined(o, newPassword(sm, usersRepo, membersRepo)), nil
+		return newCombined(o, newPassword(sessionManager, usersRepo, membersRepo)), nil
 	case cfg.IsOIDCEnabled():
-		return newOIDC(ctx, cfg, sm, membersRepo)
+		return newOIDC(ctx, cfg, sessionManager, membersRepo)
 	case cfg.IsPasswordEnabled():
-		return newPassword(sm, usersRepo, membersRepo), nil
+		return newPassword(sessionManager, usersRepo, membersRepo), nil
 	default:
 		return newDev(), nil
 	}

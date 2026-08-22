@@ -5,6 +5,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/alexedwards/scs/v2"
@@ -37,8 +38,8 @@ const (
 // for diagnostics/logging only. It is stored as JSON under a single scs key
 // and is never exposed to the browser.
 type SessionData struct {
-	UserID  uuid.UUID `json:"user_id"`
-	IDToken string    `json:"id_token"`
+	UserID  uuid.UUID `json:"user_id"`  //nolint:tagliatelle // persisted session format; renaming breaks sessions
+	IDToken string    `json:"id_token"` //nolint:tagliatelle // persisted session format; renaming breaks sessions
 	Subject string    `json:"subject"`
 	Email   string    `json:"email"`
 	Name    string    `json:"name"`
@@ -47,29 +48,31 @@ type SessionData struct {
 // getSessionData returns the SessionData stored in the current session and true,
 // or the zero value and false when the session holds none (or holds an
 // unparseable value). ctx must carry the scs session (via LoadAndSave).
-func getSessionData(ctx context.Context, sm *scs.SessionManager) (SessionData, bool) {
-	raw := sm.GetBytes(ctx, sessionDataKey)
+func getSessionData(ctx context.Context, sessions *scs.SessionManager) (SessionData, bool) {
+	var none SessionData
+
+	raw := sessions.GetBytes(ctx, sessionDataKey)
 	if len(raw) == 0 {
-		return SessionData{}, false
+		return none, false
 	}
 
-	var d SessionData
-	if err := json.Unmarshal(raw, &d); err != nil {
-		return SessionData{}, false
+	var data SessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return none, false
 	}
 
-	return d, true
+	return data, true
 }
 
 // putSessionData stores d as JSON under the session-data key, replacing any
 // previous value.
-func putSessionData(ctx context.Context, sm *scs.SessionManager, d SessionData) error {
-	raw, err := json.Marshal(d)
+func putSessionData(ctx context.Context, sessions *scs.SessionManager, data SessionData) error {
+	raw, err := json.Marshal(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshaling session data: %w", err)
 	}
 
-	sm.Put(ctx, sessionDataKey, raw)
+	sessions.Put(ctx, sessionDataKey, raw)
 
 	return nil
 }
@@ -79,12 +82,12 @@ func putSessionData(ctx context.Context, sm *scs.SessionManager, d SessionData) 
 // with one lacking a resolved user id) with a 401 problem, and otherwise
 // places the auth.User in the request context. It never contacts an identity
 // provider; the scs session lifetime alone governs expiry.
-func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handler) http.Handler {
+func requireSession(sessions *scs.SessionManager, logger *zap.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
+		return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
 
-			data, ok := getSessionData(ctx, sm)
+			data, ok := getSessionData(ctx, sessions)
 			if !ok {
 				// The 401 the browser sees on GET /api/v1/me. Whether the request
 				// carried a session cookie tells the two failure modes apart: no
@@ -93,10 +96,10 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 				// the server-side session store has no matching session (e.g. an
 				// in-memory store after a restart, or an expired/destroyed session).
 				logger.Info("requireauth: no active session, returning 401",
-					zap.String("path", r.URL.Path),
-					zap.Bool("incoming_session_cookie", hasSessionCookie(sm, r)),
+					zap.String("path", req.URL.Path),
+					zap.Bool("incoming_session_cookie", hasSessionCookie(sessions, req)),
 				)
-				problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
+				problem.Write(res, req, problem.New(problem.Unauthorized, "no active session"))
 
 				return
 			}
@@ -105,20 +108,20 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 				// A session written before UserID existed in SessionData; the user
 				// must sign in again once after the deploy.
 				logger.Info("requireauth: session has no user id (pre-alignment session), returning 401",
-					zap.String("path", r.URL.Path),
+					zap.String("path", req.URL.Path),
 					zap.String("subject", data.Subject),
 				)
-				problem.Write(w, r, problem.New(problem.Unauthorized, "no active session"))
+				problem.Write(res, req, problem.New(problem.Unauthorized, "no active session"))
 
 				return
 			}
 
-			u := User{ID: data.UserID, Name: data.Name, Email: data.Email}
+			user := User{ID: data.UserID, Name: data.Name, Email: data.Email}
 			logger.Debug("requireauth: authenticated",
-				zap.String("path", r.URL.Path),
+				zap.String("path", req.URL.Path),
 				zap.String("subject", data.Subject),
 			)
-			next.ServeHTTP(w, r.WithContext(WithUser(ctx, u)))
+			next.ServeHTTP(res, req.WithContext(WithUser(ctx, user)))
 		})
 	}
 }
@@ -127,8 +130,8 @@ func requireSession(sm *scs.SessionManager, logger *zap.Logger) func(http.Handle
 // It only checks presence (not validity), for diagnostic logging of the login
 // flow — a missing cookie on the callback or an API request is the usual cause
 // of a lost session.
-func hasSessionCookie(sm *scs.SessionManager, r *http.Request) bool {
-	_, err := r.Cookie(sm.Cookie.Name)
+func hasSessionCookie(sessions *scs.SessionManager, req *http.Request) bool {
+	_, err := req.Cookie(sessions.Cookie.Name)
 
 	return err == nil
 }

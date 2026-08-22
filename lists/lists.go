@@ -25,21 +25,27 @@ const maxNameLength = 200
 // ("Stück") in the UI and is the schema/DB default for the unit column.
 const defaultUnit = "amount"
 
-// units is the canonical, curated German/European grocery unit set. It is the
-// single source of truth for the valid unit tokens: the OpenAPI Unit enum and
-// the items.unit CHECK constraint mirror it, and a drift test pins the spec to
-// it so the three never diverge. Order matches the spec enum.
-var units = []string{
-	"amount", "g", "kg", "ml", "l", "pack", "bottle", "can", "jar", "cup", "bunch", "bag",
+// Names of the caller-supplied input fields cited in ValidationError values.
+const (
+	fieldName     = "name"
+	fieldQuantity = "quantity"
+	fieldUnit     = "unit"
+)
+
+// canonicalUnits returns the canonical, curated German/European grocery unit
+// set. It is the single source of truth for the valid unit tokens: the OpenAPI
+// Unit enum and the items.unit CHECK constraint mirror it, and a drift test
+// pins the spec to it so the three never diverge. Order matches the spec enum.
+func canonicalUnits() []string {
+	return []string{
+		defaultUnit, "g", "kg", "ml", "l", "pack", "bottle", "can", "jar", "cup", "bunch", "bag",
+	}
 }
 
-// Units returns the canonical list of valid unit tokens (a fresh copy so callers
-// cannot mutate the source of truth).
+// Units returns the canonical list of valid unit tokens (a fresh slice so
+// callers cannot mutate the source of truth).
 func Units() []string {
-	out := make([]string, len(units))
-	copy(out, units)
-
-	return out
+	return canonicalUnits()
 }
 
 // ErrNotFound is returned when a requested list or item does not exist. The
@@ -124,7 +130,17 @@ type ItemUpdate struct {
 // attribution, rather than read from the context: the domain stays free of
 // transport concerns, and a missing actor becomes a compile error instead of a
 // silently unattributed row.
+// The method set is grouped into ListRepository (the lists themselves) and
+// ItemRepository (the items on them); Repository is the union the Service
+// depends on.
 type Repository interface {
+	ListRepository
+	ItemRepository
+}
+
+// ListRepository is the list-level half of the persistence port: creating,
+// enumerating, renaming, copying, and deleting whole lists.
+type ListRepository interface {
 	CreateList(ctx context.Context, name string, createdBy uuid.UUID) (List, error)
 	Lists(ctx context.Context) ([]List, error)
 	List(ctx context.Context, id uuid.UUID) (List, error)
@@ -138,12 +154,25 @@ type Repository interface {
 	// credited as the creator of the copy and the adder of every copied item —
 	// the copy is their new list, whoever assembled the original.
 	CopyList(ctx context.Context, sourceID uuid.UUID, name string, actor uuid.UUID) (List, error)
+}
 
+// ItemRepository is the item-level half of the persistence port: the lifecycle
+// of the entries on a list. Item lookups are always scoped to their list.
+type ItemRepository interface {
 	// AddItem adds an item to a list, credited to addedBy. When checked is
 	// true the item is also credited to addedBy as its buyer: that combination
 	// is an offline check folded into a queued create, so the same actor did
 	// both and no SetItemChecked call will ever follow to record it.
-	AddItem(ctx context.Context, listID uuid.UUID, name string, quantity int, unit string, note *string, checked bool, addedBy uuid.UUID) (Item, error)
+	AddItem(
+		ctx context.Context,
+		listID uuid.UUID,
+		name string,
+		quantity int,
+		unit string,
+		note *string,
+		checked bool,
+		addedBy uuid.UUID,
+	) (Item, error)
 	Item(ctx context.Context, listID, itemID uuid.UUID) (Item, error)
 	UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update ItemUpdate) (Item, error)
 	DeleteItem(ctx context.Context, listID, itemID uuid.UUID) error
@@ -151,7 +180,13 @@ type Repository interface {
 	// SetItemChecked writes an item's checked state. checkedBy is the buyer to
 	// credit when checking, and nil when unchecking — which clears the stored
 	// buyer alongside checkedAt.
-	SetItemChecked(ctx context.Context, listID, itemID uuid.UUID, checked bool, checkedAt *time.Time, checkedBy *uuid.UUID) (Item, error)
+	SetItemChecked(
+		ctx context.Context,
+		listID, itemID uuid.UUID,
+		checked bool,
+		checkedAt *time.Time,
+		checkedBy *uuid.UUID,
+	) (Item, error)
 }
 
 // validateListName trims and validates a list name, returning the cleaned
@@ -169,11 +204,11 @@ func validateItemName(name string) (string, error) {
 func validateName(name string) (string, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return "", &ValidationError{Field: "name", Message: "name must not be empty"}
+		return "", &ValidationError{Field: fieldName, Message: "name must not be empty"}
 	}
 
 	if len(trimmed) > maxNameLength {
-		return "", &ValidationError{Field: "name", Message: "name is too long"}
+		return "", &ValidationError{Field: fieldName, Message: "name is too long"}
 	}
 
 	return trimmed, nil
@@ -204,31 +239,31 @@ func copyListName(original string) string {
 // normalizeQuantity applies the domain default and bound for a new item's
 // quantity: zero means "unset" and defaults to 1; any other value below 1 is a
 // ValidationError on the "quantity" field.
-func normalizeQuantity(q int) (int, error) {
-	if q == 0 {
+func normalizeQuantity(quantity int) (int, error) {
+	if quantity == 0 {
 		return 1, nil
 	}
 
-	if q < 1 {
-		return 0, &ValidationError{Field: "quantity", Message: "quantity must be at least 1"}
+	if quantity < 1 {
+		return 0, &ValidationError{Field: fieldQuantity, Message: "quantity must be at least 1"}
 	}
 
-	return q, nil
+	return quantity, nil
 }
 
 // validateUnit normalises and validates a unit token. An empty string defaults
 // to "amount"; any value not in Units() is a ValidationError on the "unit"
 // field. The returned value is always one of the canonical tokens.
-func validateUnit(u string) (string, error) {
-	if u == "" {
+func validateUnit(unit string) (string, error) {
+	if unit == "" {
 		return defaultUnit, nil
 	}
 
-	if slices.Contains(units, u) {
-		return u, nil
+	if slices.Contains(canonicalUnits(), unit) {
+		return unit, nil
 	}
 
-	return "", &ValidationError{Field: "unit", Message: "unit is not a recognised value"}
+	return "", &ValidationError{Field: fieldUnit, Message: "unit is not a recognised value"}
 }
 
 // note trims an optional note. A nil pointer, or one that trims to empty, is

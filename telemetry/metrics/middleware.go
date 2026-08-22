@@ -3,6 +3,7 @@
 package metrics
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,18 +16,20 @@ import (
 // come from chi.RouteContext so cardinality stays bounded to the registered
 // path patterns rather than the raw URL.
 func Middleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ensureRegistered()
+
+	return http.HandlerFunc(func(respWriter http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 
 		httpInFlight.Inc()
 		defer httpInFlight.Dec()
 
-		rw := &recordingWriter{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rw, r)
+		recorder := &recordingWriter{ResponseWriter: respWriter, status: http.StatusOK, bytes: 0}
+		next.ServeHTTP(recorder, req)
 
 		route := ""
-		if rc := chi.RouteContext(r.Context()); rc != nil {
-			route = rc.RoutePattern()
+		if routeCtx := chi.RouteContext(req.Context()); routeCtx != nil {
+			route = routeCtx.RoutePattern()
 		}
 		// Fall back to a stable label when the request did not match a route
 		// (e.g. 404), so we do not blow up cardinality with raw paths.
@@ -34,10 +37,10 @@ func Middleware(next http.Handler) http.Handler {
 			route = "unmatched"
 		}
 
-		status := strconv.Itoa(rw.status)
-		httpRequestsTotal.WithLabelValues(r.Method, route, status).Inc()
-		httpRequestDuration.WithLabelValues(r.Method, route, status).Observe(time.Since(start).Seconds())
-		httpResponseSize.WithLabelValues(r.Method, route).Observe(float64(rw.bytes))
+		status := strconv.Itoa(recorder.status)
+		httpRequestsTotal.WithLabelValues(req.Method, route, status).Inc()
+		httpRequestDuration.WithLabelValues(req.Method, route, status).Observe(time.Since(start).Seconds())
+		httpResponseSize.WithLabelValues(req.Method, route).Observe(float64(recorder.bytes))
 	})
 }
 
@@ -54,10 +57,14 @@ func (rw *recordingWriter) WriteHeader(status int) {
 }
 
 func (rw *recordingWriter) Write(b []byte) (int, error) {
-	n, err := rw.ResponseWriter.Write(b)
-	rw.bytes += n
+	written, err := rw.ResponseWriter.Write(b)
+	rw.bytes += written
 
-	return n, err
+	if err != nil {
+		return written, fmt.Errorf("writing response body: %w", err)
+	}
+
+	return written, nil
 }
 
 // Flush forwards to the underlying ResponseWriter when it supports

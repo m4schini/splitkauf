@@ -35,27 +35,27 @@ func Handler() http.Handler {
 		panic("ports/web: dist/index.html missing: " + err.Error())
 	}
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		name := strings.TrimPrefix(path.Clean(req.URL.Path), "/")
 		if name == "." {
 			name = "index.html"
 		}
 
 		if _, statErr := fs.Stat(sub, name); statErr != nil {
 			if path.Ext(name) != "" {
-				http.NotFound(w, r)
+				http.NotFound(writer, req)
 
 				return
 			}
 			// No file at this path and no extension: treat as a client-side
 			// route and serve the app shell.
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(index)
+			writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+			writer.WriteHeader(http.StatusOK)
+			_, _ = writer.Write(index)
 
 			return
 		}
 
-		fileServer.ServeHTTP(w, r)
+		fileServer.ServeHTTP(writer, req)
 	})
 }

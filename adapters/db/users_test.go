@@ -12,6 +12,10 @@ import (
 	"github.com/m4schini/splitkauf/users"
 )
 
+// testPasswordHash is an opaque bcrypt-shaped placeholder; nothing here
+// verifies it.
+const testPasswordHash = "$2a$10$abcdefghijklmnopqrstuv"
+
 // newTestUserRepo opens a UserRepository against SPLITKAUF_TEST_DATABASE_DSN,
 // skipping under -short or when the DSN is unset. It TRUNCATEs the users table
 // so each test starts clean.
@@ -41,14 +45,15 @@ func newTestUserRepo(t *testing.T) (*db.UserRepository, context.Context) {
 	return db.NewUserRepository(conn), context.Background()
 }
 
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestUserCreateAndGet(t *testing.T) {
 	repo, ctx := newTestUserRepo(t)
 
 	created, err := repo.Create(ctx, users.NewUser{
-		Username:     "alex",
-		PasswordHash: "$2a$10$abcdefghijklmnopqrstuv", // opaque; not verified here
-		Name:         "Alex",
-		Email:        "alex@example.com",
+		Username:     usernameAlex,
+		PasswordHash: testPasswordHash,
+		Name:         nameAlex,
+		Email:        emailAlex,
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
@@ -58,11 +63,11 @@ func TestUserCreateAndGet(t *testing.T) {
 		t.Error("Create returned a zero id")
 	}
 
-	if created.Username != "alex" || created.Name != "Alex" || created.Email != "alex@example.com" {
+	if created.Username != usernameAlex || created.Name != nameAlex || created.Email != emailAlex {
 		t.Errorf("Create returned %+v", created)
 	}
 
-	got, hash, err := repo.GetByUsername(ctx, "alex")
+	got, hash, err := repo.GetByUsername(ctx, usernameAlex)
 	if err != nil {
 		t.Fatalf("GetByUsername: %v", err)
 	}
@@ -71,24 +76,29 @@ func TestUserCreateAndGet(t *testing.T) {
 		t.Errorf("GetByUsername id = %s, want %s", got.ID, created.ID)
 	}
 
-	if hash != "$2a$10$abcdefghijklmnopqrstuv" {
+	if hash != testPasswordHash {
 		t.Errorf("GetByUsername returned hash %q", hash)
 	}
 }
 
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestUserCreateDuplicateUsername(t *testing.T) {
 	repo, ctx := newTestUserRepo(t)
 
-	if _, err := repo.Create(ctx, users.NewUser{Username: "alex", PasswordHash: "h"}); err != nil {
+	first := users.NewUser{Username: usernameAlex, PasswordHash: "h", Name: "", Email: ""}
+	if _, err := repo.Create(ctx, first); err != nil {
 		t.Fatalf("first Create: %v", err)
 	}
 
-	_, err := repo.Create(ctx, users.NewUser{Username: "alex", PasswordHash: "h2"})
+	second := users.NewUser{Username: usernameAlex, PasswordHash: "h2", Name: "", Email: ""}
+
+	_, err := repo.Create(ctx, second)
 	if !errors.Is(err, users.ErrUsernameTaken) {
 		t.Errorf("duplicate Create err = %v, want ErrUsernameTaken", err)
 	}
 }
 
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestUserGetByUsernameNotFound(t *testing.T) {
 	repo, ctx := newTestUserRepo(t)
 
@@ -100,10 +110,12 @@ func TestUserGetByUsernameNotFound(t *testing.T) {
 
 // TestUserCreateEmptyEmailStoredAsNull confirms an omitted email round-trips as
 // an empty string (stored NULL, read back via COALESCE).
+//
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestUserCreateEmptyEmailStoredAsNull(t *testing.T) {
 	repo, ctx := newTestUserRepo(t)
 
-	created, err := repo.Create(ctx, users.NewUser{Username: "noemail", PasswordHash: "h"})
+	created, err := repo.Create(ctx, users.NewUser{Username: "noemail", PasswordHash: "h", Name: "", Email: ""})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/google/uuid"
 
 	"github.com/m4schini/splitkauf/config"
 	"github.com/m4schini/splitkauf/users"
@@ -20,7 +21,9 @@ import (
 type stubUsers struct{}
 
 func (stubUsers) Create(context.Context, users.NewUser) (users.User, error) {
-	return users.User{}, nil
+	var none users.User
+
+	return none, nil
 }
 
 func (stubUsers) GetByUsername(context.Context, string) (users.User, string, error) {
@@ -31,8 +34,11 @@ func (stubUsers) GetByUsername(context.Context, string) (users.User, string, err
 // discovery server, plus its session manager.
 func newCombinedForTest(t *testing.T) (*combinedAuthenticator, *scs.SessionManager) {
 	t.Helper()
+
 	issuer := newDiscoveryServer(t)
-	cfg := &config.Config{}
+
+	var cfg config.Config
+
 	cfg.Auth.OIDC.Issuer = issuer
 	cfg.Auth.OIDC.ClientID = "client-id"
 	cfg.Auth.OIDC.ClientSecret = "client-secret"
@@ -43,28 +49,30 @@ func newCombinedForTest(t *testing.T) (*combinedAuthenticator, *scs.SessionManag
 		t.Fatalf("Mode() = %q, want %q", cfg.Mode(), config.AuthModeCombined)
 	}
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	a, err := New(context.Background(), cfg, sm, noopMembers{}, stubUsers{})
+	authenticator, err := New(context.Background(), &cfg, sessions, noopMembers{}, stubUsers{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	ca, ok := a.(*combinedAuthenticator)
+	combined, ok := authenticator.(*combinedAuthenticator)
 	if !ok {
-		t.Fatalf("New returned %T, want *combinedAuthenticator", a)
+		t.Fatalf("New returned %T, want *combinedAuthenticator", authenticator)
 	}
 
-	return ca, sm
+	return combined, sessions
 }
 
 func TestCombinedLoginDispatchesOnMethod(t *testing.T) {
-	ca, sm := newCombinedForTest(t)
+	t.Parallel()
+
+	combined, sessions := newCombinedForTest(t)
 
 	// GET starts the OIDC redirect flow.
 	rec := httptest.NewRecorder()
-	sm.LoadAndSave(http.HandlerFunc(ca.Login)).
-		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/login", nil))
+	sessions.LoadAndSave(http.HandlerFunc(combined.Login)).
+		ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/login", nil))
 
 	if rec.Code != http.StatusFound {
 		t.Fatalf("GET login status = %d, want 302", rec.Code)
@@ -78,8 +86,8 @@ func TestCombinedLoginDispatchesOnMethod(t *testing.T) {
 	// the password path, not an OIDC redirect.
 	rec = httptest.NewRecorder()
 	body := strings.NewReader(`{"username":"ghost","password":"nope"}`)
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
-	sm.LoadAndSave(http.HandlerFunc(ca.Login)).ServeHTTP(rec, req)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/auth/login", body)
+	sessions.LoadAndSave(http.HandlerFunc(combined.Login)).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("POST login (unknown user) status = %d, want 401", rec.Code)
@@ -87,18 +95,27 @@ func TestCombinedLoginDispatchesOnMethod(t *testing.T) {
 }
 
 func TestCombinedLogoutDispatchesOnSessionOrigin(t *testing.T) {
-	ca, sm := newCombinedForTest(t)
-	handler := sm.LoadAndSave(http.HandlerFunc(ca.Logout))
+	t.Parallel()
+
+	combined, sessions := newCombinedForTest(t)
+	handler := sessions.LoadAndSave(http.HandlerFunc(combined.Logout))
 
 	// A password session (no ID token) is destroyed locally and sent home,
 	// never to the IdP.
-	token := seedSession(t, sm, func(ctx context.Context) {
-		if err := putSessionData(ctx, sm, SessionData{Subject: "local-user"}); err != nil {
+	token := seedSession(t, sessions, func(ctx context.Context) {
+		data := SessionData{
+			UserID:  uuid.Nil,
+			IDToken: "",
+			Subject: "local-user",
+			Email:   "",
+			Name:    "",
+		}
+		if err := putSessionData(ctx, sessions, data); err != nil {
 			t.Fatalf("putSessionData: %v", err)
 		}
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/auth/logout", nil)
+	req.AddCookie(sessionCookie(sessions.Cookie.Name, token))
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -108,13 +125,20 @@ func TestCombinedLogoutDispatchesOnSessionOrigin(t *testing.T) {
 	}
 
 	// An OIDC session (ID token present) gets RP-initiated logout at the IdP.
-	token = seedSession(t, sm, func(ctx context.Context) {
-		if err := putSessionData(ctx, sm, SessionData{Subject: "oidc-user", IDToken: "raw-id-token"}); err != nil {
+	token = seedSession(t, sessions, func(ctx context.Context) {
+		data := SessionData{
+			UserID:  uuid.Nil,
+			IDToken: "fake-id-token",
+			Subject: "oidc-user",
+			Email:   "",
+			Name:    "",
+		}
+		if err := putSessionData(ctx, sessions, data); err != nil {
 			t.Fatalf("putSessionData: %v", err)
 		}
 	})
-	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req.AddCookie(&http.Cookie{Name: sm.Cookie.Name, Value: token})
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/auth/logout", nil)
+	req.AddCookie(sessionCookie(sessions.Cookie.Name, token))
 
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -124,7 +148,7 @@ func TestCombinedLogoutDispatchesOnSessionOrigin(t *testing.T) {
 	}
 
 	loc := rec.Header().Get("Location")
-	if !strings.Contains(loc, "/logout") || !strings.Contains(loc, "id_token_hint=raw-id-token") {
+	if !strings.Contains(loc, "/logout") || !strings.Contains(loc, "id_token_hint=fake-id-token") {
 		t.Errorf("oidc-session logout redirects to %q, want the IdP end-session endpoint with the hint", loc)
 	}
 }

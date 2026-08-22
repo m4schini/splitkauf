@@ -164,8 +164,12 @@ func quoteDSNValue(v string) string {
 	return "'" + replacer.Replace(v) + "'"
 }
 
+// C is the process-wide configuration singleton, populated exactly once by
+// Load (guarded by cfgOnce) and read-only afterwards.
+//
+//nolint:gochecknoglobals // package-level singleton by design
 var (
-	C       *Config
+	C       *Config //nolint:varnamelen // established package API (config.C); renaming would touch every caller
 	cfgOnce sync.Once
 )
 
@@ -175,19 +179,19 @@ func Load() error {
 	var loadErr error
 
 	cfgOnce.Do(func() {
-		v := viper.New()
+		vpr := viper.New()
 
 		// ── 1. Set defaults ──────────────────────────────
-		setDefaults(v)
+		setDefaults(vpr)
 
 		// ── 2. Config file ───────────────────────────────
-		v.SetConfigName("config")
-		v.SetConfigType("yaml")
-		v.AddConfigPath("./config")
-		v.AddConfigPath("/etc/" + strings.ToLower(ServiceName))
-		v.AddConfigPath(filepath.Join(xdg.ConfigHome, strings.ToLower(ServiceName)))
+		vpr.SetConfigName("config")
+		vpr.SetConfigType("yaml")
+		vpr.AddConfigPath("./config")
+		vpr.AddConfigPath("/etc/" + strings.ToLower(ServiceName))
+		vpr.AddConfigPath(filepath.Join(xdg.ConfigHome, strings.ToLower(ServiceName)))
 
-		if err := v.ReadInConfig(); err != nil {
+		if err := vpr.ReadInConfig(); err != nil {
 			if errors.Is(err, viper.ConfigFileNotFoundError{}) {
 				loadErr = fmt.Errorf("reading config file: %w", err)
 
@@ -197,13 +201,13 @@ func Load() error {
 		}
 
 		// Environment variables
-		v.SetEnvPrefix(strings.ToUpper(ServiceName))
-		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-		v.AutomaticEnv()
+		vpr.SetEnvPrefix(strings.ToUpper(ServiceName))
+		vpr.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		vpr.AutomaticEnv()
 
 		// Unmarshal into struct
-		parsedCfg := &Config{}
-		if err := v.Unmarshal(parsedCfg); err != nil {
+		parsedCfg := new(Config)
+		if err := vpr.Unmarshal(parsedCfg); err != nil {
 			loadErr = fmt.Errorf("unmarshaling config: %w", err)
 
 			return

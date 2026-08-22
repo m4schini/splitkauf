@@ -26,14 +26,14 @@ func newCombined(o *oidcAuthenticator, p *passwordAuthenticator) *combinedAuthen
 // Login dispatches on the method: a POST carries password credentials, any
 // other method starts the OIDC redirect flow (the SPA's "Sign in with SSO"
 // button navigates to GET /api/auth/login).
-func (a *combinedAuthenticator) Login(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
-		a.password.Login(w, r)
+func (a *combinedAuthenticator) Login(res http.ResponseWriter, req *http.Request) {
+	if req.Method == http.MethodPost {
+		a.password.Login(res, req)
 
 		return
 	}
 
-	a.oidc.Login(w, r)
+	a.oidc.Login(res, req)
 }
 
 // Callback completes an OIDC sign-in; password logins have no redirect
@@ -47,15 +47,15 @@ func (a *combinedAuthenticator) Callback(w http.ResponseWriter, r *http.Request)
 // SSO session ends too); a password session is destroyed locally and
 // redirected home — sending it to the IdP would end an IdP session the user
 // never started here.
-func (a *combinedAuthenticator) Logout(w http.ResponseWriter, r *http.Request) {
-	data, _ := getSessionData(r.Context(), a.oidc.sm)
+func (a *combinedAuthenticator) Logout(res http.ResponseWriter, req *http.Request) {
+	data, _ := getSessionData(req.Context(), a.oidc.sm)
 	if data.IDToken != "" {
-		a.oidc.Logout(w, r)
+		a.oidc.Logout(res, req)
 
 		return
 	}
 
-	a.password.Logout(w, r)
+	a.password.Logout(res, req)
 }
 
 // RequireAuth is the shared session-based middleware; both underlying modes

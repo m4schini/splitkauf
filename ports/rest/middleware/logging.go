@@ -26,23 +26,23 @@ func (rw *responseWriter) WriteHeader(status int) {
 func Logging(next http.Handler) http.Handler {
 	log := telemetry.Logger("api")
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
 		start := time.Now()
-		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
+		wrapped := &responseWriter{ResponseWriter: writer, status: http.StatusOK}
 
-		next.ServeHTTP(rw, r)
+		next.ServeHTTP(wrapped, req)
 
 		route := ""
-		if rc := chi.RouteContext(r.Context()); rc != nil {
-			route = rc.RoutePattern()
+		if routeCtx := chi.RouteContext(req.Context()); routeCtx != nil {
+			route = routeCtx.RoutePattern()
 		}
 
 		log.Info("request handled",
-			zap.String("method", r.Method),
-			zap.String("path", r.URL.Path),
+			zap.String("method", req.Method),
+			zap.String("path", req.URL.Path),
 			zap.String("route", route),
-			zap.String("remote_addr", r.RemoteAddr),
-			zap.Int("status", rw.status),
+			zap.String("remote_addr", req.RemoteAddr),
+			zap.Int("status", wrapped.status),
 			zap.Duration("duration", time.Since(start)),
 		)
 	})

@@ -13,10 +13,10 @@ import (
 	"github.com/m4schini/splitkauf/telemetry"
 )
 
-// problemPageTemplate renders the human-readable explanation page for one
+// problemPageTemplateSrc renders the human-readable explanation page for one
 // problem type. Minimal markup, no styling framework — consistent with the
 // lightweight docs approach.
-var problemPageTemplate = template.Must(template.New("problem").Parse(`<!doctype html>
+const problemPageTemplateSrc = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -31,10 +31,10 @@ var problemPageTemplate = template.Must(template.New("problem").Parse(`<!doctype
 </main>
 </body>
 </html>
-`))
+`
 
-// notFoundPageTemplate is served for an unknown problem slug.
-var notFoundPageTemplate = template.Must(template.New("problem-404").Parse(`<!doctype html>
+// notFoundPageTemplateSrc is served for an unknown problem slug.
+const notFoundPageTemplateSrc = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -48,37 +48,40 @@ var notFoundPageTemplate = template.Must(template.New("problem-404").Parse(`<!do
 </main>
 </body>
 </html>
-`))
+`
 
 // problemPageHandler renders the explanation page for the problem type matching
 // the {slug} path parameter. An unknown slug yields a 404 HTML page.
 func problemPageHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "problems")
 
+	pageTemplate := template.Must(template.New("problem").Parse(problemPageTemplateSrc))
+	notFoundTemplate := template.Must(template.New("problem-404").Parse(notFoundPageTemplateSrc))
+
 	bySlug := make(map[string]problem.Type, len(problem.Types()))
-	for _, t := range problem.Types() {
-		bySlug[t.Slug] = t
+	for _, probType := range problem.Types() {
+		bySlug[probType.Slug] = probType
 	}
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		slug := chi.URLParam(r, "slug")
+	return func(writer http.ResponseWriter, req *http.Request) {
+		slug := chi.URLParam(req, "slug")
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		t, ok := bySlug[slug]
+		probType, ok := bySlug[slug]
 		if !ok {
-			w.WriteHeader(http.StatusNotFound)
+			writer.WriteHeader(http.StatusNotFound)
 
-			if err := notFoundPageTemplate.Execute(w, slug); err != nil {
+			if err := notFoundTemplate.Execute(writer, slug); err != nil {
 				log.Error("rendering unknown problem page", zap.String("slug", slug), zap.Error(err))
 			}
 
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
+		writer.WriteHeader(http.StatusOK)
 
-		if err := problemPageTemplate.Execute(w, t); err != nil {
+		if err := pageTemplate.Execute(writer, probType); err != nil {
 			log.Error("rendering problem page", zap.String("slug", slug), zap.Error(err))
 		}
 	}

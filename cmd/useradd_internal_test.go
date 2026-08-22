@@ -9,26 +9,34 @@ import (
 	"testing"
 )
 
+// testPassword is the stand-in password value reused across the
+// TestResolvePasswordFromStdin cases below.
+const testPassword = "s3cret-password"
+
 func TestResolvePasswordFromStdin(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name string
 		in   string
 		want string
 	}{
-		{"plain", "s3cret-password", "s3cret-password"},
-		{"trailing newline stripped", "s3cret-password\n", "s3cret-password"},
-		{"trailing crlf stripped", "s3cret-password\r\n", "s3cret-password"},
+		{"plain", testPassword, testPassword},
+		{"trailing newline stripped", testPassword + "\n", testPassword},
+		{"trailing crlf stripped", testPassword + "\r\n", testPassword},
 		{"internal spaces kept", "two words here", "two words here"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolvePassword(true, strings.NewReader(tt.in), io.Discard)
+	for _, tst := range tests {
+		t.Run(tst.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := resolvePassword(true, strings.NewReader(tst.in), io.Discard)
 			if err != nil {
 				t.Fatalf("resolvePassword: %v", err)
 			}
 
-			if got != tt.want {
-				t.Errorf("resolvePassword(%q) = %q, want %q", tt.in, got, tt.want)
+			if got != tst.want {
+				t.Errorf("resolvePassword(%q) = %q, want %q", tst.in, got, tst.want)
 			}
 		})
 	}
@@ -38,6 +46,8 @@ func TestResolvePasswordFromStdin(t *testing.T) {
 // and no terminal (a piped stdin), the command fails clearly rather than hanging
 // or silently reading an empty password.
 func TestResolvePasswordInteractiveWithoutTTY(t *testing.T) {
+	t.Parallel()
+
 	_, err := resolvePassword(false, bytes.NewBufferString("irrelevant"), io.Discard)
 	if err == nil {
 		t.Fatal("expected an error when no terminal is available")

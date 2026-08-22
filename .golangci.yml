@@ -13,10 +13,11 @@
 #     form `# reason; owner @m4schini; review YYYY-MM`.
 #   - Prefer a path-scoped exclusion over a repository-wide disable. A linter
 #     that is wrong in one directory is usually right everywhere else.
-#   - The `deferred:` block below is technical debt, not policy: those linters
-#     fired on pre-existing code when the gates were installed (2026-08). Each
-#     is re-enabled by a follow-up cleanup plan; do not add new entries.
 #   - Run `golangci-lint config verify` (make lint-config) after editing.
+#
+# History: this file shipped 2026-08 with 40 linters deferred (fires on
+# pre-existing code, no reason to disable them permanently) and cleaned up the
+# same week — every deferred linter is now enabled and its findings fixed.
 version: "2"
 
 linters:
@@ -45,91 +46,6 @@ linters:
     # owner @m4schini; review 2027-02.
     - gomodguard
 
-    # ── Deferred disables (pre-existing findings, 2026-08 probe) ────────
-    # Counts are approximate: probe ran with template path exclusions, and
-    # per-linter reporting caps at 50 ("50+" means capped).
-
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - contextcheck
-    # deferred: fires ~19× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - cyclop
-    # deferred: fires 50+× on existing code (capped); also needs an import allowlist config before re-enabling; owner @m4schini; review 2027-02.
-    - depguard
-    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - embeddedstructfieldcheck
-    # deferred: fires ~29× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - err113
-    # deferred: fires ~26× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - errcheck
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - errchkjson
-    # deferred: fires ~4× on existing code (found at gate-install time, not in probe — probe ran with template path exclusions); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - errorlint
-    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - exhaustruct
-    # deferred: fires ~5× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - funcorder
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - funlen
-    # deferred: fires ~33× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gochecknoglobals
-    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gochecknoinits
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gocognit
-    # deferred: fires ~40× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - goconst
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gocyclo
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - godoclint
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - godot
-    # deferred: fires ~4× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gosec
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - gosmopolitan
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - inamedparam
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - interfacebloat
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - intrange
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - ireturn
-    # deferred: fires ~33× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - lll
-    # deferred: fires ~15× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - mnd
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - modernize
-    # deferred: fires ~6× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - nlreturn
-    # deferred: fires ~13× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - noctx
-    # deferred: fires ~2× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - nonamedreturns
-    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - paralleltest
-    # deferred: fires ~5× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - revive
-    # deferred: fires ~6× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - tagliatelle
-    # deferred: fires ~9× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - testpackage
-    # deferred: fires ~3× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - unconvert
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - unparam
-    # deferred: fires ~1× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - unused
-    # deferred: fires 50+× on existing code (capped); re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - varnamelen
-    # deferred: fires ~26× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - wrapcheck
-    # deferred: fires ~43× on existing code; re-enable via follow-up cleanup plan; owner @m4schini; review 2027-02.
-    - wsl_v5
-
   settings:
     # Suppression governance: a //nolint must say which linter it silences and
     # why, and must not linger after the finding it silenced is gone.
@@ -138,11 +54,20 @@ linters:
       require-specific: true
       allow-unused: false
 
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          deny:
+            - pkg: io/ioutil
+              desc: deprecated since Go 1.16; use io and os equivalents
+            - pkg: github.com/pkg/errors
+              desc: use stdlib errors with fmt.Errorf %w wrapping
+
     revive:
       rules:
         # A hard ceiling on file size. Not a style preference: a 1,200-line
-        # file is where reviewers stop reading carefully. (Inert while revive
-        # is deferred above; documents the target for the cleanup plan.)
+        # file is where reviewers stop reading carefully.
         - name: file-length-limit
           arguments:
             - max: 400

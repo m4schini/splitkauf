@@ -23,8 +23,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestWriteSetsContentTypeAndStatus(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/nope", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/nope", nil)
 
 	problem.Write(rec, req, problem.New(problem.NotFound, "no resource"))
 
@@ -59,8 +61,10 @@ func TestWriteSetsContentTypeAndStatus(t *testing.T) {
 }
 
 func TestWriteDefaultsInstanceToRequestPath(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/foo/bar", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/foo/bar", nil)
 
 	problem.Write(rec, req, problem.New(problem.NotFound, "x"))
 
@@ -75,11 +79,20 @@ func TestWriteDefaultsInstanceToRequestPath(t *testing.T) {
 }
 
 func TestWriteOmitsEmptyMembers(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 
 	// A problem with only a title set: all other members must be omitted.
-	problem.Write(rec, req, problem.Problem{Title: "Teapot", Status: http.StatusTeapot})
+	problem.Write(rec, req, problem.Problem{
+		Type:     "",
+		Title:    "Teapot",
+		Status:   http.StatusTeapot,
+		Detail:   "",
+		Instance: "",
+		Errors:   nil,
+	})
 
 	body := rec.Body.String()
 	for _, member := range []string{`"detail"`, `"errors"`} {
@@ -94,10 +107,19 @@ func TestWriteOmitsEmptyMembers(t *testing.T) {
 }
 
 func TestWriteDefaultsStatusTo500(t *testing.T) {
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	t.Parallel()
 
-	problem.Write(rec, req, problem.Problem{Title: "boom"})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+
+	problem.Write(rec, req, problem.Problem{
+		Type:     "",
+		Title:    "boom",
+		Status:   0,
+		Detail:   "",
+		Instance: "",
+		Errors:   nil,
+	})
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
@@ -105,6 +127,8 @@ func TestWriteDefaultsStatusTo500(t *testing.T) {
 }
 
 func TestFromStatus(t *testing.T) {
+	t.Parallel()
+
 	cases := map[int]problem.Type{
 		http.StatusBadRequest:            problem.Validation,
 		http.StatusNotFound:              problem.NotFound,
@@ -122,32 +146,34 @@ func TestFromStatus(t *testing.T) {
 }
 
 func TestRegistrySlugsUniqueAndPopulated(t *testing.T) {
+	t.Parallel()
+
 	seen := map[string]bool{}
 
-	for _, ty := range problem.Types() {
-		if ty.Slug == "" {
-			t.Errorf("type %+v has empty slug", ty)
+	for _, probType := range problem.Types() {
+		if probType.Slug == "" {
+			t.Errorf("type %+v has empty slug", probType)
 		}
 
-		if ty.Title == "" {
-			t.Errorf("type %q has empty title", ty.Slug)
+		if probType.Title == "" {
+			t.Errorf("type %q has empty title", probType.Slug)
 		}
 
-		if ty.Status == 0 {
-			t.Errorf("type %q has zero status", ty.Slug)
+		if probType.Status == 0 {
+			t.Errorf("type %q has zero status", probType.Slug)
 		}
 
-		if ty.Description == "" {
-			t.Errorf("type %q has empty description", ty.Slug)
+		if probType.Description == "" {
+			t.Errorf("type %q has empty description", probType.Slug)
 		}
 
-		if seen[ty.Slug] {
-			t.Errorf("duplicate slug %q", ty.Slug)
+		if seen[probType.Slug] {
+			t.Errorf("duplicate slug %q", probType.Slug)
 		}
 
-		seen[ty.Slug] = true
-		if ty.URI() != "/problems/"+ty.Slug {
-			t.Errorf("URI() = %q, want %q", ty.URI(), "/problems/"+ty.Slug)
+		seen[probType.Slug] = true
+		if probType.URI() != "/problems/"+probType.Slug {
+			t.Errorf("URI() = %q, want %q", probType.URI(), "/problems/"+probType.Slug)
 		}
 	}
 }

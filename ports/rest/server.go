@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 
 	"github.com/m4schini/splitkauf/auth"
 	"github.com/m4schini/splitkauf/config"
@@ -17,16 +18,22 @@ import (
 	"github.com/m4schini/splitkauf/ports/rest/problem"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 	"github.com/m4schini/splitkauf/ports/web"
+	"github.com/m4schini/splitkauf/telemetry"
 	"github.com/m4schini/splitkauf/telemetry/metrics"
 )
 
-// New builds the top-level HTTP handler. sm is the scs session manager whose
-// LoadAndSave middleware wraps every route (so sessions load/save for the auth
-// endpoints too); authr provides the browser-facing /api/auth/* handlers and
-// the RequireAuth middleware guarding the JSON API.
-func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator, broker *events.Broker) http.Handler {
-	r := chi.NewRouter()
-	r.Mount("/", ApiDocsHandler())
+// maxAPIBodyBytes caps every /api/v1 request body at 1 MiB (US-Q.5).
+const maxAPIBodyBytes = 1 << 20
+
+// New builds the top-level HTTP handler. sessions is the scs session manager
+// whose LoadAndSave middleware wraps every route (so sessions load/save for the
+// auth endpoints too); authr provides the browser-facing /api/auth/* handlers
+// and the RequireAuth middleware guarding the JSON API.
+func New(
+	impl v1.ServerInterface, sessions *scs.SessionManager, authr auth.Authenticator, broker *events.Broker,
+) http.Handler {
+	router := chi.NewRouter()
+	router.Mount("/", ApiDocsHandler())
 
 	// Hand-written BFF auth endpoints. They live OUTSIDE /api/v1 and its
 	// request-validation middleware: they are browser-facing OAuth redirect
@@ -34,18 +41,18 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// (wrapped below) so login/callback/logout can read and write the session.
 	// Recover wraps the hand-written auth endpoints so a panic here surfaces as
 	// an RFC 9457 problem too (the generated /api/v1 group has its own Recover).
-	r.Group(func(gr chi.Router) {
-		gr.Use(middleware.Recover)
-		gr.Get("/api/auth/login", authr.Login)
+	router.Group(func(group chi.Router) {
+		group.Use(middleware.Recover)
+		group.Get("/api/auth/login", authr.Login)
 		// Password mode submits credentials as a POST here; OIDC/dev use the GET
 		// above. The handler self-limits its body (these routes are outside the
 		// /api/v1 MaxBody middleware).
-		gr.Post("/api/auth/login", authr.Login)
-		gr.Get("/api/auth/callback", authr.Callback)
-		gr.Post("/api/auth/logout", authr.Logout)
+		group.Post("/api/auth/login", authr.Login)
+		group.Get("/api/auth/callback", authr.Callback)
+		group.Post("/api/auth/logout", authr.Logout)
 		// Public, session-free: lets the SPA choose its login UI (password form
 		// vs OIDC redirect) without exposing anything sensitive.
-		gr.Get("/api/auth/config", authConfigHandler)
+		group.Get("/api/auth/config", authConfigHandler)
 	})
 
 	// The API subrouter is passed to the generated handler as its BaseRouter so
@@ -62,7 +69,7 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// http.MaxBytesReader backstops bodies without a declared length. The
 	// hand-written /api/auth/* endpoints above are mounted outside apiRouter
 	// and stay uncapped by design (they carry no request body).
-	apiRouter.Use(middleware.MaxBody(1 << 20))
+	apiRouter.Use(middleware.MaxBody(maxAPIBodyBytes))
 	apiRouter.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		problem.Write(w, r, problem.New(problem.NotFound, "no resource exists at this path"))
 	})
@@ -81,7 +88,8 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// public. Recover (Use'd on apiRouter above) still wraps it.
 	apiRouter.With(authr.RequireAuth).Get("/events", sseHandler(broker))
 
-	r.Mount("/api/v1", v1.New(si, v1.ChiServerOptions{
+	router.Mount("/api/v1", v1.New(impl, v1.ChiServerOptions{
+		BaseURL:    "",
 		BaseRouter: apiRouter,
 		// The generated wrapper applies these in slice order so the LAST entry is
 		// outermost: on a request, metrics runs first, then Logging, then the
@@ -104,7 +112,7 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 
 	// The embedded frontend is the root catch-all: it serves the SPA for any
 	// path not matched above (api-catalog, openapi spec, docs, or /api/v1).
-	r.NotFound(web.Handler().ServeHTTP)
+	router.NotFound(web.Handler().ServeHTTP)
 
 	// Only the BFF auth endpoints and the JSON API read or write the session,
 	// so only those run through LoadAndSave. Static frontend assets and docs
@@ -113,16 +121,16 @@ func New(si v1.ServerInterface, sm *scs.SessionManager, authr auth.Authenticator
 	// under the service worker's parallel precache fetches — races on the
 	// response header map (a fatal "concurrent map writes"). Session-scoped
 	// requests still get the full load/save; everything else bypasses it.
-	sessioned := sm.LoadAndSave(r)
+	sessioned := sessions.LoadAndSave(router)
 
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
 		if needsSession(req.URL.Path) {
-			sessioned.ServeHTTP(w, req)
+			sessioned.ServeHTTP(writer, req)
 
 			return
 		}
 
-		r.ServeHTTP(w, req)
+		router.ServeHTTP(writer, req)
 	})
 }
 
@@ -141,11 +149,15 @@ func needsSession(p string) bool {
 // authConfigHandler reports the active authentication mode so the SPA can render
 // the right login affordance (password form vs OIDC redirect). It is public and
 // exposes nothing sensitive — just the mode string.
-func authConfigHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(struct {
+func authConfigHandler(writer http.ResponseWriter, _ *http.Request) {
+	writer.Header().Set("Content-Type", "application/json")
+
+	response := struct {
 		Mode string `json:"mode"`
-	}{Mode: string(config.C.Mode())})
+	}{Mode: string(config.C.Mode())}
+	if err := json.NewEncoder(writer).Encode(response); err != nil {
+		telemetry.Logger("api", "auth-config").Error("encoding auth config response", zap.Error(err))
+	}
 }
 
 // publicHealth wraps the RequireAuth middleware so that GET /api/v1/health stays
@@ -157,14 +169,14 @@ func publicHealth(requireAuth func(http.Handler) http.Handler) v1.MiddlewareFunc
 	return func(next http.Handler) http.Handler {
 		guarded := requireAuth(next)
 
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodGet && r.URL.Path == "/api/v1/health" {
-				next.ServeHTTP(w, r)
+		return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodGet && req.URL.Path == "/api/v1/health" {
+				next.ServeHTTP(writer, req)
 
 				return
 			}
 
-			guarded.ServeHTTP(w, r)
+			guarded.ServeHTTP(writer, req)
 		})
 	}
 }

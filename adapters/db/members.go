@@ -31,8 +31,8 @@ func NewMemberRepository(db *sql.DB) *MemberRepository {
 // backfilled it from the subject, and that backfill guesses wrong for a
 // provider whose subjects are themselves UUID strings. Re-stamping it from the
 // authenticated user heals such a row on the account's next login.
-func (r *MemberRepository) Upsert(ctx context.Context, m members.Member) error {
-	const q = `
+func (r *MemberRepository) Upsert(ctx context.Context, member members.Member) error {
+	const query = `
 INSERT INTO members (subject, user_id, email, name)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (subject) DO UPDATE
@@ -40,7 +40,7 @@ SET user_id    = EXCLUDED.user_id,
     email      = EXCLUDED.email,
     name       = EXCLUDED.name,
     updated_at = now()`
-	if _, err := r.db.ExecContext(ctx, q, m.Subject, m.UserID, m.Email, m.Name); err != nil {
+	if _, err := r.db.ExecContext(ctx, query, member.Subject, member.UserID, member.Email, member.Name); err != nil {
 		return fmt.Errorf("upserting member: %w", err)
 	}
 
@@ -50,15 +50,15 @@ SET user_id    = EXCLUDED.user_id,
 // Get returns the member with the given subject, or members.ErrNotFound when no
 // such row exists.
 func (r *MemberRepository) Get(ctx context.Context, subject string) (members.Member, error) {
-	const q = `
+	const query = `
 SELECT subject, user_id, email, name, created_at, updated_at
 FROM members
 WHERE subject = $1`
 
-	var m members.Member
+	var member members.Member
 
-	err := r.db.QueryRowContext(ctx, q, subject).Scan(
-		&m.Subject, &m.UserID, &m.Email, &m.Name, &m.CreatedAt, &m.UpdatedAt,
+	err := r.db.QueryRowContext(ctx, query, subject).Scan(
+		&member.Subject, &member.UserID, &member.Email, &member.Name, &member.CreatedAt, &member.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return members.Member{}, members.ErrNotFound
@@ -68,5 +68,5 @@ WHERE subject = $1`
 		return members.Member{}, fmt.Errorf("querying member: %w", err)
 	}
 
-	return m, nil
+	return member, nil
 }

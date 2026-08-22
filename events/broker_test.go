@@ -19,65 +19,71 @@ func recv(t *testing.T, ch <-chan events.Event) events.Event {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for event")
 
-		return events.Event{}
+		return events.Event{Type: "", ListID: ""}
 	}
 }
 
 func TestSubscriberReceivesEvent(t *testing.T) {
-	b := events.NewBroker()
+	t.Parallel()
 
-	ch, unsub := b.Subscribe()
+	broker := events.NewBroker()
+
+	eventCh, unsub := broker.Subscribe()
 	defer unsub()
 
 	want := events.Event{Type: events.TypeItems, ListID: "abc"}
-	b.Publish(want)
+	broker.Publish(want)
 
-	if got := recv(t, ch); got != want {
+	if got := recv(t, eventCh); got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
 
 func TestUnsubscribeStopsDeliveryAndDropsSubscriber(t *testing.T) {
-	b := events.NewBroker()
-	ch, unsub := b.Subscribe()
+	t.Parallel()
 
-	if b.Count() != 1 {
-		t.Fatalf("Count = %d, want 1", b.Count())
+	broker := events.NewBroker()
+	eventCh, unsub := broker.Subscribe()
+
+	if broker.Count() != 1 {
+		t.Fatalf("Count = %d, want 1", broker.Count())
 	}
 
 	unsub()
 
-	if b.Count() != 0 {
-		t.Errorf("Count after unsubscribe = %d, want 0", b.Count())
+	if broker.Count() != 0 {
+		t.Errorf("Count after unsubscribe = %d, want 0", broker.Count())
 	}
 
 	// The channel is closed on unsubscribe: a receive returns !ok.
-	if _, ok := <-ch; ok {
+	if _, ok := <-eventCh; ok {
 		t.Error("channel should be closed after unsubscribe")
 	}
 
 	// Publishing after unsubscribe must not panic or deliver.
-	b.Publish(events.Event{Type: events.TypeLists})
+	broker.Publish(events.Event{Type: events.TypeLists, ListID: ""})
 
 	// Second unsubscribe is a safe no-op.
 	unsub()
 }
 
 func TestMultipleSubscribersEachReceive(t *testing.T) {
-	b := events.NewBroker()
+	t.Parallel()
 
-	ch1, unsub1 := b.Subscribe()
+	broker := events.NewBroker()
+
+	ch1, unsub1 := broker.Subscribe()
 	defer unsub1()
 
-	ch2, unsub2 := b.Subscribe()
+	ch2, unsub2 := broker.Subscribe()
 	defer unsub2()
 
-	if b.Count() != 2 {
-		t.Fatalf("Count = %d, want 2", b.Count())
+	if broker.Count() != 2 {
+		t.Fatalf("Count = %d, want 2", broker.Count())
 	}
 
-	want := events.Event{Type: events.TypeLists}
-	b.Publish(want)
+	want := events.Event{Type: events.TypeLists, ListID: ""}
+	broker.Publish(want)
 
 	if got := recv(t, ch1); got != want {
 		t.Errorf("ch1 got %+v, want %+v", got, want)
@@ -92,13 +98,15 @@ func TestMultipleSubscribersEachReceive(t *testing.T) {
 // is full never stalls delivery to a healthy one: the healthy subscriber still
 // receives, and Publish returns promptly.
 func TestPublishDoesNotBlockOnFullSubscriber(t *testing.T) {
-	b := events.NewBroker()
+	t.Parallel()
+
+	broker := events.NewBroker()
 
 	// A subscriber that never drains: fill its buffer past capacity.
-	slow, unsubSlow := b.Subscribe()
+	slow, unsubSlow := broker.Subscribe()
 	defer unsubSlow()
 
-	fast, unsubFast := b.Subscribe()
+	fast, unsubFast := broker.Subscribe()
 	defer unsubFast()
 
 	// Publish many events; the slow subscriber's buffer fills and further hints
@@ -106,8 +114,8 @@ func TestPublishDoesNotBlockOnFullSubscriber(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		for i := 0; i < subscriberBufferPlus(); i++ {
-			b.Publish(events.Event{Type: events.TypeItems})
+		for range subscriberBufferPlus() {
+			broker.Publish(events.Event{Type: events.TypeItems, ListID: ""})
 		}
 
 		close(done)
@@ -140,32 +148,36 @@ func TestPublishDoesNotBlockOnFullSubscriber(t *testing.T) {
 func subscriberBufferPlus() int { return 100 }
 
 func TestCountReflectsSubscribeUnsubscribe(t *testing.T) {
-	b := events.NewBroker()
-	if b.Count() != 0 {
-		t.Fatalf("initial Count = %d, want 0", b.Count())
+	t.Parallel()
+
+	broker := events.NewBroker()
+	if broker.Count() != 0 {
+		t.Fatalf("initial Count = %d, want 0", broker.Count())
 	}
 
-	_, unsub1 := b.Subscribe()
+	_, unsub1 := broker.Subscribe()
 
-	_, unsub2 := b.Subscribe()
-	if b.Count() != 2 {
-		t.Fatalf("Count = %d, want 2", b.Count())
+	_, unsub2 := broker.Subscribe()
+	if broker.Count() != 2 {
+		t.Fatalf("Count = %d, want 2", broker.Count())
 	}
 
 	unsub1()
 
-	if b.Count() != 1 {
-		t.Fatalf("Count = %d, want 1", b.Count())
+	if broker.Count() != 1 {
+		t.Fatalf("Count = %d, want 1", broker.Count())
 	}
 
 	unsub2()
 
-	if b.Count() != 0 {
-		t.Fatalf("Count = %d, want 0", b.Count())
+	if broker.Count() != 0 {
+		t.Fatalf("Count = %d, want 0", broker.Count())
 	}
 }
 
 // TestBrokerIsPublisher pins the interface satisfaction the handlers rely on.
 func TestBrokerIsPublisher(t *testing.T) {
+	t.Parallel()
+
 	var _ events.Publisher = events.NewBroker()
 }

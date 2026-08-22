@@ -28,15 +28,15 @@ import (
 // status differs depending on whether the client declared its size.
 func MaxBody(limit int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.ContentLength > limit {
-				problem.Write(w, r, problem.New(problem.PayloadTooLarge, "request body exceeds the maximum allowed size"))
+		return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+			if req.ContentLength > limit {
+				problem.Write(writer, req, problem.New(problem.PayloadTooLarge, "request body exceeds the maximum allowed size"))
 
 				return
 			}
 
-			r.Body = http.MaxBytesReader(w, r.Body, limit)
-			next.ServeHTTP(w, r)
+			req.Body = http.MaxBytesReader(writer, req.Body, limit)
+			next.ServeHTTP(writer, req)
 		})
 	}
 }

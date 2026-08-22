@@ -22,17 +22,37 @@ import (
 )
 
 // devHandler builds the full REST handler in dev-auth mode for these tests.
-func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
+func devHandler(t *testing.T, impl v1.ServerInterface) http.Handler {
 	t.Helper()
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
+	var cfg config.Config
+
+	authr, err := auth.New(context.Background(), &cfg, sessions, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
 
-	return rest.New(si, sm, authr, events.NewBroker())
+	return rest.New(impl, sessions, authr, events.NewBroker())
+}
+
+// testGet issues a GET request against url using the test's context and fails
+// the test on a transport error. The caller owns closing the response body.
+func testGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("building GET %s: %v", url, err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+
+	return resp
 }
 
 type noopMembers struct{}
@@ -57,14 +77,14 @@ func TestMain(m *testing.M) {
 }
 
 func TestRootServesIndexHTML(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/")
-	if err != nil {
-		t.Fatalf("GET /: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -76,14 +96,14 @@ func TestRootServesIndexHTML(t *testing.T) {
 }
 
 func TestSPARouteFallsBackToIndexHTML(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/some/spa/route")
-	if err != nil {
-		t.Fatalf("GET /some/spa/route: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/some/spa/route")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -95,14 +115,14 @@ func TestSPARouteFallsBackToIndexHTML(t *testing.T) {
 }
 
 func TestMissingFileWithExtensionReturns404(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/does-not-exist.js")
-	if err != nil {
-		t.Fatalf("GET /does-not-exist.js: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/does-not-exist.js")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
@@ -110,14 +130,14 @@ func TestMissingFileWithExtensionReturns404(t *testing.T) {
 }
 
 func TestAPIHealthStillReachable(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/health")
-	if err != nil {
-		t.Fatalf("GET /api/v1/health: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/api/v1/health")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)

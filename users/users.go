@@ -12,6 +12,7 @@ package users
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 	"unicode/utf8"
 
@@ -99,7 +100,7 @@ func HashPassword(plain string) (string, error) {
 
 	h, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash password: %w", err)
 	}
 
 	return string(h), nil

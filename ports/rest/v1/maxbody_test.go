@@ -32,21 +32,55 @@ func (nopCloserReader) Close() error { return nil }
 // a declared Content-Length above the 1 MiB cap is rejected with a 413
 // problem+json response before the handler (and thus the service) ever runs.
 func TestOversizedContentLengthReturns413Problem(t *testing.T) {
-	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
-		t.Fatal("service should not be called for an oversized body")
+	t.Parallel()
 
-		return lists.List{}, nil
-	}}
+	svc := &fakeService{
+		createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
+			t.Fatal("service should not be called for an oversized body")
+
+			return lists.List{
+				ID:               uuid.UUID{},
+				Name:             "",
+				OpenItemCount:    0,
+				CheckedItemCount: 0,
+				CreatedBy:        nil,
+				CreatedAt:        time.Time{},
+				UpdatedAt:        time.Time{},
+			}, nil
+		},
+		listsFn:     nil,
+		getList:     nil,
+		renameList:  nil,
+		deleteList:  nil,
+		copyList:    nil,
+		addItem:     nil,
+		updateItem:  nil,
+		deleteItem:  nil,
+		restoreItem: nil,
+		checkItem:   nil,
+		uncheckItem: nil,
+	}
 	srv := newServer(t, svc)
 
 	oversized := strings.Repeat("a", (1<<20)+1)
 	body := fmt.Sprintf(`{"name":%q}`, oversized)
 
-	resp, err := http.Post(srv.URL+"/api/v1/lists", "application/json", bytes.NewBufferString(body))
+	url := srv.URL + "/api/v1/lists"
+
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, url, bytes.NewBufferString(body),
+	)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusRequestEntityTooLarge)
@@ -81,17 +115,44 @@ func TestOversizedContentLengthReturns413Problem(t *testing.T) {
 // validator failing to decode the truncated read) — both are
 // application/problem+json, and the service must never be reached.
 func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
-	svc := &fakeService{createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
-		t.Fatal("service should not be called for an oversized body")
+	t.Parallel()
 
-		return lists.List{}, nil
-	}}
+	svc := &fakeService{
+		createList: func(_ context.Context, _ string, _ uuid.UUID) (lists.List, error) {
+			t.Fatal("service should not be called for an oversized body")
+
+			return lists.List{
+				ID:               uuid.UUID{},
+				Name:             "",
+				OpenItemCount:    0,
+				CheckedItemCount: 0,
+				CreatedBy:        nil,
+				CreatedAt:        time.Time{},
+				UpdatedAt:        time.Time{},
+			}, nil
+		},
+		listsFn:     nil,
+		getList:     nil,
+		renameList:  nil,
+		deleteList:  nil,
+		copyList:    nil,
+		addItem:     nil,
+		updateItem:  nil,
+		deleteItem:  nil,
+		restoreItem: nil,
+		checkItem:   nil,
+		uncheckItem: nil,
+	}
 	srv := newServer(t, svc)
 
 	oversized := strings.Repeat("a", (1<<20)+1)
 	body := fmt.Sprintf(`{"name":%q}`, oversized)
 
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/lists", nopCloserReader{strings.NewReader(body)})
+	url := srv.URL + "/api/v1/lists"
+
+	req, err := http.NewRequestWithContext(
+		t.Context(), http.MethodPost, url, nopCloserReader{strings.NewReader(body)},
+	)
 	if err != nil {
 		t.Fatalf("NewRequest: %v", err)
 	}
@@ -106,7 +167,7 @@ func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusRequestEntityTooLarge && resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d or %d", resp.StatusCode, http.StatusRequestEntityTooLarge, http.StatusBadRequest)
@@ -120,18 +181,41 @@ func TestOversizedBodyWithoutDeclaredLengthIsRejected(t *testing.T) {
 // TestNormalSizedPostStillSucceeds proves MaxBody does not interfere with
 // ordinary requests well under the cap.
 func TestNormalSizedPostStillSucceeds(t *testing.T) {
-	want := lists.List{ID: uuid.New(), Name: "Groceries", CreatedAt: time.Now(), UpdatedAt: time.Now()}
-	svc := &fakeService{createList: func(_ context.Context, name string, _ uuid.UUID) (lists.List, error) {
-		if name != "Groceries" {
-			t.Errorf("service got name %q", name)
-		}
+	t.Parallel()
 
-		return want, nil
-	}}
+	want := lists.List{
+		ID:               uuid.New(),
+		Name:             "Groceries",
+		OpenItemCount:    0,
+		CheckedItemCount: 0,
+		CreatedBy:        nil,
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
+	}
+	svc := &fakeService{
+		createList: func(_ context.Context, name string, _ uuid.UUID) (lists.List, error) {
+			if name != "Groceries" {
+				t.Errorf("service got name %q", name)
+			}
+
+			return want, nil
+		},
+		listsFn:     nil,
+		getList:     nil,
+		renameList:  nil,
+		deleteList:  nil,
+		copyList:    nil,
+		addItem:     nil,
+		updateItem:  nil,
+		deleteItem:  nil,
+		restoreItem: nil,
+		checkItem:   nil,
+		uncheckItem: nil,
+	}
 	srv := newServer(t, svc)
 
 	resp := postJSON(t, srv.URL+"/api/v1/lists", `{"name":"Groceries"}`)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", resp.StatusCode)

@@ -32,16 +32,17 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 // Create inserts a new user and returns it. A unique-violation on username
 // (SQLSTATE 23505) is mapped to users.ErrUsernameTaken. Email is stored as SQL
 // NULL when empty. The password hash is bound as a parameter and never logged.
-func (r *UserRepository) Create(ctx context.Context, in users.NewUser) (users.User, error) {
-	const q = `
+func (r *UserRepository) Create(ctx context.Context, newUser users.NewUser) (users.User, error) {
+	const query = `
 INSERT INTO users (username, password_hash, name, email)
 VALUES ($1, $2, $3, $4)
 RETURNING id, username, name, COALESCE(email, ''), created_at, updated_at`
 
-	var u users.User
+	var user users.User
 
-	err := r.db.QueryRowContext(ctx, q, in.Username, in.PasswordHash, in.Name, nullEmpty(in.Email)).Scan(
-		&u.ID, &u.Username, &u.Name, &u.Email, &u.CreatedAt, &u.UpdatedAt,
+	err := r.db.QueryRowContext(ctx, query,
+		newUser.Username, newUser.PasswordHash, newUser.Name, nullEmpty(newUser.Email)).Scan(
+		&user.ID, &user.Username, &user.Name, &user.Email, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -52,24 +53,24 @@ RETURNING id, username, name, COALESCE(email, ''), created_at, updated_at`
 		return users.User{}, fmt.Errorf("creating user: %w", err)
 	}
 
-	return u, nil
+	return user, nil
 }
 
 // GetByUsername returns the user and its bcrypt password hash, or
 // users.ErrNotFound when no row matches.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (users.User, string, error) {
-	const q = `
+	const query = `
 SELECT id, username, name, COALESCE(email, ''), password_hash, created_at, updated_at
 FROM users
 WHERE username = $1`
 
 	var (
-		u    users.User
+		user users.User
 		hash string
 	)
 
-	err := r.db.QueryRowContext(ctx, q, username).Scan(
-		&u.ID, &u.Username, &u.Name, &u.Email, &hash, &u.CreatedAt, &u.UpdatedAt,
+	err := r.db.QueryRowContext(ctx, query, username).Scan(
+		&user.ID, &user.Username, &user.Name, &user.Email, &hash, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.User{}, "", users.ErrNotFound
@@ -79,7 +80,7 @@ WHERE username = $1`
 		return users.User{}, "", fmt.Errorf("querying user: %w", err)
 	}
 
-	return u, hash, nil
+	return user, hash, nil
 }
 
 // nullEmpty maps an empty string to a NULL-valued parameter so an omitted

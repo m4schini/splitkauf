@@ -35,21 +35,21 @@ func safeReturnTo(raw string) string {
 
 	// Reject any parse error, or any value carrying a scheme or host: a valid
 	// relative path has neither.
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "" || u.Host != "" {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" {
 		return defaultReturnTo
 	}
 
 	// Re-check the parsed path shape (guards odd inputs like "/\\evil").
-	if !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+	if !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") {
 		return defaultReturnTo
 	}
 
 	// Rebuild from the parsed path (and query) so only the safe components
 	// survive; drop any fragment/host that slipped through.
-	out := u.Path
-	if u.RawQuery != "" {
-		out += "?" + u.RawQuery
+	out := parsed.Path
+	if parsed.RawQuery != "" {
+		out += "?" + parsed.RawQuery
 	}
 
 	return out

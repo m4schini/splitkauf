@@ -36,6 +36,8 @@ func (t Type) URI() string {
 
 // The registered problem types. Each covers one of the API's error surfaces
 // and has a self-hosted explanation page.
+//
+//nolint:gochecknoglobals // immutable registry entries exported as package API, like stdlib error sentinels
 var (
 	// Validation covers request-validation failures and parameter binding.
 	Validation = Type{
@@ -158,31 +160,33 @@ type Problem struct {
 // member.
 func New(t Type, detail string) Problem {
 	return Problem{
-		Type:   t.URI(),
-		Title:  t.Title,
-		Status: t.Status,
-		Detail: detail,
+		Type:     t.URI(),
+		Title:    t.Title,
+		Status:   t.Status,
+		Detail:   detail,
+		Instance: "",
+		Errors:   nil,
 	}
 }
 
-// Write serialises p as an application/problem+json response. It sets the
-// Content-Type header and the HTTP status from p.Status (defaulting to 500 if
-// unset), defaults the instance member to the request path, and encodes the
+// Write serialises prob as an application/problem+json response. It sets the
+// Content-Type header and the HTTP status from prob.Status (defaulting to 500
+// if unset), defaults the instance member to the request path, and encodes the
 // body.
-func Write(w http.ResponseWriter, r *http.Request, p Problem) {
-	if p.Instance == "" && r != nil {
-		p.Instance = r.URL.Path
+func Write(writer http.ResponseWriter, req *http.Request, prob Problem) {
+	if prob.Instance == "" && req != nil {
+		prob.Instance = req.URL.Path
 	}
 
-	status := p.Status
+	status := prob.Status
 	if status == 0 {
 		status = http.StatusInternalServerError
 	}
 
-	w.Header().Set("Content-Type", ContentType)
-	w.WriteHeader(status)
+	writer.Header().Set("Content-Type", ContentType)
+	writer.WriteHeader(status)
 
-	if err := json.NewEncoder(w).Encode(p); err != nil {
+	if err := json.NewEncoder(writer).Encode(prob); err != nil {
 		telemetry.Logger("api", "problem").Error("encoding problem response", zap.Error(err))
 	}
 }

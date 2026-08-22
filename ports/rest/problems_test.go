@@ -22,17 +22,37 @@ import (
 )
 
 // devHandler builds the full REST handler in dev-auth mode for these tests.
-func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
+func devHandler(t *testing.T, impl v1.ServerInterface) http.Handler {
 	t.Helper()
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
+	var cfg config.Config
+
+	authr, err := auth.New(context.Background(), &cfg, sessions, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
 
-	return rest.New(si, sm, authr, events.NewBroker())
+	return rest.New(impl, sessions, authr, events.NewBroker())
+}
+
+// testGet issues a GET request against url using the test's context and fails
+// the test on a transport error. The caller owns closing the response body.
+func testGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("building GET %s: %v", url, err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+
+	return resp
 }
 
 type noopMembers struct{}
@@ -46,16 +66,20 @@ func (noopMembers) Get(context.Context, string) (members.Member, error) {
 // HTML explanation page (RFC 9457: about:blank is never used). Iterating the
 // registry catches drift where a new type is added without a page.
 func TestProblemPagesNoDrift(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
-	defer srv.Close()
+	t.Parallel()
 
-	for _, ty := range problem.Types() {
-		t.Run(ty.Slug, func(t *testing.T) {
-			resp, err := http.Get(srv.URL + ty.URI())
-			if err != nil {
-				t.Fatalf("GET %s: %v", ty.URI(), err)
-			}
-			defer resp.Body.Close()
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
+	// Cleanup, not defer: the parallel subtests outlive this function body, and
+	// t.Cleanup runs only after they have all finished.
+	t.Cleanup(srv.Close)
+
+	for _, probType := range problem.Types() {
+		t.Run(probType.Slug, func(t *testing.T) {
+			t.Parallel()
+
+			resp := testGet(t, srv.URL+probType.URI())
+
+			defer func() { _ = resp.Body.Close() }()
 
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -70,22 +94,22 @@ func TestProblemPagesNoDrift(t *testing.T) {
 				t.Fatalf("reading body: %v", err)
 			}
 
-			if !strings.Contains(string(body), ty.Title) {
-				t.Errorf("page for %q does not contain title %q", ty.Slug, ty.Title)
+			if !strings.Contains(string(body), probType.Title) {
+				t.Errorf("page for %q does not contain title %q", probType.Slug, probType.Title)
 			}
 		})
 	}
 }
 
 func TestProblemPageUnknownSlugReturns404(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/problems/does-not-exist")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/problems/does-not-exist")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)

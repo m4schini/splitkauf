@@ -28,14 +28,16 @@ import (
 func sseServer(t *testing.T, broker *events.Broker) *httptest.Server {
 	t.Helper()
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
+	var cfg config.Config
+
+	authr, err := auth.New(context.Background(), &cfg, sessions, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
 
-	srv := httptest.NewServer(rest.New(&v1.V1{}, sm, authr, broker))
+	srv := httptest.NewServer(rest.New(&v1.V1{DB: nil, Service: nil, Events: nil}, sessions, authr, broker))
 	t.Cleanup(srv.Close)
 
 	return srv
@@ -46,6 +48,8 @@ func sseServer(t *testing.T, broker *events.Broker) *httptest.Server {
 // Cancelling the request context ends the stream (and, via the handler's
 // context-done path, unsubscribes) — exercising the no-leak shutdown path.
 func TestSSEStreamsPublishedEvent(t *testing.T) {
+	t.Parallel()
+
 	broker := events.NewBroker()
 	srv := sseServer(t, broker)
 
@@ -61,7 +65,8 @@ func TestSSEStreamsPublishedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /api/v1/events: %v", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
@@ -98,6 +103,8 @@ func TestSSEStreamsPublishedEvent(t *testing.T) {
 // subscription) when the request context is cancelled — no goroutine/subscriber
 // leak on client disconnect.
 func TestSSEHandlerReturnsOnContextCancel(t *testing.T) {
+	t.Parallel()
+
 	broker := events.NewBroker()
 	srv := sseServer(t, broker)
 
@@ -116,7 +123,8 @@ func TestSSEHandlerReturnsOnContextCancel(t *testing.T) {
 	waitForSubscribers(t, broker, 1)
 
 	cancel()
-	resp.Body.Close()
+
+	_ = resp.Body.Close()
 
 	// The subscriber must be gone once the handler observes the cancellation.
 	waitForSubscribers(t, broker, 0)
@@ -125,26 +133,28 @@ func TestSSEHandlerReturnsOnContextCancel(t *testing.T) {
 // TestSSERequiresAuth confirms the stream is behind RequireAuth: in OIDC mode
 // with no session, the request is rejected with 401 (never opening a stream).
 func TestSSERequiresAuth(t *testing.T) {
-	sm := scs.New()
-	cfg := &config.Config{}
+	t.Parallel()
+
+	sessions := scs.New()
+
+	var cfg config.Config
+
 	cfg.Auth.OIDC.Issuer = newDiscoveryServer(t)
 	cfg.Auth.OIDC.ClientID = "client-id"
 	cfg.Auth.OIDC.ClientSecret = "client-secret"
 	cfg.Auth.OIDC.RedirectURL = "https://app.example.com/api/auth/callback"
 
-	authr, err := auth.New(context.Background(), cfg, sm, noopMembers{}, nil)
+	authr, err := auth.New(context.Background(), &cfg, sessions, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (oidc): %v", err)
 	}
 
-	srv := httptest.NewServer(rest.New(&v1.V1{}, sm, authr, events.NewBroker()))
+	srv := httptest.NewServer(rest.New(&v1.V1{DB: nil, Service: nil, Events: nil}, sessions, authr, events.NewBroker()))
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/api/v1/events")
-	if err != nil {
-		t.Fatalf("GET /api/v1/events: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/api/v1/events")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
@@ -160,7 +170,7 @@ func newDiscoveryServer(t *testing.T) string {
 
 	var issuer string
 
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, _ *http.Request) {
 		doc := map[string]any{
 			"issuer":                                issuer,
 			"authorization_endpoint":                issuer + "/authorize",
@@ -170,8 +180,8 @@ func newDiscoveryServer(t *testing.T) string {
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(doc)
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(doc)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -184,7 +194,7 @@ func newDiscoveryServer(t *testing.T) string {
 // its content. Heartbeat comment lines (`: ping`) and blank separators are
 // skipped. It fails on timeout via a background deadline on the underlying
 // request context (the caller's context cancellation).
-func readDataLine(t *testing.T, r io.Reader) string {
+func readDataLine(t *testing.T, reader io.Reader) string {
 	t.Helper()
 
 	type result struct {
@@ -195,17 +205,17 @@ func readDataLine(t *testing.T, r io.Reader) string {
 	done := make(chan result, 1)
 
 	go func() {
-		sc := bufio.NewScanner(r)
-		for sc.Scan() {
-			line := sc.Text()
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			line := scanner.Text()
 			if after, ok := strings.CutPrefix(line, "data:"); ok {
-				done <- result{line: strings.TrimSpace(after)}
+				done <- result{line: strings.TrimSpace(after), err: nil}
 
 				return
 			}
 		}
 
-		done <- result{err: sc.Err()}
+		done <- result{line: "", err: scanner.Err()}
 	}()
 
 	select {

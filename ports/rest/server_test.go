@@ -3,6 +3,7 @@
 package rest_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -45,23 +46,23 @@ func (panicServer) GetHealth(http.ResponseWriter, *http.Request) {
 func decodeProblem(t *testing.T, resp *http.Response) problem.Problem {
 	t.Helper()
 
-	var p problem.Problem
-	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+	var prob problem.Problem
+	if err := json.NewDecoder(resp.Body).Decode(&prob); err != nil {
 		t.Fatalf("decoding problem body: %v", err)
 	}
 
-	return p
+	return prob
 }
 
 func TestUnknownAPIRouteReturnsNotFoundProblem(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/nope")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/api/v1/nope")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
@@ -71,30 +72,33 @@ func TestUnknownAPIRouteReturnsNotFoundProblem(t *testing.T) {
 		t.Errorf("Content-Type = %q, want %q", ct, problem.ContentType)
 	}
 
-	p := decodeProblem(t, resp)
-	if p.Type != "/problems/not-found" {
-		t.Errorf("type = %q, want %q", p.Type, "/problems/not-found")
+	prob := decodeProblem(t, resp)
+	if prob.Type != "/problems/not-found" {
+		t.Errorf("type = %q, want %q", prob.Type, "/problems/not-found")
 	}
 
-	if p.Instance != "/api/v1/nope" {
-		t.Errorf("instance = %q, want %q", p.Instance, "/api/v1/nope")
+	if prob.Instance != "/api/v1/nope" {
+		t.Errorf("instance = %q, want %q", prob.Instance, "/api/v1/nope")
 	}
 }
 
 func TestWrongMethodReturnsMethodNotAllowedProblem(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	req, err := http.NewRequest(http.MethodDelete, srv.URL+"/api/v1/health", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodDelete, srv.URL+"/api/v1/health", nil)
 	if err != nil {
-		t.Fatalf("NewRequest: %v", err)
+		t.Fatalf("NewRequestWithContext: %v", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("DELETE: %v", err)
 	}
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
@@ -104,21 +108,21 @@ func TestWrongMethodReturnsMethodNotAllowedProblem(t *testing.T) {
 		t.Errorf("Content-Type = %q, want %q", ct, problem.ContentType)
 	}
 
-	p := decodeProblem(t, resp)
-	if p.Type != "/problems/method-not-allowed" {
-		t.Errorf("type = %q, want %q", p.Type, "/problems/method-not-allowed")
+	prob := decodeProblem(t, resp)
+	if prob.Type != "/problems/method-not-allowed" {
+		t.Errorf("type = %q, want %q", prob.Type, "/problems/method-not-allowed")
 	}
 }
 
 func TestPanicReturnsInternalProblemWithoutLeaking(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, panicServer{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, panicServer{ServerInterface: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/health")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/api/v1/health")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
@@ -128,13 +132,13 @@ func TestPanicReturnsInternalProblemWithoutLeaking(t *testing.T) {
 		t.Errorf("Content-Type = %q, want %q", ct, problem.ContentType)
 	}
 
-	p := decodeProblem(t, resp)
-	if p.Type != "/problems/internal" {
-		t.Errorf("type = %q, want %q", p.Type, "/problems/internal")
+	prob := decodeProblem(t, resp)
+	if prob.Type != "/problems/internal" {
+		t.Errorf("type = %q, want %q", prob.Type, "/problems/internal")
 	}
 
-	if strings.Contains(p.Detail, "boom") || strings.Contains(p.Detail, "must never leak") {
-		t.Errorf("detail leaks panic message: %q", p.Detail)
+	if strings.Contains(prob.Detail, "boom") || strings.Contains(prob.Detail, "must never leak") {
+		t.Errorf("detail leaks panic message: %q", prob.Detail)
 	}
 }
 
@@ -143,15 +147,14 @@ func TestPanicReturnsInternalProblemWithoutLeaking(t *testing.T) {
 // response it wraps, so its absence on a static asset proves the bypass. The
 // JSON API still runs through the session (health carries Vary: Cookie).
 func TestStaticAssetsBypassSessionMiddleware(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	staticResp, err := http.Get(srv.URL + "/some-spa-route")
-	if err != nil {
-		t.Fatalf("GET /some-spa-route: %v", err)
-	}
+	staticResp := testGet(t, srv.URL+"/some-spa-route")
 
-	staticResp.Body.Close()
+	_ = staticResp.Body.Close()
 
 	if staticResp.StatusCode != http.StatusOK {
 		t.Fatalf("static status = %d, want 200", staticResp.StatusCode)
@@ -165,12 +168,9 @@ func TestStaticAssetsBypassSessionMiddleware(t *testing.T) {
 		t.Errorf("static response set a cookie %q — assets must bypass the session middleware", c)
 	}
 
-	apiResp, err := http.Get(srv.URL + "/api/v1/health")
-	if err != nil {
-		t.Fatalf("GET /api/v1/health: %v", err)
-	}
+	apiResp := testGet(t, srv.URL+"/api/v1/health")
 
-	apiResp.Body.Close()
+	_ = apiResp.Body.Close()
 
 	if v := apiResp.Header.Get("Vary"); !strings.Contains(v, "Cookie") {
 		t.Errorf("API response Vary = %q, want it to contain Cookie (session middleware still applies)", v)
@@ -182,43 +182,53 @@ func TestStaticAssetsBypassSessionMiddleware(t *testing.T) {
 // serving was moved out of scs.LoadAndSave, this raced on the response header
 // map and killed the process with a fatal "concurrent map writes".
 func TestConcurrentStaticRequestsDoNotCrash(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	const n = 100
+	const requests = 100
 
-	var wg sync.WaitGroup
-	wg.Add(n)
+	var waitGroup sync.WaitGroup
 
-	for range n {
+	waitGroup.Add(requests)
+
+	for range requests {
 		go func() {
-			defer wg.Done()
+			defer waitGroup.Done()
 
-			resp, err := http.Get(srv.URL + "/some-spa-route")
+			// Built by hand (not testGet): failing the test from a non-test
+			// goroutine is not allowed, so errors are simply ignored here.
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/some-spa-route", nil)
+			if err != nil {
+				return
+			}
+
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				return
 			}
 
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}()
 	}
 
-	wg.Wait()
+	waitGroup.Wait()
 }
 
 // TestAuthConfigEndpointReportsMode verifies the public auth-config endpoint
 // returns the resolved mode as JSON, without requiring a session (no
 // Vary: Cookie, since it bypasses the session middleware).
 func TestAuthConfigEndpointReportsMode(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/auth/config")
-	if err != nil {
-		t.Fatalf("GET /api/auth/config: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := testGet(t, srv.URL+"/api/auth/config")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)

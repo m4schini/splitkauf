@@ -28,6 +28,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestSafeReturnTo(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		in   string
 		want string
@@ -59,25 +61,27 @@ func TestSafeReturnTo(t *testing.T) {
 }
 
 func TestRandomTokenIsRandomAndSized(t *testing.T) {
-	a, err := randomToken()
+	t.Parallel()
+
+	first, err := randomToken()
 	if err != nil {
 		t.Fatalf("randomToken: %v", err)
 	}
 
-	b, err := randomToken()
+	second, err := randomToken()
 	if err != nil {
 		t.Fatalf("randomToken: %v", err)
 	}
 
-	if a == "" || b == "" {
+	if first == "" || second == "" {
 		t.Fatal("randomToken returned empty string")
 	}
 
-	if a == b {
+	if first == second {
 		t.Fatal("randomToken returned identical values on two calls")
 	}
 
-	raw, err := base64.RawURLEncoding.DecodeString(a)
+	raw, err := base64.RawURLEncoding.DecodeString(first)
 	if err != nil {
 		t.Fatalf("token is not valid base64url: %v", err)
 	}
@@ -88,6 +92,8 @@ func TestRandomTokenIsRandomAndSized(t *testing.T) {
 }
 
 func TestWithUserUserFromRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	want := User{ID: devUserID, Name: "Alice", Email: "alice@example.com"}
 	ctx := WithUser(context.Background(), want)
 
@@ -107,21 +113,27 @@ func TestWithUserUserFromRoundTrip(t *testing.T) {
 }
 
 func TestNewSelectsDevWhenOIDCDisabled(t *testing.T) {
-	cfg := &config.Config{} // no OIDC issuer/client → dev-auth
+	t.Parallel()
 
-	a, err := New(context.Background(), cfg, scs.New(), noopMembers{}, nil)
+	var cfg config.Config // no OIDC issuer/client → dev-auth
+
+	authenticator, err := New(context.Background(), &cfg, scs.New(), noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, ok := a.(*devAuthenticator); !ok {
-		t.Errorf("New returned %T, want *devAuthenticator", a)
+	if _, ok := authenticator.(*devAuthenticator); !ok {
+		t.Errorf("New returned %T, want *devAuthenticator", authenticator)
 	}
 }
 
 func TestNewSelectsOIDCWhenEnabled(t *testing.T) {
+	t.Parallel()
+
 	issuer := newDiscoveryServer(t)
-	cfg := &config.Config{}
+
+	var cfg config.Config
+
 	cfg.Auth.OIDC.Issuer = issuer
 	cfg.Auth.OIDC.ClientID = "client-id"
 	cfg.Auth.OIDC.ClientSecret = "client-secret"
@@ -131,43 +143,45 @@ func TestNewSelectsOIDCWhenEnabled(t *testing.T) {
 		t.Fatal("IsOIDCEnabled = false for a complete OIDC config")
 	}
 
-	a, err := New(context.Background(), cfg, scs.New(), noopMembers{}, nil)
+	authenticator, err := New(context.Background(), &cfg, scs.New(), noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 
-	oa, ok := a.(*oidcAuthenticator)
+	oidcAuth, ok := authenticator.(*oidcAuthenticator)
 	if !ok {
-		t.Fatalf("New returned %T, want *oidcAuthenticator", a)
+		t.Fatalf("New returned %T, want *oidcAuthenticator", authenticator)
 	}
 
-	if oa.endSessionEndpoint == "" {
+	if oidcAuth.endSessionEndpoint == "" {
 		t.Error("expected end_session_endpoint to be read from discovery metadata")
 	}
 	// Authentication-only scopes: exactly these three, nothing that would keep
 	// tokens alive beyond login.
 	wantScopes := []string{"openid", "profile", "email"}
-	if !slices.Equal(oa.oauth2Config.Scopes, wantScopes) {
-		t.Errorf("configured scopes = %v, want %v", oa.oauth2Config.Scopes, wantScopes)
+	if !slices.Equal(oidcAuth.oauth2Config.Scopes, wantScopes) {
+		t.Errorf("configured scopes = %v, want %v", oidcAuth.oauth2Config.Scopes, wantScopes)
 	}
 }
 
 func TestDevAuthenticatorInjectsDevUser(t *testing.T) {
+	t.Parallel()
+
 	var (
-		got User
-		ok  bool
+		got   User
+		gotOK bool
 	)
 
-	handler := newDev().RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got, ok = UserFrom(r.Context())
+	handler := newDev().RequireAuth(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		got, gotOK = UserFrom(req.Context())
 
-		w.WriteHeader(http.StatusOK)
+		res.WriteHeader(http.StatusOK)
 	}))
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
+	handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/me", nil))
 
-	if !ok {
+	if !gotOK {
 		t.Fatal("dev RequireAuth did not inject a user into the context")
 	}
 
@@ -177,11 +191,13 @@ func TestDevAuthenticatorInjectsDevUser(t *testing.T) {
 }
 
 func TestDevAuthenticatorEndpoints(t *testing.T) {
-	d := newDev()
+	t.Parallel()
+
+	dev := newDev()
 
 	// Login redirects home (302 /).
 	rec := httptest.NewRecorder()
-	d.Login(rec, httptest.NewRequest(http.MethodGet, "/api/auth/login", nil))
+	dev.Login(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/login", nil))
 
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 		t.Errorf("Login = %d %q, want 302 /", rec.Code, rec.Header().Get("Location"))
@@ -189,7 +205,7 @@ func TestDevAuthenticatorEndpoints(t *testing.T) {
 
 	// Logout redirects home (302 /).
 	rec = httptest.NewRecorder()
-	d.Logout(rec, httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil))
+	dev.Logout(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/auth/logout", nil))
 
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 		t.Errorf("Logout = %d %q, want 302 /", rec.Code, rec.Header().Get("Location"))
@@ -197,7 +213,7 @@ func TestDevAuthenticatorEndpoints(t *testing.T) {
 
 	// Callback is 404 (no login flow in dev mode).
 	rec = httptest.NewRecorder()
-	d.Callback(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback", nil))
+	dev.Callback(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/callback", nil))
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("Callback = %d, want 404", rec.Code)
@@ -205,15 +221,17 @@ func TestDevAuthenticatorEndpoints(t *testing.T) {
 }
 
 func TestSessionDataRoundTrip(t *testing.T) {
-	sm := scs.New()
+	t.Parallel()
 
-	ctx, err := sm.Load(context.Background(), "")
+	sessions := scs.New()
+
+	ctx, err := sessions.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
 	// No data yet.
-	if _, ok := getSessionData(ctx, sm); ok {
+	if _, ok := getSessionData(ctx, sessions); ok {
 		t.Fatal("getSessionData returned ok=true for an empty session")
 	}
 
@@ -224,11 +242,11 @@ func TestSessionDataRoundTrip(t *testing.T) {
 		Email:   "user@example.com",
 		Name:    "User",
 	}
-	if err := putSessionData(ctx, sm, want); err != nil {
+	if err := putSessionData(ctx, sessions, want); err != nil {
 		t.Fatalf("putSessionData: %v", err)
 	}
 
-	got, ok := getSessionData(ctx, sm)
+	got, ok := getSessionData(ctx, sessions)
 	if !ok {
 		t.Fatal("getSessionData returned ok=false after put")
 	}
@@ -239,15 +257,17 @@ func TestSessionDataRoundTrip(t *testing.T) {
 }
 
 func TestSubjectUUIDIsStable(t *testing.T) {
-	a := subjectUUID("subject-abc")
-	b := subjectUUID("subject-abc")
-	c := subjectUUID("subject-xyz")
+	t.Parallel()
 
-	if a != b {
+	first := subjectUUID("subject-abc")
+	second := subjectUUID("subject-abc")
+	other := subjectUUID("subject-xyz")
+
+	if first != second {
 		t.Error("subjectUUID is not deterministic for the same subject")
 	}
 
-	if a == c {
+	if first == other {
 		t.Error("subjectUUID collided for different subjects")
 	}
 }
@@ -271,7 +291,7 @@ func newDiscoveryServer(t *testing.T) string {
 
 	var issuer string
 
-	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/.well-known/openid-configuration", func(res http.ResponseWriter, _ *http.Request) {
 		doc := map[string]any{
 			"issuer":                                issuer,
 			"authorization_endpoint":                issuer + "/authorize",
@@ -281,8 +301,8 @@ func newDiscoveryServer(t *testing.T) string {
 			"id_token_signing_alg_values_supported": []string{"RS256"},
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(doc)
+		res.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(res).Encode(doc)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

@@ -27,5 +27,5 @@ const (
 // Broker implements it; handler tests use a capturing fake. Publish must never
 // block the caller.
 type Publisher interface {
-	Publish(Event)
+	Publish(event Event)
 }

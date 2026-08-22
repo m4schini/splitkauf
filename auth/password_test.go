@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/google/uuid"
@@ -30,7 +31,9 @@ type fakeUsers struct {
 }
 
 func (f *fakeUsers) Create(context.Context, users.NewUser) (users.User, error) {
-	return users.User{}, nil
+	var none users.User
+
+	return none, nil
 }
 
 func (f *fakeUsers) GetByUsername(_ context.Context, username string) (users.User, string, error) {
@@ -67,43 +70,66 @@ func passwordTestServer(t *testing.T) (*httptest.Server, *http.Client, *fakeMemb
 	}
 
 	uid := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	fu := &fakeUsers{byName: map[string]struct {
+	alex := users.User{
+		ID:        uid,
+		Username:  "alex",
+		Name:      "Alex",
+		Email:     "alex@example.com",
+		CreatedAt: time.Time{},
+		UpdatedAt: time.Time{},
+	}
+	usersRepo := &fakeUsers{byName: map[string]struct {
 		user users.User
 		hash string
 	}{
-		"alex": {user: users.User{ID: uid, Username: "alex", Name: "Alex", Email: "alex@example.com"}, hash: hash},
+		"alex": {user: alex, hash: hash},
 	}}
-	fm := &fakeMembers{}
+	membersRec := &fakeMembers{upserted: nil}
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	authr, err := auth.New(context.Background(),
-		&config.Config{Auth: config.AuthConfig{Password: config.PasswordConfig{Enabled: true}}},
-		sm, fm, fu)
+	var cfg config.Config
+
+	cfg.Auth.Password.Enabled = true
+
+	authr, err := auth.New(context.Background(), &cfg, sessions, membersRec, usersRepo)
 	if err != nil {
 		t.Fatalf("auth.New (password): %v", err)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", authr.Login)
-	mux.Handle("/me", authr.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, _ := auth.UserFrom(r.Context())
-		_, _ = w.Write([]byte(u.ID.String()))
+	mux.Handle("/me", authr.RequireAuth(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+		user, _ := auth.UserFrom(req.Context())
+		_, _ = res.Write([]byte(user.ID.String()))
 	})))
-	srv := httptest.NewServer(sm.LoadAndSave(mux))
+	srv := httptest.NewServer(sessions.LoadAndSave(mux))
 	t.Cleanup(srv.Close)
 
 	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Transport: nil,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Jar:     jar,
+		Timeout: 0,
+	}
 
-	return srv, &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}, fm
+	return srv, client, membersRec
 }
 
 func postLogin(t *testing.T, client *http.Client, url, body string) *http.Response {
 	t.Helper()
 
-	resp, err := client.Post(url+"/login", "application/json", strings.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url+"/login", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("building POST /login request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("POST /login: %v", err)
 	}
@@ -111,11 +137,30 @@ func postLogin(t *testing.T, client *http.Client, url, body string) *http.Respon
 	return resp
 }
 
+func get(t *testing.T, client *http.Client, url string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("building GET %s request: %v", url, err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+
+	return resp
+}
+
 func TestPasswordLoginSuccess(t *testing.T) {
-	srv, client, fm := passwordTestServer(t)
+	t.Parallel()
+
+	srv, client, membersRec := passwordTestServer(t)
 
 	resp := postLogin(t, client, srv.URL, `{"username":"alex","password":"correct horse"}`)
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("login status = %d, want 204", resp.StatusCode)
@@ -123,11 +168,9 @@ func TestPasswordLoginSuccess(t *testing.T) {
 
 	// The session cookie now authenticates /me, and the injected user carries
 	// the account UUID stored as the session's UserID at login.
-	meResp, err := client.Get(srv.URL + "/me")
-	if err != nil {
-		t.Fatalf("GET /me: %v", err)
-	}
-	defer meResp.Body.Close()
+	meResp := get(t, client, srv.URL+"/me")
+
+	defer func() { _ = meResp.Body.Close() }()
 
 	if meResp.StatusCode != http.StatusOK {
 		t.Fatalf("/me status = %d, want 200", meResp.StatusCode)
@@ -142,19 +185,23 @@ func TestPasswordLoginSuccess(t *testing.T) {
 		t.Errorf("/me user id = %q, want %q", got, want)
 	}
 
-	if len(fm.upserted) != 1 || fm.upserted[0].Name != "Alex" {
-		t.Errorf("member upsert = %+v, want one upsert for Alex", fm.upserted)
+	if len(membersRec.upserted) != 1 || membersRec.upserted[0].Name != "Alex" {
+		t.Errorf("member upsert = %+v, want one upsert for Alex", membersRec.upserted)
 	}
 }
 
 func TestPasswordLoginWrongPasswordAndUnknownUserAreIndistinguishable(t *testing.T) {
+	t.Parallel()
+
 	srv, client, _ := passwordTestServer(t)
 
 	wrongPw := postLogin(t, client, srv.URL, `{"username":"alex","password":"nope nope nope"}`)
-	defer wrongPw.Body.Close()
+
+	defer func() { _ = wrongPw.Body.Close() }()
 
 	unknown := postLogin(t, client, srv.URL, `{"username":"ghost","password":"nope nope nope"}`)
-	defer unknown.Body.Close()
+
+	defer func() { _ = unknown.Body.Close() }()
 
 	if wrongPw.StatusCode != http.StatusUnauthorized || unknown.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("statuses: wrongPw=%d unknown=%d, both want 401", wrongPw.StatusCode, unknown.StatusCode)
@@ -174,13 +221,13 @@ func TestPasswordLoginWrongPasswordAndUnknownUserAreIndistinguishable(t *testing
 }
 
 func TestPasswordLoginRejectsUnauthenticatedMe(t *testing.T) {
+	t.Parallel()
+
 	srv, client, _ := passwordTestServer(t)
 
-	resp, err := client.Get(srv.URL + "/me")
-	if err != nil {
-		t.Fatalf("GET /me: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := get(t, client, srv.URL+"/me")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("/me without session = %d, want 401", resp.StatusCode)
@@ -188,13 +235,13 @@ func TestPasswordLoginRejectsUnauthenticatedMe(t *testing.T) {
 }
 
 func TestPasswordLoginGetRedirects(t *testing.T) {
+	t.Parallel()
+
 	srv, client, _ := passwordTestServer(t)
 
-	resp, err := client.Get(srv.URL + "/login")
-	if err != nil {
-		t.Fatalf("GET /login: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := get(t, client, srv.URL+"/login")
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusFound {
 		t.Errorf("GET /login status = %d, want 302", resp.StatusCode)
@@ -202,10 +249,13 @@ func TestPasswordLoginGetRedirects(t *testing.T) {
 }
 
 func TestPasswordLoginRejectsMalformedBody(t *testing.T) {
+	t.Parallel()
+
 	srv, client, _ := passwordTestServer(t)
 
 	resp := postLogin(t, client, srv.URL, `not json`)
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("malformed body status = %d, want 400", resp.StatusCode)
@@ -216,11 +266,14 @@ func TestPasswordLoginRejectsMalformedBody(t *testing.T) {
 // (these routes bypass the /api/v1 body cap) rejects an oversized body as a
 // clean 400, not a 500.
 func TestPasswordLoginOversizedBodyIs400(t *testing.T) {
+	t.Parallel()
+
 	srv, client, _ := passwordTestServer(t)
 	big := `{"username":"alex","password":"` + strings.Repeat("a", 5000) + `"}`
 
 	resp := postLogin(t, client, srv.URL, big)
-	defer resp.Body.Close()
+
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("oversized login body status = %d, want 400", resp.StatusCode)

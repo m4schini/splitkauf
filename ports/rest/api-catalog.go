@@ -4,6 +4,7 @@ package rest
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -14,6 +15,8 @@ import (
 )
 
 // openAPISpec holds the raw OpenAPI spec bytes, registered via SetOpenAPISpec.
+//
+//nolint:gochecknoglobals // registered once at startup via SetOpenAPISpec; the spec is embedded in package main
 var openAPISpec []byte
 
 // SetOpenAPISpec registers the OpenAPI spec served at /openapi.yaml and
@@ -29,14 +32,14 @@ const catalogContentType = `application/linkset+json; profile="https://www.rfc-e
 // the raw OpenAPI spec (YAML and JSON), and the Scalar human-readable docs UI.
 // It is mounted at "/" by the root router so all paths below are absolute.
 func ApiDocsHandler() http.Handler {
-	r := chi.NewRouter()
-	r.Get("/.well-known/api-catalog", apiCatalogHandler())
-	r.Get("/openapi.yaml", openAPISpecHandler())
-	r.Get("/openapi.json", openAPISpecJSONHandler())
-	r.Get("/docs", docsHandler())
-	r.Get("/problems/{slug}", problemPageHandler())
+	router := chi.NewRouter()
+	router.Get("/.well-known/api-catalog", apiCatalogHandler())
+	router.Get("/openapi.yaml", openAPISpecHandler())
+	router.Get("/openapi.json", openAPISpecJSONHandler())
+	router.Get("/docs", docsHandler())
+	router.Get("/problems/{slug}", problemPageHandler())
 
-	return r
+	return router
 }
 
 type linksetDoc struct {
@@ -46,8 +49,8 @@ type linksetDoc struct {
 type linksetEntry struct {
 	Anchor      string       `json:"anchor"`
 	Item        []linkTarget `json:"item,omitempty"`
-	ServiceDesc []linkTarget `json:"service-desc,omitempty"`
-	ServiceDoc  []linkTarget `json:"service-doc,omitempty"`
+	ServiceDesc []linkTarget `json:"service-desc,omitempty"` //nolint:tagliatelle // RFC 8631 kebab-case relation name
+	ServiceDoc  []linkTarget `json:"service-doc,omitempty"`  //nolint:tagliatelle // RFC 8631 kebab-case relation name
 }
 
 type linkTarget struct {
@@ -60,33 +63,36 @@ type linkTarget struct {
 func apiCatalogHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "catalog")
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		base := requestBaseURL(r)
+	return func(writer http.ResponseWriter, req *http.Request) {
+		base := requestBaseURL(req)
 		catalog := linksetDoc{
 			Linkset: []linksetEntry{
 				{
 					Anchor: base + "/.well-known/api-catalog",
 					Item: []linkTarget{
-						{Href: base + "/api/v1", Title: "API"},
+						{Href: base + "/api/v1", Type: "", Title: "API"},
 					},
+					ServiceDesc: nil,
+					ServiceDoc:  nil,
 				},
 				{
 					Anchor: base + "/api/v1",
+					Item:   nil,
 					ServiceDesc: []linkTarget{
-						{Href: base + "/openapi.yaml", Type: "application/yaml"},
-						{Href: base + "/openapi.json", Type: "application/json"},
+						{Href: base + "/openapi.yaml", Type: "application/yaml", Title: ""},
+						{Href: base + "/openapi.json", Type: "application/json", Title: ""},
 					},
 					ServiceDoc: []linkTarget{
-						{Href: base + "/docs", Type: "text/html"},
+						{Href: base + "/docs", Type: "text/html", Title: ""},
 					},
 				},
 			},
 		}
 
-		w.Header().Set("Content-Type", catalogContentType)
-		w.WriteHeader(http.StatusOK)
+		writer.Header().Set("Content-Type", catalogContentType)
+		writer.WriteHeader(http.StatusOK)
 
-		err := json.NewEncoder(w).Encode(catalog)
+		err := json.NewEncoder(writer).Encode(catalog)
 		if err != nil {
 			log.Error("serving api-catalog", zap.Error(err))
 		}
@@ -97,11 +103,11 @@ func apiCatalogHandler() http.HandlerFunc {
 func openAPISpecHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "spec")
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/yaml")
-		w.WriteHeader(http.StatusOK)
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/yaml")
+		writer.WriteHeader(http.StatusOK)
 
-		_, err := w.Write(openAPISpec)
+		_, err := writer.Write(openAPISpec)
 		if err != nil {
 			log.Error("serving open api spec", zap.String("format", "yaml"), zap.Error(err))
 		}
@@ -112,40 +118,45 @@ func openAPISpecHandler() http.HandlerFunc {
 func openAPISpecJSONHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "spec")
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		j, err := yamlToJSON(openAPISpec)
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		jsonSpec, err := yamlToJSON(openAPISpec)
 		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			http.Error(writer, "internal server error", http.StatusInternalServerError)
 
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
 
-		_, err = w.Write(j)
+		_, err = writer.Write(jsonSpec)
 		if err != nil {
 			log.Error("serving open api spec", zap.String("format", "json"), zap.Error(err))
 		}
 	}
 }
 
-func requestBaseURL(r *http.Request) string {
+func requestBaseURL(req *http.Request) string {
 	scheme := "http"
-	if r.TLS != nil {
+	if req.TLS != nil {
 		scheme = "https"
-	} else if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+	} else if proto := req.Header.Get("X-Forwarded-Proto"); proto != "" {
 		scheme = proto
 	}
 
-	return scheme + "://" + r.Host
+	return scheme + "://" + req.Host
 }
 
 func yamlToJSON(src []byte) ([]byte, error) {
 	var data any
 	if err := yaml.Unmarshal(src, &data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshalling openapi spec yaml: %w", err)
 	}
 
-	return json.MarshalIndent(data, "", "  ")
+	out, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshalling openapi spec to json: %w", err)
+	}
+
+	return out, nil
 }

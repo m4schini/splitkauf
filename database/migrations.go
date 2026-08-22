@@ -18,7 +18,7 @@ import (
 )
 
 //go:embed migrations
-var fs embed.FS
+var migrationsFS embed.FS
 
 const (
 	// LatestSchema (0) migrates to the newest embedded version.
@@ -27,31 +27,36 @@ const (
 	DoNotOverrideVersion = int(-1)
 )
 
+// ErrDirtySchema reports a database whose migration state was left dirty by a
+// previously crashed migration. It is wrapped with the concrete version and
+// the remedy before being returned.
+var ErrDirtySchema = errors.New("database is dirty")
+
 // OverrideDirty unconditionally sets the migration state to the given version.
 // This recovers a database left dirty by a previously crashed migration.
 func OverrideDirty(db *sql.DB, version int) error {
 	log := telemetry.Logger("database", "migrate")
 
-	m, err := newMigrator(db)
+	migrator, err := newMigrator(db)
 	if err != nil {
 		return err
 	}
 
-	v, dirty, err := m.Version()
+	currentVersion, dirty, err := migrator.Version()
 	if err != nil {
-		return err
+		return fmt.Errorf("reading schema version: %w", err)
 	}
 
 	log.Warn("OVERRIDING MIGRATION VERSION",
 		zap.Int("force_version", version),
-		zap.Uint("current_version", v),
+		zap.Uint("current_version", currentVersion),
 		zap.Bool("current_dirty", dirty),
 	)
 
-	if err := m.Force(version); err != nil {
+	if err := migrator.Force(version); err != nil {
 		log.Error("overriding migration version failed", zap.Error(err),
 			zap.Int("force_version", version),
-			zap.Uint("current_version", v),
+			zap.Uint("current_version", currentVersion),
 		)
 
 		return fmt.Errorf("forcing version %d: %w", version, err)
@@ -67,21 +72,22 @@ func MigrateDown(db *sql.DB) error {
 	log := telemetry.Logger("database", "migrate")
 	log.Warn("destroying database schema")
 
-	m, err := newMigrator(db)
+	migrator, err := newMigrator(db)
 	if err != nil {
 		return err
 	}
 
-	v, dirty, err := m.Version()
+	currentVersion, dirty, err := migrator.Version()
 	if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
-		return err
+		return fmt.Errorf("reading schema version: %w", err)
 	}
 
 	if dirty {
-		return fmt.Errorf("database is dirty at version %d; re-run with --force <version> first", v)
+		return fmt.Errorf("%w at version %d; re-run with --force <version> first",
+			ErrDirtySchema, currentVersion)
 	}
 
-	err = m.Down()
+	err = migrator.Down()
 	if errors.Is(err, migrate.ErrNoChange) {
 		return nil
 	}
@@ -104,19 +110,21 @@ func Migrate(db *sql.DB, version uint) (bool, error) {
 	log := telemetry.Logger("database", "migrate")
 	log.Info("syncing database schema")
 
-	m, err := newMigrator(db)
+	migrator, err := newMigrator(db)
 	if err != nil {
 		return false, err
 	}
 
-	v, dirty, err := m.Version()
-	log.Info("database schema version", zap.Uint("version", v), zap.Bool("dirty", dirty), zap.Error(err))
+	currentVersion, dirty, err := migrator.Version()
+	log.Info("database schema version",
+		zap.Uint("version", currentVersion), zap.Bool("dirty", dirty), zap.Error(err))
 
 	if dirty {
-		dirtyErr := fmt.Errorf("database is dirty at version %d; re-run with --force <version> to set the state, "+
-			"or fix manually with: UPDATE schema_migrations SET dirty = false WHERE version = %d", v, v)
+		dirtyErr := fmt.Errorf("%w at version %d; re-run with --force <version> to set the state, "+
+			"or fix manually with: UPDATE schema_migrations SET dirty = false WHERE version = %d",
+			ErrDirtySchema, currentVersion, currentVersion)
 		log.Error("migration state is dirty", zap.Error(dirtyErr),
-			zap.Uint("schema_version", v),
+			zap.Uint("schema_version", currentVersion),
 			zap.Bool("dirty", true),
 		)
 
@@ -124,9 +132,9 @@ func Migrate(db *sql.DB, version uint) (bool, error) {
 	}
 
 	if version == 0 {
-		err = m.Up()
+		err = migrator.Up()
 	} else {
-		err = m.Migrate(version)
+		err = migrator.Migrate(version)
 	}
 
 	if errors.Is(err, migrate.ErrNoChange) {
@@ -136,31 +144,46 @@ func Migrate(db *sql.DB, version uint) (bool, error) {
 	if err != nil {
 		log.Error("migration sql failed", zap.Error(err),
 			zap.Uint("target_version", version),
-			zap.Uint("schema_version", v),
+			zap.Uint("schema_version", currentVersion),
 		)
 
 		return false, fmt.Errorf("applying migrations: %w", err)
 	}
 
-	v, dirty, err = m.Version()
-	log.Info("migrated database schema", zap.Uint("version", v), zap.Bool("dirty", dirty), zap.Error(err))
+	currentVersion, dirty, err = migrator.Version()
+	log.Info("migrated database schema",
+		zap.Uint("version", currentVersion), zap.Bool("dirty", dirty), zap.Error(err))
 
 	return true, nil
 }
 
-func newMigrator(db *sql.DB) (*migrate.Migrate, error) {
-	migrationFs, err := iofs.New(fs, "migrations")
+func newMigrator(conn *sql.DB) (*migrate.Migrate, error) {
+	sourceDriver, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
-		return nil, err
-	}
-	defer migrationFs.Close()
-
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening embedded migrations: %w", err)
 	}
 
-	return migrate.NewWithInstance(
-		"iofs", migrationFs,
-		"postgres", driver)
+	defer func() { _ = sourceDriver.Close() }()
+
+	databaseDriver, err := postgres.WithInstance(conn, &postgres.Config{
+		MigrationsTable:       "",
+		MigrationsTableQuoted: false,
+		MultiStatementEnabled: false,
+		DatabaseName:          "",
+		SchemaName:            "",
+		StatementTimeout:      0,
+		MultiStatementMaxSize: 0,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialising postgres migration driver: %w", err)
+	}
+
+	migrator, err := migrate.NewWithInstance(
+		"iofs", sourceDriver,
+		"postgres", databaseDriver)
+	if err != nil {
+		return nil, fmt.Errorf("building migrator: %w", err)
+	}
+
+	return migrator, nil
 }

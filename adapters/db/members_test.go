@@ -45,6 +45,19 @@ func newTestMemberRepo(t *testing.T) (*db.MemberRepository, context.Context) {
 	return db.NewMemberRepository(conn), context.Background()
 }
 
+// mustGetMember reads a member by subject, failing the test on error.
+func mustGetMember(t *testing.T, ctx context.Context, repo *db.MemberRepository, subject string) members.Member {
+	t.Helper()
+
+	member, err := repo.Get(ctx, subject)
+	if err != nil {
+		t.Fatalf("Get(%q): %v", subject, err)
+	}
+
+	return member
+}
+
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	repo, ctx := newTestMemberRepo(t)
 
@@ -53,21 +66,31 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	userID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 	// First Upsert inserts a brand-new member.
-	if err := repo.Upsert(ctx, members.Member{
-		Subject: subject,
-		UserID:  userID,
-		Email:   "alice@example.com",
-		Name:    "Alice",
-	}); err != nil {
-		t.Fatalf("Upsert (insert): %v", err)
-	}
+	mustUpsertMember(t, ctx, repo, newMember(subject, userID, "alice@example.com", nameAlice))
 
-	inserted, err := repo.Get(ctx, subject)
-	if err != nil {
-		t.Fatalf("Get after insert: %v", err)
-	}
+	inserted := mustGetMember(t, ctx, repo, subject)
+	assertInsertedMember(t, inserted, userID)
 
-	if inserted.Email != "alice@example.com" || inserted.Name != "Alice" {
+	// Ensure a measurable clock gap so the refreshed updated_at (now()) differs.
+	time.Sleep(10 * time.Millisecond)
+
+	// Second Upsert with the SAME subject but changed email/name must UPDATE the
+	// existing row (ON CONFLICT) rather than insert a duplicate.
+	// The user id is re-stamped too: migration 000007's backfill guesses it from
+	// the subject, and a login is what corrects a wrong guess (US-L.11).
+	corrected := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	mustUpsertMember(t, ctx, repo, newMember(subject, corrected, "alice.new@example.com", nameAliceRenamed))
+
+	updated := mustGetMember(t, ctx, repo, subject)
+	assertUpdatedMember(t, inserted, updated, corrected, subject)
+}
+
+// assertInsertedMember verifies the freshly inserted row round-tripped Alice's
+// values and got both timestamps stamped.
+func assertInsertedMember(t *testing.T, inserted members.Member, userID uuid.UUID) {
+	t.Helper()
+
+	if inserted.Email != "alice@example.com" || inserted.Name != nameAlice {
 		t.Errorf("inserted = %+v, want email alice@example.com name Alice", inserted)
 	}
 
@@ -78,30 +101,14 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	if inserted.CreatedAt.IsZero() || inserted.UpdatedAt.IsZero() {
 		t.Errorf("timestamps not set: created=%v updated=%v", inserted.CreatedAt, inserted.UpdatedAt)
 	}
+}
 
-	// Ensure a measurable clock gap so the refreshed updated_at (now()) differs.
-	time.Sleep(10 * time.Millisecond)
+// assertUpdatedMember verifies the ON CONFLICT update rewrote email, name and
+// user id while preserving created_at and advancing updated_at.
+func assertUpdatedMember(t *testing.T, inserted, updated members.Member, corrected uuid.UUID, subject string) {
+	t.Helper()
 
-	// Second Upsert with the SAME subject but changed email/name must UPDATE the
-	// existing row (ON CONFLICT) rather than insert a duplicate.
-	// The user id is re-stamped too: migration 000007's backfill guesses it from
-	// the subject, and a login is what corrects a wrong guess (US-L.11).
-	corrected := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
-	if err := repo.Upsert(ctx, members.Member{
-		Subject: subject,
-		UserID:  corrected,
-		Email:   "alice.new@example.com",
-		Name:    "Alice Cooper",
-	}); err != nil {
-		t.Fatalf("Upsert (update): %v", err)
-	}
-
-	updated, err := repo.Get(ctx, subject)
-	if err != nil {
-		t.Fatalf("Get after update: %v", err)
-	}
-
-	if updated.Email != "alice.new@example.com" || updated.Name != "Alice Cooper" {
+	if updated.Email != "alice.new@example.com" || updated.Name != nameAliceRenamed {
 		t.Errorf("updated = %+v, want email alice.new@example.com name Alice Cooper", updated)
 	}
 	// created_at must be preserved across the ON CONFLICT update...
@@ -122,6 +129,7 @@ func TestMemberUpsertInsertThenUpdate(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // integration tests share one database and truncate tables between tests
 func TestMemberGetNotFound(t *testing.T) {
 	repo, ctx := newTestMemberRepo(t)
 

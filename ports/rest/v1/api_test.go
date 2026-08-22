@@ -3,7 +3,6 @@
 package v1_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -21,17 +20,19 @@ import (
 
 // devHandler builds the full REST handler in dev-auth mode for tests that do
 // not go through newServer.
-func devHandler(t *testing.T, si v1.ServerInterface) http.Handler {
+func devHandler(t *testing.T, impl v1.ServerInterface) http.Handler {
 	t.Helper()
 
-	sm := scs.New()
+	sessions := scs.New()
 
-	authr, err := auth.New(context.Background(), &config.Config{}, sm, noopMembers{}, nil)
+	var cfg config.Config
+
+	authr, err := auth.New(t.Context(), &cfg, sessions, noopMembers{}, nil)
 	if err != nil {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
 
-	return rest.New(si, sm, authr, events.NewBroker())
+	return rest.New(impl, sessions, authr, events.NewBroker())
 }
 
 func TestMain(m *testing.M) {
@@ -52,14 +53,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestGetHealth(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/health")
-	if err != nil {
-		t.Fatalf("GET /api/v1/health: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := getURL(t, srv.URL+"/api/v1/health")
+	defer closeBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -80,14 +80,13 @@ func TestGetHealth(t *testing.T) {
 // TestGetHealthNilDB verifies that a nil (unconfigured) database handle reports
 // the database check as "error" and degrades overall status, without panicking.
 func TestGetHealthNilDB(t *testing.T) {
-	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil}))
+	t.Parallel()
+
+	srv := httptest.NewServer(devHandler(t, &v1.V1{DB: nil, Service: nil, Events: nil}))
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/api/v1/health")
-	if err != nil {
-		t.Fatalf("GET /api/v1/health: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := getURL(t, srv.URL+"/api/v1/health")
+	defer closeBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)

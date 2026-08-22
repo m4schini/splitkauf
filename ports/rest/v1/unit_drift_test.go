@@ -18,6 +18,8 @@ import (
 // comparing the sets means a change to one side without the other fails CI
 // rather than diverging silently.
 func TestUnitEnumMatchesDomain(t *testing.T) {
+	t.Parallel()
+
 	spec, err := v1.GetSwagger()
 	if err != nil {
 		t.Fatalf("GetSwagger: %v", err)
