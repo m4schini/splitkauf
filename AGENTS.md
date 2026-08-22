@@ -19,6 +19,8 @@ AI assistants MUST NOT add `Signed-off-by` tags — only a human can certify the
 
 AI assistants MUST NOT add `Co-authored-by` tags.
 
+AI assistants MUST NOT add `Claude-Session` (or similar session-link) trailers.
+
 When AI assistance materially shaped a commit, add an attribution trailer:
 
 ```
@@ -83,6 +85,7 @@ When reviewing Go code or a Go pull request, use the `go-review` skill rather th
 
 - ❌ Adding `Signed-off-by` on behalf of a human.
 - ❌ Adding `Co-authored-by` tags.
+- ❌ Adding `Claude-Session` (or similar session-link) trailers.
 - ❌ Writing or posting PR comments on behalf of a human.
 - ❌ Committing secrets, tokens, or credentials.
 - ❌ Spawning subagents to parallelise plan steps without the user's explicit consent.
