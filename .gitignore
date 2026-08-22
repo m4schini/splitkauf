@@ -6,6 +6,7 @@ data/
 coverage.out
 coverage-unit.out
 coverage.xml
+!hack/dashboard/testdata/coverage.out
 diff-cover.json
 baseline/
 

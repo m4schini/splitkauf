@@ -1,0 +1,9 @@
+go test -race -short -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
+{"Time":"2026-08-21T00:00:00Z","Action":"run","Package":"p","Test":"TestA"}
+{"Time":"2026-08-21T00:00:00Z","Action":"pass","Package":"p","Test":"TestA"}
+{"Time":"2026-08-21T00:00:00Z","Action":"run","Package":"p","Test":"TestB"}
+{"Time":"2026-08-21T00:00:00Z","Action":"skip","Package":"p","Test":"TestB"}
+{"Time":"2026-08-21T00:00:00Z","Action":"run","Package":"p","Test":"TestC"}
+{"Time":"2026-08-21T00:00:00Z","Action":"fail","Package":"p","Test":"TestC"}
+{"Time":"2026-08-21T00:00:00Z","Action":"pass","Package":"p"}
+ok  	p	0.010s
