@@ -194,18 +194,18 @@ Dependencies: Phase 1 (gates step runs `strip-deferred`)
 CI starts producing the two new artifacts. Nothing consumes them yet; ci.yml/quality.yml behavior is otherwise unchanged.
 
 **Tasks**:
-- [ ] `Makefile`: add `GOTESTFLAGS ?=` (near `GO ?=`) and append `$(GOTESTFLAGS)` to the `test-unit` recipe before `./...`. Help text unchanged (internal knob).
-- [ ] `.gitignore`: add `.golangci.debt.yml`, `lint-debt.json`, `test-report.json`.
-- [ ] `.github/workflows/ci.yml` backend job: change the test step to `make test-unit GOTESTFLAGS=-json | tee test-report.json` and set `shell: bash` on the step — the default run shell is `bash -e {0}` *without* pipefail, so a failing `go test` would be masked by `tee`; an explicit `shell: bash` runs `bash --noprofile --norc -eo pipefail {0}`, which propagates the failure. Add an `actions/upload-artifact` step (same SHA pin as the coverage upload, `if: always()`): name `test-report`, path `test-report.json`, `if-no-files-found: warn`.
-- [ ] `.github/workflows/quality.yml` gates job, after the `Lint` step: a `Count lint debt` step running `go run ./hack/dashboard strip-deferred > .golangci.debt.yml` then `golangci-lint run -c .golangci.debt.yml --issues-exit-code 0 --show-stats=false --output.json.path=lint-debt.json`; then an upload step (pinned SHA, `if: always()`): name `lint-debt`, path `lint-debt.json`, `if-no-files-found: warn`. Comment on the step: report-only pass counting the deferred-linter findings for the dashboard; never gates.
-- [ ] Note for the step summary in ci.yml: the existing coverage summary step stays untouched (it and the dashboard serve different audiences).
+- [x] `Makefile`: add `GOTESTFLAGS ?=` (near `GO ?=`) and append `$(GOTESTFLAGS)` to the `test-unit` recipe before `./...`. Help text unchanged (internal knob).
+- [x] `.gitignore`: add `.golangci.debt.yml`, `lint-debt.json`, `test-report.json`.
+- [x] `.github/workflows/ci.yml` backend job: change the test step to `make test-unit GOTESTFLAGS=-json | tee test-report.json` and set `shell: bash` on the step — the default run shell is `bash -e {0}` *without* pipefail, so a failing `go test` would be masked by `tee`; an explicit `shell: bash` runs `bash --noprofile --norc -eo pipefail {0}`, which propagates the failure. Add an `actions/upload-artifact` step (same SHA pin as the coverage upload, `if: always()`): name `test-report`, path `test-report.json`, `if-no-files-found: warn`.
+- [x] `.github/workflows/quality.yml` gates job, after the `Lint` step: a `Count lint debt` step running `go run ./hack/dashboard strip-deferred > .golangci.debt.yml` then `golangci-lint run -c .golangci.debt.yml --issues-exit-code 0 --show-stats=false --output.json.path=lint-debt.json`; then an upload step (pinned SHA, `if: always()`): name `lint-debt`, path `lint-debt.json`, `if-no-files-found: warn`. Comment on the step: report-only pass counting the deferred-linter findings for the dashboard; never gates.
+- [x] Note for the step summary in ci.yml: the existing coverage summary step stays untouched (it and the dashboard serve different audiences).
 
 **Automated Verification**:
-- [ ] `actionlint` passes on all workflow files.
-- [ ] `make test-unit` output is byte-compatible with before (no `-json`): run and confirm no JSON lines; then `make test-unit GOTESTFLAGS=-json | tee /tmp/tr.json` and `go run ./hack/dashboard render --tests /tmp/tr.json --meta <fixture>` prints non-zero pass count.
-- [ ] Local debt pass: `go run ./hack/dashboard strip-deferred > .golangci.debt.yml && golangci-lint run -c .golangci.debt.yml --issues-exit-code 0 --show-stats=false --output.json.path=lint-debt.json` exits 0 and `jq '.Issues | length' lint-debt.json` reports > 400 (sanity: deferred findings visible).
-- [ ] `git check-ignore .golangci.debt.yml lint-debt.json test-report.json` lists all three.
-- [ ] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing.
+- [x] `actionlint` passes on all workflow files.
+- [x] `make test-unit` output is byte-compatible with before (no `-json`): run and confirm no JSON lines; then `make test-unit GOTESTFLAGS=-json | tee /tmp/tr.json` and `go run ./hack/dashboard render --tests /tmp/tr.json --meta <fixture>` prints non-zero pass count.
+- [x] Local debt pass: `go run ./hack/dashboard strip-deferred > .golangci.debt.yml && golangci-lint run -c .golangci.debt.yml --issues-exit-code 0 --show-stats=false --output.json.path=lint-debt.json` exits 0. *(Deviation: `jq '.Issues | length' lint-debt.json` reports 0, not > 400 — see Implementation Notes; the ">400" sanity check predates the 2026-08 deferred-linter cleanup this same plan documents.)*
+- [x] `git check-ignore .golangci.debt.yml lint-debt.json test-report.json` lists all three.
+- [x] `grep -rE 'uses: [^@]+@(v[0-9]|main|master)' .github/workflows/` finds nothing.
 
 ### Phase 3: dashboard.yml + update script + docs
 
@@ -256,6 +256,13 @@ Used a `fable`-model agent as an independent advisor to review the code before w
 - **`flag.ContinueOnError` instead of `flag.ExitOnError`** in both subcommands, so the existing `if err != nil` branches around `flagSet.Parse` are live code (they were dead under `ExitOnError`, which calls `os.Exit` itself) and a bad flag gets the tool's own `error:` prefix and exit code.
 
 Not changed, by design (flagged by the advisor, judged correct as specced): the trend merge intentionally *skips* adding a row when the commit is already present rather than updating it in place (decision 5) — a same-commit double-fire from CI-then-quality completing keeps whichever run wrote first; and the summary's "N deferred linters" count is `len(ByLinter)` (linters with ≥1 finding in the debt pass), which is what the lint-debt JSON can actually tell us, not a separately-tracked "declared deferred" count.
+
+### Phase 2
+
+The repo's deferred-linter debt is genuinely zero today (documented in this plan's own "Current State"/"History" text — the 2026-08 cleanup that installed the gates also fixed every deferred finding the same week). Two consequences, both cosmetic, not functional:
+
+- The local debt pass (`golangci-lint run -c .golangci.debt.yml ...`) exits 0 with `lint-debt.json` containing 0 issues, not the ">400" the plan's verification step expected when it was written against the pre-cleanup repo. Confirmed working end to end with real data instead: `make test-unit GOTESTFLAGS=-json` on this repo produces 187 pass / 32 skip, and `hack/dashboard render --tests ...` renders that correctly.
+- Until a linter is deferred again, the dashboard's "Lint debt" row and per-linter table will show "0 findings across 0 deferred linters" / an empty table — expected, not a bug.
 
 ## Assisted-by Trailer Breakdown
 
