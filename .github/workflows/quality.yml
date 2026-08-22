@@ -131,6 +131,24 @@ jobs:
       - name: Lint
         run: make lint
 
+      # Report-only: reruns lint with the deferred disables stripped from
+      # .golangci.yml (permanent disables kept) so the quality dashboard
+      # (dashboard.yml) can show live debt per deferred linter. This never
+      # gates — --issues-exit-code 0 keeps a non-zero finding count from
+      # failing the job.
+      - name: Count lint debt
+        run: |
+          go run ./hack/dashboard strip-deferred > .golangci.debt.yml
+          golangci-lint run -c .golangci.debt.yml --issues-exit-code 0 --show-stats=false --output.json.path=lint-debt.json
+
+      - name: Upload the lint debt report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lint-debt
+          path: lint-debt.json
+          if-no-files-found: warn
+
       - name: Check go.mod/go.sum tidiness
         run: make tidy-check
 

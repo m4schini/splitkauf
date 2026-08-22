@@ -1,5 +1,10 @@
 GO ?= go
 
+# Passed through to `go test` by test-unit only; CI sets it to `-json` so the
+# dashboard can count pass/skip/fail. Empty by default: local `make
+# test-unit` output stays byte-identical to before this existed.
+GOTESTFLAGS ?=
+
 # golangci-lint is expected on PATH (v2.12.2 — the pin lives in
 # .pre-commit-config.yaml and .github/workflows/quality.yml, kept in sync by
 # hack/lint/check-golangci-pin.sh).
@@ -74,7 +79,7 @@ test-short: generate
 
 .PHONY: test-unit
 test-unit: generate
-	$(GO) test -race -short -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
+	$(GO) test -race -short -shuffle=on -covermode=atomic -coverprofile=coverage.out $(GOTESTFLAGS) ./...
 
 # Report-only: reads the profile test-unit produced; never gates.
 .PHONY: coverage

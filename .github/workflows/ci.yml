@@ -43,8 +43,15 @@ jobs:
       - name: Build
         run: make build
 
+      # -json makes the run tee a go test -json stream to test-report.json for
+      # the quality dashboard (hack/dashboard) to count pass/skip/fail from;
+      # local `make test-unit` is unaffected (GOTESTFLAGS is empty by
+      # default). shell: bash is required here: the default run shell is
+      # `bash -e {0}`, without pipefail, so a failing `go test` would be
+      # masked by `tee`'s own zero exit; `bash -eo pipefail {0}` propagates it.
       - name: Unit tests
-        run: make test-unit
+        shell: bash
+        run: make test-unit GOTESTFLAGS=-json | tee test-report.json
 
       # Coverage is tracked, never gated: no threshold, by decision. The number
       # is here to be looked at, not to be gamed.
@@ -67,6 +74,16 @@ jobs:
         with:
           name: coverage
           path: coverage.out
+          if-no-files-found: warn
+
+      # Consumed by the quality dashboard (dashboard.yml) to count test
+      # pass/skip/fail; not used anywhere else in this workflow.
+      - name: Upload the test report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-report
+          path: test-report.json
           if-no-files-found: warn
 
   # The only place the adapters/db integration tests run: the full suite

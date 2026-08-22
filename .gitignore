@@ -7,6 +7,9 @@ coverage.out
 coverage-unit.out
 coverage.xml
 !hack/dashboard/testdata/coverage.out
+.golangci.debt.yml
+lint-debt.json
+test-report.json
 diff-cover.json
 baseline/
 
