@@ -15,18 +15,21 @@ import (
 func docsHandler() http.HandlerFunc {
 	log := telemetry.Logger("api", "docs")
 
-	docsHTML, err := scalargo.NewV2(
-		scalargo.WithSpecBytes(openAPISpec),
-	)
-	if err != nil {
-		panic(fmt.Sprintf("scalar-go: failed to render docs: %v", err))
-	}
+	return func(writer http.ResponseWriter, _ *http.Request) {
+		docsHTML, err := scalargo.NewV2(
+			scalargo.WithSpecBytes(openAPISpec),
+		)
+		if err != nil {
+			log.Error("rendering scalar docs", zap.Error(err))
+			http.Error(writer, "internal server error", http.StatusInternalServerError)
 
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
+			return
+		}
 
-		_, err := fmt.Fprint(w, docsHTML)
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		writer.WriteHeader(http.StatusOK)
+
+		_, err = fmt.Fprint(writer, docsHTML)
 		if err != nil {
 			log.Error("serving scalar docs", zap.Error(err))
 		}
