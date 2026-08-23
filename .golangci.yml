@@ -120,6 +120,29 @@ linters:
           - dupl
           - gocognit
 
+      # exhaustruct demands every field of every struct literal be set,
+      # including on stdlib types embedded in test fixtures (http.Request,
+      # tls.ConnectionState, url.URL, hand-rolled ResponseWriters). In test
+      # code that turns every table-driven case into enumerating irrelevant
+      # zero-value fields instead of expressing intent, for no gain in
+      # fixture correctness; reason: fights table-test ergonomics; owner
+      # @m4schini; review 2027-02.
+      - path: _test\.go
+        linters:
+          - exhaustruct
+
+      # varnamelen and goconst both measure the wrong thing in table-driven
+      # tests: `tt`/`tc` for the current case, and short loop/param names like
+      # `i`, `w`, `r`, `v`, are a near-universal Go test idiom, and a literal
+      # such as a hostname or error string repeated across a dozen test cases
+      # is intentional fixture data, not a maintenance risk; reason: fights
+      # table-test idiom and fixture repetition; owner @m4schini; review
+      # 2027-02.
+      - path: _test\.go
+        linters:
+          - varnamelen
+          - goconst
+
       # A command's job is to write to stdout. forbidigo's ban on fmt.Print* is
       # aimed at library and service code, so it is lifted for the entry point
       # (main.go at the repo root) and the cobra commands in cmd/; reason:
