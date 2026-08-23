@@ -19,7 +19,7 @@ const (
 // errors.Is.
 var (
 	errAppNameRequired          = errors.New("app.name is required")
-	errServerPortRange          = errors.New("server.http.port must be 1–65535")
+	errServerPortRange          = errors.New("server.port must be 1–65535")
 	errMetricsPortRange         = errors.New("metrics.port must be 1–65535")
 	errMetricsPortConflict      = errors.New("metrics.port must differ from server.port")
 	errMetricsPathFormat        = errors.New("metrics.path must start with '/'")
@@ -55,6 +55,8 @@ func validateApp(app *AppConfig) []error {
 		errs = append(errs, errAppNameRequired)
 	}
 
+	//nolint:goconst // "debug" also appears in telemetry's log-level switch and config's
+	// mapstructure tag; those are unrelated call sites, not duplication worth a shared constant.
 	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLogLevels[app.LogLevel] {
 		errs = append(errs, fmt.Errorf("%w, got %q", errLogLevelInvalid, app.LogLevel))
