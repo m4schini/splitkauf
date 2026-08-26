@@ -15,9 +15,17 @@ name: Lint
 
 on:
   workflow_call:
+    inputs:
+      caller:
+        description: >-
+          Name of the calling workflow (e.g. "ci", "quality"). Included in
+          the concurrency group below so two callers running on the same ref
+          at once don't cancel each other's lint run.
+        type: string
+        required: true
 
 concurrency:
-  group: lint-${{ github.ref }}
+  group: lint-${{ inputs.caller }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:

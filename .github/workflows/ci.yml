@@ -1,5 +1,7 @@
-# Build/test pipeline. Quality gates (lint, formatting, security, hooks) live
-# in quality.yml; PR titles are validated by pr-title.yml.
+# Build/test pipeline. Lint runs here too (see the lint job below) so a
+# formatting/lint break shows red on the same run as the build; the broader
+# quality gates (security, hooks, lint debt/config, tidiness) live in
+# quality.yml. PR titles are validated by pr-title.yml.
 #
 # Third-party actions are pinned by commit SHA, not by tag: a tag is mutable
 # and a compromised tag would run arbitrary code with this workflow's token.
@@ -21,6 +23,11 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+    with:
+      caller: ci
+
   backend:
     name: Backend
     runs-on: ubuntu-latest
