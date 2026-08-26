@@ -546,7 +546,7 @@ func (w *failingResponseWriter) Header() http.Header {
 	return w.header
 }
 
-func (w *failingResponseWriter) Write(p []byte) (int, error) {
+func (w *failingResponseWriter) Write(_ []byte) (int, error) {
 	w.writes++
 
 	return 0, errClientDisconnected

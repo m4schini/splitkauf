@@ -62,7 +62,6 @@ func stateCallbackRequest(
 			cookieValue = uuid.NewString()
 		}
 
-		//nolint:gosec // outgoing request cookie, not a response cookie; Secure/HttpOnly/SameSite don't apply
 		req.AddCookie(&http.Cookie{Name: sessions.Cookie.Name, Value: cookieValue})
 	}
 
@@ -286,7 +285,7 @@ const (
 // *testing.T and the fake provider whose issuer the ID token must name.
 type exchangeEnv struct {
 	t   *testing.T
-	idp *callbackIdP
+	idp *callbackIDP
 }
 
 // exchangeFailure is one exchangeAndVerify failure: the reply the token
@@ -310,7 +309,7 @@ type exchangeFailure struct {
 func runExchangeFailure(t *testing.T, signKey *rsa.PrivateKey, failure exchangeFailure) {
 	t.Helper()
 
-	idp := newCallbackIdP(t)
+	idp := newCallbackIDP(t)
 	authenticator, _ := newCallbackAuthenticator(t, idp, exchangeClientID, &signKey.PublicKey, new(recordingMembers))
 	idp.respond(failure.status, failure.body(exchangeEnv{t: t, idp: idp}))
 
@@ -350,7 +349,7 @@ func TestOIDCExchangeAndVerifyReturnsTheVerifiedIDToken(t *testing.T) {
 	t.Parallel()
 
 	key := newCallbackRSAKey(t)
-	idp := newCallbackIdP(t)
+	idp := newCallbackIDP(t)
 	authenticator, _ := newCallbackAuthenticator(t, idp, exchangeClientID, &key.PublicKey, new(recordingMembers))
 
 	rawIDToken := signCallbackToken(t, key,

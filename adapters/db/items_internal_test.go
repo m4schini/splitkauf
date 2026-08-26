@@ -247,7 +247,7 @@ func (r *rowScanner) Scan(dest ...any) error {
 // get the raw driver value, everything else is assigned reflectively.
 func assignScanDest(dest, src any) error {
 	if s, ok := dest.(sql.Scanner); ok {
-		return s.Scan(src) //nolint:wrapcheck // deliberate passthrough: mimics database/sql's own unwrapped Scan error
+		return s.Scan(src)
 	}
 
 	rv := reflect.ValueOf(dest)

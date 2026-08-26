@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package middleware provides the shared HTTP middleware (request logging,
+// panic recovery, body-size limiting) used by the REST port.
 package middleware
 
 import (
@@ -23,6 +25,8 @@ func (rw *responseWriter) WriteHeader(status int) {
 	rw.ResponseWriter.WriteHeader(status)
 }
 
+// Logging wraps next, logging one structured line per request: method,
+// path, matched route, status, remote address and duration.
 func Logging(next http.Handler) http.Handler {
 	log := telemetry.Logger("api")
 

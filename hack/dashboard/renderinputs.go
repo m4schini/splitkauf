@@ -101,7 +101,7 @@ func loadCoverage(inputs *Inputs, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close() //nolint:errcheck // read-only file, close error carries no useful signal here
+	defer file.Close()
 
 	cov, err := parseProfile(file)
 	if err != nil {
@@ -124,7 +124,7 @@ func loadTests(inputs *Inputs, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close() //nolint:errcheck // read-only file, close error carries no useful signal here
+	defer file.Close()
 
 	tests, err := parseTestJSON(file)
 	if err != nil {
@@ -147,7 +147,7 @@ func loadLintDebt(inputs *Inputs, path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close() //nolint:errcheck // read-only file, close error carries no useful signal here
+	defer file.Close()
 
 	debt, err := parseLintJSON(file)
 	if err != nil {

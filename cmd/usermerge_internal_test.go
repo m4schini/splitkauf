@@ -755,20 +755,17 @@ func newPTY(t *testing.T, slaveFlags int) (*os.File, *os.File) {
 	t.Cleanup(func() { _ = master.Close() })
 
 	var unlock int32
-	//nolint:gosec // ioctl needs an unsafe.Pointer; it targets a local int32
 	if err := ioctl(master, ioctlSetPTLock, unsafe.Pointer(&unlock)); err != nil {
 		t.Skipf("ioctl TIOCSPTLCK: %v", err)
 	}
 
 	var ptn uint32
-	//nolint:gosec // ioctl needs an unsafe.Pointer; it targets a local uint32
 	if err := ioctl(master, ioctlGetPTN, unsafe.Pointer(&ptn)); err != nil {
 		t.Skipf("ioctl TIOCGPTN: %v", err)
 	}
 
 	name := "/dev/pts/" + strconv.FormatUint(uint64(ptn), 10)
 
-	//nolint:gosec // the path comes from the kernel via TIOCGPTN, not from input
 	slave, err := os.OpenFile(name, slaveFlags|syscall.O_NOCTTY, 0)
 	if err != nil {
 		t.Skipf("open %s: %v", name, err)
@@ -852,7 +849,7 @@ func TestConfirmMergeNonTerminalFileWithoutYesFails(t *testing.T) {
 					t.Fatalf("write temp file: %v", err)
 				}
 
-				file, err := os.Open(path) //nolint:gosec // path is built from the test's own TempDir
+				file, err := os.Open(path)
 				if err != nil {
 					t.Fatalf("open temp file: %v", err)
 				}

@@ -525,8 +525,7 @@ func TestRunServersReturnsListenError(t *testing.T) {
 				t.Errorf("runServers() error = %q, want it to not mention %q", err.Error(), tst.wantMissing)
 			}
 
-			var opErr *net.OpError
-			if !errors.As(err, &opErr) {
+			if _, ok := errors.AsType[*net.OpError](err); !ok {
 				t.Errorf("runServers() error = %v, want the underlying *net.OpError to stay unwrappable", err)
 			}
 
@@ -544,6 +543,8 @@ func TestRunServersReturnsListenError(t *testing.T) {
 // TestRunServersShutsDownOnSignal pins the normal path: runServers blocks
 // until SIGTERM, then stops every server and returns nil. It must not be
 // parallel — it signals the whole test process.
+//
+//nolint:paralleltest // signals the whole test process; see guardShutdownSignals
 func TestRunServersShutsDownOnSignal(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -611,6 +612,8 @@ func TestRunServersShutsDownOnSignal(t *testing.T) {
 // TestRunServersCompletesInFlightRequestOnSignal checks the graceful part of
 // the graceful shutdown: a request already being served finishes, while the
 // listener stops accepting new connections.
+//
+//nolint:paralleltest // signals the whole test process; see guardShutdownSignals
 func TestRunServersCompletesInFlightRequestOnSignal(t *testing.T) {
 	guardShutdownSignals(t)
 
@@ -653,7 +656,7 @@ func TestRunServersCompletesInFlightRequestOnSignal(t *testing.T) {
 	reqErrCh := make(chan error, 1)
 
 	go func() {
-		resp, err := http.Get("http://" + addr + "/") //nolint:noctx // plain in-flight probe
+		resp, err := http.Get("http://" + addr + "/")
 		if err != nil {
 			reqErrCh <- err
 
@@ -715,6 +718,8 @@ func TestRunServersCompletesInFlightRequestOnSignal(t *testing.T) {
 // TestRunServersIgnoresShutdownTimeout pins the deliberate contract point that
 // a failing or timing-out Shutdown is only logged, never returned: the handler
 // below outlives the 10s shutdown deadline, yet runServers still returns nil.
+//
+//nolint:paralleltest // signals the whole test process; see guardShutdownSignals
 func TestRunServersIgnoresShutdownTimeout(t *testing.T) {
 	if testing.Short() {
 		t.Skip("waits out the 10s shutdown deadline")
@@ -764,7 +769,7 @@ func TestRunServersIgnoresShutdownTimeout(t *testing.T) {
 	}
 
 	go func() {
-		resp, err := http.Get("http://" + addr + "/") //nolint:noctx // deliberately stuck request
+		resp, err := http.Get("http://" + addr + "/")
 		if err != nil {
 			return
 		}
@@ -972,9 +977,8 @@ func TestRunServersListenError(t *testing.T) {
 					err.Error(), prefix, tst.wantNames)
 			}
 
-			var opErr *net.OpError
-			if !errors.As(err, &opErr) {
-				t.Errorf("errors.As(%v, *net.OpError) = false, want the underlying net error to stay reachable", err)
+			if _, ok := errors.AsType[*net.OpError](err); !ok {
+				t.Errorf("errors.AsType[*net.OpError](%v) = false, want the underlying net error to stay reachable", err)
 			}
 
 			if errors.Is(err, http.ErrServerClosed) {

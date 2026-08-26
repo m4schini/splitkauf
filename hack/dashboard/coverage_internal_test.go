@@ -16,7 +16,7 @@ func TestParseProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening fixture: %v", err)
 	}
-	defer file.Close() //nolint:errcheck // read-only test fixture
+	defer file.Close()
 
 	cov, err := parseProfile(file)
 	if err != nil {

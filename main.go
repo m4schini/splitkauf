@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Command splitkauf is a shared shopping-list service; see package cmd for
+// the CLI it exposes.
 package main
 
 import (

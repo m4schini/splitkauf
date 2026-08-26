@@ -21,6 +21,8 @@ import (
 
 const healthPingTimeout = time.Second
 
+// New wires server as the v1 API handler, applying options (middleware,
+// base URL, error handler) via the generated chi router.
 func New(server ServerInterface, options ChiServerOptions) http.Handler {
 	return HandlerWithOptions(server, options)
 }

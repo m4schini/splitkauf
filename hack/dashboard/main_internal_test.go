@@ -197,7 +197,6 @@ func TestRunStripDeferredReadsStdinForDashPath(t *testing.T) {
 	// No t.Parallel: both os.Stdin and os.Stdout are swapped.
 	path := writeConfigFile(t, t.TempDir(), "stdin.yml", runStripDeferredFixture)
 
-	//nolint:gosec // path is from writeConfigFile(t.TempDir()), not attacker-controlled
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("os.Open(%q) error = %v", path, err)
@@ -679,6 +678,7 @@ func TestRunRenderTreatsMissingInputsLikeNoFlags(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // swaps the process-global os.Stdout via runRenderCapture
 func TestRunRenderReturnsErrorsAndWritesNothing(t *testing.T) {
 	// dirPlaceholder stands in for the per-case temp directory path, which is
 	// only known at run time.

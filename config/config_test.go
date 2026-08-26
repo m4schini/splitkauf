@@ -505,7 +505,6 @@ func runLoadInChild(t *testing.T, files, env map[string]string, goroutines int) 
 	dir := t.TempDir()
 	writeConfigFiles(t, dir, files)
 
-	//nolint:gosec // exe is os.Executable(), the current test binary re-exec'd, not attacker input
 	cmd := exec.CommandContext(t.Context(), exe, "-test.run=^TestLoadChildProcess$", "-test.count=1")
 	cmd.Dir = dir
 	cmd.Env = []string{
@@ -964,7 +963,6 @@ func TestLoadRemembersFirstResult(t *testing.T) {
 		t.Fatalf("os.Executable() error = %v", err)
 	}
 
-	//nolint:gosec // exe is os.Executable(), the current test binary re-exec'd, not attacker input
 	cmd := exec.CommandContext(t.Context(), exe, "-test.run=^TestLoadRememberChildProcess$", "-test.count=1")
 	cmd.Dir = t.TempDir()
 	cmd.Env = []string{

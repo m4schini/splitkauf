@@ -30,7 +30,7 @@ type rwPanicWriter struct {
 	http.ResponseWriter
 }
 
-func (w *rwPanicWriter) WriteHeader(status int) {
+func (w *rwPanicWriter) WriteHeader(_ int) {
 	panic("underlying WriteHeader panicked")
 }
 

@@ -94,10 +94,10 @@ linters:
 
   settings:
     goheader:
-      # License is still TODO (see AGENTS.md "Licensing"); every hand-written
-      # file carries this placeholder SPDX header until a license is chosen.
+      # AGENTS.md: "License: CC0-1.0" — every hand-written file carries this
+      # SPDX header.
       template: |-
-        SPDX-License-Identifier: TODO
+        SPDX-License-Identifier: CC0-1.0
 
   exclusions:
     # Generated files (client/client.gen.go, ports/rest/v1/gen.go — see
@@ -165,6 +165,19 @@ linters:
           - prealloc
           - wrapcheck
           - noctx
+
+      # revive's context-as-argument wants context.Context first, ahead of
+      # even *testing.T. Every test helper in this repo puts t *testing.T
+      # first instead -- t.Helper()/t.Fatalf() at the call site is the
+      # dominant Go test idiom (stdlib and x/tools testing helpers do the
+      # same), and revive's rule does not carve out an exception for it. Only
+      # this specific check is scoped off test files; the rest of revive
+      # (var-naming, unused-parameter, package-comments, ...) still runs on
+      # them.
+      - path: _test\.go
+        linters:
+          - revive
+        text: "context-as-argument"
 
 issues:
   # golangci-lint defaults to reporting at most 50 issues per linter and 3 of

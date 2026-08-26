@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package cmd implements the splitkauf CLI: the root command and its
+// subcommands (serve, migrate, user management).
 package cmd
 
 import (

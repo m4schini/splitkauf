@@ -77,8 +77,8 @@ func (v *V1) CreateList(writer http.ResponseWriter, req *http.Request) {
 }
 
 // GetList returns a single list together with all of its items.
-func (v *V1) GetList(writer http.ResponseWriter, req *http.Request, listId ListId) {
-	list, items, err := v.Service.GetList(req.Context(), listId)
+func (v *V1) GetList(writer http.ResponseWriter, req *http.Request, listID ListId) {
+	list, items, err := v.Service.GetList(req.Context(), listID)
 	if err != nil {
 		writeError(writer, req, err)
 
@@ -89,13 +89,13 @@ func (v *V1) GetList(writer http.ResponseWriter, req *http.Request, listId ListI
 }
 
 // RenameList renames a list from the request body.
-func (v *V1) RenameList(writer http.ResponseWriter, req *http.Request, listId ListId) {
+func (v *V1) RenameList(writer http.ResponseWriter, req *http.Request, listID ListId) {
 	var body RenameListJSONRequestBody
 	if !decodeBody(writer, req, &body) {
 		return
 	}
 
-	list, err := v.Service.RenameList(req.Context(), listId, body.Name)
+	list, err := v.Service.RenameList(req.Context(), listID, body.Name)
 	if err != nil {
 		writeError(writer, req, err)
 
@@ -107,8 +107,8 @@ func (v *V1) RenameList(writer http.ResponseWriter, req *http.Request, listId Li
 }
 
 // DeleteList deletes a list and (via cascade) all of its items.
-func (v *V1) DeleteList(writer http.ResponseWriter, req *http.Request, listId ListId) {
-	if err := v.Service.DeleteList(req.Context(), listId); err != nil {
+func (v *V1) DeleteList(writer http.ResponseWriter, req *http.Request, listID ListId) {
+	if err := v.Service.DeleteList(req.Context(), listID); err != nil {
 		writeError(writer, req, err)
 
 		return
@@ -121,7 +121,7 @@ func (v *V1) DeleteList(writer http.ResponseWriter, req *http.Request, listId Li
 // CopyList copies a list, resetting every copied item to unchecked. The request
 // body is optional: an absent or empty body means "no name supplied", and the
 // service derives "«source name» (copy)".
-func (v *V1) CopyList(writer http.ResponseWriter, req *http.Request, listId ListId) {
+func (v *V1) CopyList(writer http.ResponseWriter, req *http.Request, listID ListId) {
 	var body CopyListJSONRequestBody
 	// decodeBody would reject the empty body this endpoint explicitly allows,
 	// so EOF is handled here as "no body"; anything else is malformed JSON.
@@ -141,7 +141,7 @@ func (v *V1) CopyList(writer http.ResponseWriter, req *http.Request, listId List
 		return
 	}
 
-	list, err := v.Service.CopyList(req.Context(), listId, name, actorID)
+	list, err := v.Service.CopyList(req.Context(), listID, name, actorID)
 	if err != nil {
 		writeError(writer, req, err)
 

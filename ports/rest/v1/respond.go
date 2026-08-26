@@ -66,8 +66,7 @@ func writeError(writer http.ResponseWriter, req *http.Request, err error) {
 	case errors.Is(err, lists.ErrNotFound):
 		problem.Write(writer, req, problem.New(problem.NotFound, "the requested resource does not exist"))
 	default:
-		var verr *lists.ValidationError
-		if errors.As(err, &verr) {
+		if verr, ok := errors.AsType[*lists.ValidationError](err); ok {
 			prob := problem.New(problem.Validation, verr.Message)
 			if verr.Field != "" {
 				prob.Errors = []problem.FieldError{{

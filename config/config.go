@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package config loads and validates splitkauf's configuration from
+// environment variables, flags and config files via viper.
 package config
 
 import (
@@ -15,10 +17,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+// ServiceName is the fixed service name used for telemetry (logs, traces,
+// metrics) and default OTel resource attribution.
 const (
 	ServiceName = "splitkauf"
 )
 
+// Config is the fully resolved application configuration, as loaded and
+// validated by Load.
 type Config struct {
 	App      AppConfig      `mapstructure:"app"`
 	Server   ServerConfig   `mapstructure:"server"`
@@ -27,6 +33,8 @@ type Config struct {
 	Auth     AuthConfig     `mapstructure:"auth"`
 }
 
+// AppConfig holds general application settings: identity, environment, and
+// logging.
 type AppConfig struct {
 	Name        string `mapstructure:"name"`
 	Version     string `mapstructure:"version"`
@@ -92,6 +100,7 @@ func (c *Config) IsPasswordEnabled() bool {
 // endpoint the frontend reads to choose its login UI.
 type AuthMode string
 
+// AuthModeOIDC and its siblings are the AuthMode values Mode can return.
 const (
 	AuthModeOIDC     AuthMode = "oidc"
 	AuthModePassword AuthMode = "password"
@@ -115,6 +124,7 @@ func (c *Config) Mode() AuthMode {
 	}
 }
 
+// ServerConfig holds the public HTTP API's listen address.
 type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	Port int    `mapstructure:"port"`

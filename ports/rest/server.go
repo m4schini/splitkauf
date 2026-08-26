@@ -33,7 +33,7 @@ func New(
 	impl v1.ServerInterface, sessions *scs.SessionManager, authr auth.Authenticator, broker *events.Broker,
 ) http.Handler {
 	router := chi.NewRouter()
-	router.Mount("/", ApiDocsHandler())
+	router.Mount("/", APIDocsHandler())
 
 	// Hand-written BFF auth endpoints. They live OUTSIDE /api/v1 and its
 	// request-validation middleware: they are browser-facing OAuth redirect

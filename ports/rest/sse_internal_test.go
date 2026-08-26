@@ -443,7 +443,7 @@ func (r *heartbeatRecorder) Write(p []byte) (int, error) {
 		return 0, r.writeErr
 	}
 
-	return r.body.Write(p) //nolint:wrapcheck // deliberate passthrough: forwards the underlying writer's error unchanged
+	return r.body.Write(p)
 }
 
 func (r *heartbeatRecorder) WriteHeader(int) {}

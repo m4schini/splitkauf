@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package database runs the golang-migrate schema migrations embedded in
+// this module.
 package database
 
 import (
@@ -10,7 +12,7 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/source/file" // registers the "file://" migration source
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"go.uber.org/zap"
 

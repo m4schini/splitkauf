@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package db implements the Postgres-backed persistence adapters for lists,
+// items, members, users and identity.
 package db
 
 import (

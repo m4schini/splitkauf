@@ -128,7 +128,7 @@ func TestDocsHandlerRendersPerRequest(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			rest.SetOpenAPISpec(testCase.spec)
 
-			handler := rest.ApiDocsHandler()
+			handler := rest.APIDocsHandler()
 
 			rec := getDocs(t, handler)
 
@@ -159,7 +159,7 @@ func TestDocsHandlerReadsSpecAtRequestTime(t *testing.T) {
 
 	rest.SetOpenAPISpec(docsSpecFixture("Spec Before Rebuild"))
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 
 	before := assertDocsPage(t, getDocs(t, handler))
 	if !strings.Contains(before, "Spec Before Rebuild") {
@@ -180,7 +180,7 @@ func TestDocsHandlerReadsSpecAtRequestTime(t *testing.T) {
 func TestDocsHandlerServesIdenticalPagePerRequest(t *testing.T) {
 	t.Parallel()
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 	want := assertDocsPage(t, getDocs(t, handler))
 
 	const requests = 8
@@ -236,7 +236,7 @@ func (w *failingResponseWriter) Write(_ []byte) (int, error) {
 func TestDocsHandlerToleratesWriteFailure(t *testing.T) {
 	t.Parallel()
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 	writer := &failingResponseWriter{header: nil, status: 0, writes: 0}
 
 	handler.ServeHTTP(writer, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/docs", nil))

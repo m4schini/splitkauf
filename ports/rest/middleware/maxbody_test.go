@@ -31,7 +31,7 @@ func newMaxBodyTrackingBody(payload []byte) *maxBodyTrackingBody {
 func (b *maxBodyTrackingBody) Read(p []byte) (int, error) {
 	b.reads++
 
-	return b.reader.Read(p) //nolint:wrapcheck // deliberate passthrough: forwards the underlying reader's error unchanged
+	return b.reader.Read(p)
 }
 
 func (b *maxBodyTrackingBody) Close() error {

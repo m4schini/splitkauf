@@ -15,7 +15,7 @@ func TestParseLintJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("opening fixture: %v", err)
 	}
-	defer file.Close() //nolint:errcheck // read-only test fixture
+	defer file.Close()
 
 	debt, err := parseLintJSON(file)
 	if err != nil {

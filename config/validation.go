@@ -55,7 +55,7 @@ func validateApp(app *AppConfig) []error {
 		errs = append(errs, errAppNameRequired)
 	}
 
-	//nolint:goconst // "debug" also appears in telemetry's log-level switch and config's
+	// "debug" also appears in telemetry's log-level switch and config's
 	// mapstructure tag; those are unrelated call sites, not duplication worth a shared constant.
 	validLogLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 	if !validLogLevels[app.LogLevel] {

@@ -57,7 +57,6 @@ type recoverNoFlushWriter struct {
 
 func (w *recoverNoFlushWriter) Header() http.Header { return w.rec.Header() }
 
-//nolint:wrapcheck // deliberate passthrough
 func (w *recoverNoFlushWriter) Write(b []byte) (int, error) { return w.rec.Write(b) }
 func (w *recoverNoFlushWriter) WriteHeader(status int)      { w.rec.WriteHeader(status) }
 
@@ -172,7 +171,7 @@ func TestRecover(t *testing.T) {
 	}{
 		{
 			name: "no panic passes through unchanged",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("X-Handler", "ran")
 				w.WriteHeader(http.StatusAccepted)
 				_, _ = w.Write([]byte("handler body"))
@@ -182,7 +181,7 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			name: "panic before any write yields generic problem response",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(_ http.ResponseWriter, _ *http.Request) {
 				panic(errRecoverBoom)
 			},
 			wantProblem: true,
@@ -190,7 +189,7 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			name: "string panic before any write does not leak the value",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(_ http.ResponseWriter, _ *http.Request) {
 				panic(leakStr)
 			},
 			wantProblem: true,
@@ -198,22 +197,22 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			name: "nil panic is still handled (runtime.PanicNilError)",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(_ http.ResponseWriter, _ *http.Request) {
 				var v any
-				panic(v) //nolint:govet // panic(nil) is the case under test: Go 1.21+ wraps it in runtime.PanicNilError
+				panic(v)
 			},
 			wantProblem: true,
 		},
 		{
 			name: "ErrAbortHandler is converted to a problem response",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(_ http.ResponseWriter, _ *http.Request) {
 				panic(http.ErrAbortHandler)
 			},
 			wantProblem: true,
 		},
 		{
 			name: "panic after Write re-panics with the same value",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("partial"))
 
 				panic(errRecoverBoom)
@@ -224,7 +223,7 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			name: "panic after WriteHeader only re-panics",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				panic(errRecoverBoom)
 			},
@@ -234,7 +233,7 @@ func TestRecover(t *testing.T) {
 		},
 		{
 			name: "non-error panic value is re-panicked as-is",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte("partial"))
 
 				panic(payload)
@@ -297,7 +296,7 @@ func TestRecoverForwardsFlush(t *testing.T) {
 
 	var sawFlusher bool
 
-	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		f, ok := w.(http.Flusher)
 		sawFlusher = ok
 
@@ -324,7 +323,7 @@ func TestRecoverFlushWithoutUnderlyingFlusher(t *testing.T) {
 	rec := httptest.NewRecorder()
 	underlying := &recoverNoFlushWriter{rec: rec}
 
-	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush() // must be a no-op, not a panic
 		}
@@ -351,7 +350,7 @@ func TestRecoverFlushDoesNotStartResponse(t *testing.T) {
 	rec := httptest.NewRecorder()
 	underlying := &recoverFlushCounter{ResponseWriter: rec}
 
-	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			t.Fatal("recoverWriter does not forward http.Flusher")
@@ -386,7 +385,7 @@ func TestRecoverWrapsWriteError(t *testing.T) {
 		gotErr error
 	)
 
-	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Recover(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		gotN, gotErr = w.Write([]byte("hello"))
 	}))
 
@@ -464,7 +463,7 @@ func (w *recPlainWriter) Write(b []byte) (int, error) {
 		w.code = http.StatusOK
 	}
 
-	return w.body.Write(b) //nolint:wrapcheck // deliberate passthrough: forwards the underlying writer's error unchanged
+	return w.body.Write(b)
 }
 
 // recFlusher adds http.Flusher to an httptest.ResponseRecorder-backed writer
@@ -583,8 +582,7 @@ func TestRecoverPanicBeforeResponseStarted(t *testing.T) {
 			forbidden:  []string{"1234567"},
 		},
 		{
-			name: "custom struct value",
-			//nolint:gosec // fake secret used as bait to prove Recover doesn't leak it, not a real credential
+			name:       "custom struct value",
 			panicValue: recPanicValue{Secret: "struct-secret-4b71"},
 			forbidden:  []string{"struct-secret-4b71"},
 		},
@@ -604,11 +602,11 @@ func TestRecoverPanicBeforeResponseStarted(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 				if tt.panicValue == nil {
 					var m map[string]string
 
-					//nolint:govet,staticcheck // deliberate: a real runtime panic, not a Go-level panic()
+					//nolint:staticcheck // deliberate: a real runtime panic, not a Go-level panic()
 					m["boom"] = "nil map"
 
 					return
@@ -638,9 +636,9 @@ func TestRecoverPanicNilValue(t *testing.T) {
 
 	recEnsureConfig(t)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		var v any
-		panic(v) //nolint:govet // panic(nil) is the case under test: Go 1.21+ wraps it in runtime.PanicNilError
+		panic(v)
 	})
 
 	rec := httptest.NewRecorder()
@@ -703,7 +701,7 @@ func TestRecoverRepanicsAfterResponseStarted(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				tt.start(w)
 				panic(tt.panicValue)
 			})
@@ -751,7 +749,7 @@ func TestRecoverPassesThroughCleanResponses(t *testing.T) {
 	}{
 		{
 			name: "implicit 200 with body",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, _ = w.Write([]byte(`{"ok":true}`))
 			},
 			wantStatus: http.StatusOK,
@@ -759,7 +757,7 @@ func TestRecoverPassesThroughCleanResponses(t *testing.T) {
 		},
 		{
 			name: "explicit status and custom headers",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				w.Header().Set("X-Request-Id", "req-42")
 				w.WriteHeader(http.StatusCreated)
@@ -774,7 +772,7 @@ func TestRecoverPassesThroughCleanResponses(t *testing.T) {
 		},
 		{
 			name: "status only, no body",
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			},
 			wantStatus: http.StatusNoContent,
@@ -825,7 +823,7 @@ func TestRecoverWriteReturnsUnderlyingCount(t *testing.T) {
 		gotErr error
 	)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		gotN, gotErr = w.Write(payload)
 	})
 
@@ -853,7 +851,7 @@ func TestRecoverFlushOnPlainWriter(t *testing.T) {
 
 	var isFlusher bool
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		var f http.Flusher
 
 		f, isFlusher = w.(http.Flusher)
@@ -893,7 +891,7 @@ func TestRecoverFlushThenPanicGap(t *testing.T) {
 	rec := httptest.NewRecorder()
 	flusher := &recFlusher{ResponseWriter: rec, rec: rec}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			t.Fatal("recoverWriter does not forward http.Flusher")

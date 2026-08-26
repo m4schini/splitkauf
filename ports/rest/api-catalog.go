@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package rest implements the HTTP port: v1 API mounting, docs, health, SSE
+// and the RFC 9727 API catalog.
 package rest
 
 import (
@@ -28,10 +30,10 @@ func SetOpenAPISpec(spec []byte) {
 
 const catalogContentType = `application/linkset+json; profile="https://www.rfc-editor.org/info/rfc9727"`
 
-// ApiDocsHandler returns an HTTP handler that serves the RFC 9727 API catalog,
+// APIDocsHandler returns an HTTP handler that serves the RFC 9727 API catalog,
 // the raw OpenAPI spec (YAML and JSON), and the Scalar human-readable docs UI.
 // It is mounted at "/" by the root router so all paths below are absolute.
-func ApiDocsHandler() http.Handler {
+func APIDocsHandler() http.Handler {
 	router := chi.NewRouter()
 	router.Get("/.well-known/api-catalog", apiCatalogHandler())
 	router.Get("/openapi.yaml", openAPISpecHandler())

@@ -91,11 +91,11 @@ func (s *flakyStore) fail(err error) {
 	s.deleteErr = err
 }
 
-// callbackIdP is the fake identity provider the Callback tests run against: a
+// callbackIDP is the fake identity provider the Callback tests run against: a
 // token endpoint whose reply the test picks, plus a record of what the handler
 // posted to it (so a test can assert the PKCE verifier travelled, or that the
 // endpoint was never reached at all).
-type callbackIdP struct {
+type callbackIDP struct {
 	issuer string
 
 	mu     sync.Mutex
@@ -105,12 +105,12 @@ type callbackIdP struct {
 	body   []byte
 }
 
-// newCallbackIdP starts the fake token endpoint and returns it configured to
+// newCallbackIDP starts the fake token endpoint and returns it configured to
 // reply 200 with an empty body; every test overrides that with respond.
-func newCallbackIdP(t *testing.T) *callbackIdP {
+func newCallbackIDP(t *testing.T) *callbackIDP {
 	t.Helper()
 
-	idp := new(callbackIdP)
+	idp := new(callbackIDP)
 	idp.status = http.StatusOK
 
 	mux := http.NewServeMux()
@@ -138,7 +138,7 @@ func newCallbackIdP(t *testing.T) *callbackIdP {
 }
 
 // respond sets the status and body the token endpoint replies with.
-func (i *callbackIdP) respond(status int, body []byte) {
+func (i *callbackIDP) respond(status int, body []byte) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
@@ -148,7 +148,7 @@ func (i *callbackIdP) respond(status int, body []byte) {
 
 // observed reports how often the token endpoint was called and the form the
 // last call carried.
-func (i *callbackIdP) observed() (int, url.Values) {
+func (i *callbackIDP) observed() (int, url.Values) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
@@ -260,7 +260,7 @@ func callbackTokenResponse(t *testing.T, idToken any, omitIDToken bool) []byte {
 // newCallbackAuthenticator wires an oidcAuthenticator (and its session manager)
 // to the fake identity provider, verifying ID tokens against publicKey.
 func newCallbackAuthenticator(
-	t *testing.T, idp *callbackIdP, clientID string, publicKey *rsa.PublicKey, repo members.Repository,
+	t *testing.T, idp *callbackIDP, clientID string, publicKey *rsa.PublicKey, repo members.Repository,
 ) (*oidcAuthenticator, *scs.SessionManager) {
 	t.Helper()
 
@@ -467,7 +467,7 @@ func TestOIDCCallbackEstablishesTheSession(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			idp := newCallbackIdP(t)
+			idp := newCallbackIDP(t)
 			repo := new(recordingMembers)
 			authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
 
@@ -721,7 +721,7 @@ func TestOIDCCallbackRejectsBrokenFlows(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			idp := newCallbackIdP(t)
+			idp := newCallbackIDP(t)
 			repo := new(recordingMembers)
 			repo.err = testCase.upsertErr
 			authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
@@ -820,7 +820,7 @@ func TestOIDCCallbackRejectsUnusableIDTokens(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			idp := newCallbackIdP(t)
+			idp := newCallbackIDP(t)
 			repo := new(recordingMembers)
 			authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
 
@@ -1005,7 +1005,7 @@ func TestOIDCCallbackRejectsInvalidIDTokenClaims(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			idp := newCallbackIdP(t)
+			idp := newCallbackIDP(t)
 			repo := new(recordingMembers)
 			authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
 
@@ -1074,7 +1074,7 @@ func TestOIDCCallbackWithoutDisplayNameClaims(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			idp := newCallbackIdP(t)
+			idp := newCallbackIDP(t)
 			repo := new(recordingMembers)
 			authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
 
@@ -1150,7 +1150,7 @@ func TestOIDCCallbackFailsWhenTheSessionCannotBeRenewed(t *testing.T) {
 	)
 
 	signingKey := newCallbackRSAKey(t)
-	idp := newCallbackIdP(t)
+	idp := newCallbackIDP(t)
 	repo := new(recordingMembers)
 	authenticator, sessions := newCallbackAuthenticator(t, idp, clientID, &signingKey.PublicKey, repo)
 

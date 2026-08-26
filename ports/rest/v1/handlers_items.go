@@ -13,7 +13,7 @@ import (
 )
 
 // AddItem adds an item to a list from the request body.
-func (v *V1) AddItem(writer http.ResponseWriter, req *http.Request, listId ListId) {
+func (v *V1) AddItem(writer http.ResponseWriter, req *http.Request, listID ListId) {
 	var body AddItemJSONRequestBody
 	if !decodeBody(writer, req, &body) {
 		return
@@ -36,14 +36,14 @@ func (v *V1) AddItem(writer http.ResponseWriter, req *http.Request, listId ListI
 		return
 	}
 
-	item, err := v.Service.AddItem(req.Context(), listId, body.Name, quantity, unit, body.Note, checked, actorID)
+	item, err := v.Service.AddItem(req.Context(), listID, body.Name, quantity, unit, body.Note, checked, actorID)
 	if err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writeJSON(writer, http.StatusCreated, toItem(item))
 }
 
@@ -51,7 +51,7 @@ func (v *V1) AddItem(writer http.ResponseWriter, req *http.Request, listId ListI
 // it is nullable, "note" being present in the body (even as null) means "set
 // the note" (null clears it), whereas its absence leaves the note unchanged.
 // This distinction requires inspecting the raw body for the key's presence.
-func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listId ListId, itemId ItemId) {
+func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
 	raw, err := io.ReadAll(req.Body)
 	if err != nil {
 		problem.Write(writer, req, problem.New(problem.Validation, "could not read request body"))
@@ -86,76 +86,76 @@ func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listId Li
 		update.Note = body.Note
 	}
 
-	item, err := v.Service.UpdateItem(req.Context(), listId, itemId, update)
+	item, err := v.Service.UpdateItem(req.Context(), listID, itemID, update)
 	if err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writeJSON(writer, http.StatusOK, toItem(item))
 }
 
 // DeleteItem removes an item from a list.
-func (v *V1) DeleteItem(writer http.ResponseWriter, req *http.Request, listId ListId, itemId ItemId) {
-	if err := v.Service.DeleteItem(req.Context(), listId, itemId); err != nil {
+func (v *V1) DeleteItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
+	if err := v.Service.DeleteItem(req.Context(), listID, itemID); err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writer.WriteHeader(http.StatusNoContent)
 }
 
 // RestoreItem clears a soft-deleted item's deletion (idempotent), returning it
 // to the list. It maps ErrNotFound to a 404 and publishes an items reload hint,
 // exactly like the check/uncheck handlers.
-func (v *V1) RestoreItem(writer http.ResponseWriter, req *http.Request, listId ListId, itemId ItemId) {
-	item, err := v.Service.RestoreItem(req.Context(), listId, itemId)
+func (v *V1) RestoreItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
+	item, err := v.Service.RestoreItem(req.Context(), listID, itemID)
 	if err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writeJSON(writer, http.StatusOK, toItem(item))
 }
 
 // CheckItem marks an item as checked (idempotent).
-func (v *V1) CheckItem(writer http.ResponseWriter, req *http.Request, listId ListId, itemId ItemId) {
+func (v *V1) CheckItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
 	actorID, ok := actor(writer, req)
 	if !ok {
 		return
 	}
 
-	item, err := v.Service.CheckItem(req.Context(), listId, itemId, actorID)
+	item, err := v.Service.CheckItem(req.Context(), listID, itemID, actorID)
 	if err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writeJSON(writer, http.StatusOK, toItem(item))
 }
 
 // UncheckItem returns a checked item to the open list (idempotent).
-func (v *V1) UncheckItem(writer http.ResponseWriter, req *http.Request, listId ListId, itemId ItemId) {
+func (v *V1) UncheckItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
 	actorID, ok := actor(writer, req)
 	if !ok {
 		return
 	}
 
-	item, err := v.Service.UncheckItem(req.Context(), listId, itemId, actorID)
+	item, err := v.Service.UncheckItem(req.Context(), listID, itemID, actorID)
 	if err != nil {
 		writeError(writer, req, err)
 
 		return
 	}
 
-	v.publish(events.Event{Type: events.TypeItems, ListID: listId.String()})
+	v.publish(events.Event{Type: events.TypeItems, ListID: listID.String()})
 	writeJSON(writer, http.StatusOK, toItem(item))
 }

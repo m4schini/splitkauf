@@ -17,7 +17,7 @@ import (
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
 )
 
-// catalogPath is where ApiDocsHandler mounts the handler returned by
+// catalogPath is where APIDocsHandler mounts the handler returned by
 // apiCatalogHandler.
 const catalogPath = "/.well-known/api-catalog"
 
@@ -531,7 +531,7 @@ func setOpenAPISpecForTest(t *testing.T, spec []byte) {
 func openAPIYAMLRequest(t *testing.T, req *http.Request) *http.Response {
 	t.Helper()
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -624,7 +624,7 @@ func TestOpenAPISpecHandlerServesRegisteredSpec(t *testing.T) {
 func TestOpenAPISpecHandlerReadsSpecAtRequestTime(t *testing.T) {
 	setOpenAPISpecForTest(t, []byte("openapi: 3.1.0\n"))
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 
 	rest.SetOpenAPISpec([]byte("openapi: 3.1.0\ninfo:\n  title: later\n"))
 
@@ -702,7 +702,7 @@ func (w *failingSpecWriter) Header() http.Header {
 	return w.headers
 }
 
-func (w *failingSpecWriter) Write(p []byte) (int, error) {
+func (w *failingSpecWriter) Write(_ []byte) (int, error) {
 	w.writeCalls++
 
 	return 0, io.ErrClosedPipe
@@ -723,7 +723,7 @@ func (w *failingSpecWriter) WriteHeader(statusCode int) {
 func TestOpenAPISpecHandlerWriteFailure(t *testing.T) {
 	setOpenAPISpecForTest(t, []byte("openapi: 3.1.0\npaths: {}\n"))
 
-	handler := rest.ApiDocsHandler()
+	handler := rest.APIDocsHandler()
 
 	writer := &failingSpecWriter{}
 
@@ -766,7 +766,7 @@ func serveOpenAPIJSON(t *testing.T, spec []byte) *httptest.ResponseRecorder {
 	rest.SetOpenAPISpec(spec)
 	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
 
-	h := rest.ApiDocsHandler()
+	h := rest.APIDocsHandler()
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/openapi.json", nil))
@@ -881,6 +881,8 @@ func TestOpenAPISpecJSONHandler(t *testing.T) {
 // TestOpenAPISpecJSONHandlerRoundTrip checks that the served body is valid
 // JSON that is semantically equivalent to the YAML input, including scalar
 // typing: YAML booleans, integers and nulls must not arrive as strings.
+//
+//nolint:paralleltest // serveOpenAPIJSON mutates the process-wide OpenAPI spec via rest.SetOpenAPISpec
 func TestOpenAPISpecJSONHandlerRoundTrip(t *testing.T) {
 	rec := serveOpenAPIJSON(t, []byte(openAPITestSpec))
 
@@ -938,7 +940,7 @@ func TestOpenAPISpecJSONHandlerRepeatedRequests(t *testing.T) {
 	rest.SetOpenAPISpec([]byte(openAPITestSpec))
 	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
 
-	h := rest.ApiDocsHandler()
+	h := rest.APIDocsHandler()
 
 	get := func() string {
 		t.Helper()
@@ -971,7 +973,7 @@ func TestOpenAPISpecJSONHandlerConcurrent(t *testing.T) {
 	rest.SetOpenAPISpec([]byte(openAPITestSpec))
 	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
 
-	h := rest.ApiDocsHandler()
+	h := rest.APIDocsHandler()
 
 	const requests = 16
 
@@ -1084,7 +1086,7 @@ func TestOpenAPISpecJSONHandlerWriteSequence(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setOpenAPISpecForTest(t, []byte(openAPITestSpec))
 
-			handler := rest.ApiDocsHandler()
+			handler := rest.APIDocsHandler()
 
 			writer := new(jsonSpecWriter)
 			writer.writeErr = tt.writeErr

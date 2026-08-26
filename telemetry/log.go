@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: CC0-1.0
 
+// Package telemetry configures the shared zap logger.
 package telemetry
 
 import (
@@ -43,6 +44,8 @@ var initLogger = sync.OnceFunc(func() {
 	zap.ReplaceGlobals(logger)
 })
 
+// Logger returns the shared zap logger, initializing it on first call, named
+// by successively nesting each of names (e.g. Logger("api", "docs")).
 func Logger(names ...string) *zap.Logger {
 	initLogger()
 
