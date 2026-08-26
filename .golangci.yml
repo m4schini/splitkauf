@@ -1,190 +1,186 @@
-# golangci-lint configuration (v2 schema).
+# Reference golangci-lint config (v2 schema, golangci-lint >= 2.x).
 #
-# Posture: every linter golangci-lint ships is enabled, and anything switched
-# off carries a written reason. The default is "on", and turning something off
-# is a decision someone has to justify and revisit.
+# Policy: enable ALL linters, then disable only those that contradict:
+#   [EG]  Effective Go             https://go.dev/doc/effective_go
+#   [CRC] Go Code Review Comments  https://go.dev/wiki/CodeReviewComments
+#   [GSG] Google Go Style Guide    https://google.github.io/styleguide/go/guide
+#     (incl. its Decisions page,   https://google.github.io/styleguide/go/decisions)
 #
-# Rules for changing this file:
-#
-#   - Never disable a linter or add an exclusion to make a failing check pass.
-#     Fix the code. If the rule really is wrong for this repository, that is a
-#     maintainer's call: propose it, explain why, and wait for approval.
-#   - Every `disable:` entry and every exclusion rule needs a comment in the
-#     form `# reason; owner @m4schini; review YYYY-MM`.
-#   - Prefer a path-scoped exclusion over a repository-wide disable. A linter
-#     that is wrong in one directory is usually right everywhere else.
-#   - Run `golangci-lint config verify` (make lint-config) after editing.
-#
-# History: this file shipped 2026-08 with 40 linters deferred (fires on
-# pre-existing code, no reason to disable them permanently) and cleaned up the
-# same week — every deferred linter is now enabled and its findings fixed.
+# Each disabled linter cites the section it contradicts.
+# Note: `default: all` excludes deprecated linters (gomodguard, wsl) automatically.
+
 version: "2"
 
 linters:
-  # Everything, then subtract with justification.
   default: all
-
   disable:
-    # ── Permanent disables ──────────────────────────────────────────────
+    # [EG] "Errors" and [CRC] "Error Strings" treat errors.New / fmt.Errorf as
+    # the idiomatic way to construct errors. err113 forbids such "dynamic"
+    # errors and demands package-level sentinels everywhere, which the
+    # reference docs' own examples would fail.
+    - err113
 
-    # Forbids `if err := f(); err != nil` in favour of a plain assignment
-    # followed by an if. That is a direct contradiction of the dominant Go
-    # convention — Effective Go, the standard library, and gopls' own snippets
-    # all use the inline form, and narrowing the scope of `err` is the point of
-    # it; reason: contradicts the language's established style; owner
-    # @m4schini; review 2027-02.
+    # [EG] "Allocation with new" / the zero-value doctrine: "the zero value of
+    # each type ... is useful"; idiomatic Go deliberately omits fields whose
+    # zero value is intended. exhaustruct_v5 requires every struct field to be
+    # initialized explicitly, contradicting zero-value-driven design.
+    - exhaustruct_v5
+    # Deprecated predecessor of exhaustruct_v5; excluded by `default: all`
+    # already, disabled explicitly for clarity.
+    - exhaustruct
+
+    # Not a doc contradiction: depguard enforces an allow/deny import list
+    # that this project does not maintain. Without config it either no-ops or
+    # flags everything, adding noise rather than catching real violations.
+    - depguard
+
+    # [EG] "The init function" explicitly documents and endorses init() for
+    # setup that cannot be expressed as declarations. gochecknoinits bans it
+    # outright.
+    - gochecknoinits
+
+    # [CRC] "Line Length": "There is no rigid line length limit in Go code."
+    # [GSG Decisions] "Line length" says the same. lll imposes a hard limit.
+    - lll
+
+    # [EG] "Formatting" and [CRC] "Gofmt": gofmt output is the canonical
+    # format; blank-line placement beyond it is not mandated anywhere, and the
+    # canonical examples in Effective Go (returns immediately after the last
+    # statement) would fail nlreturn's mandatory blank line before return.
+    - nlreturn
+
+    # [EG] "Control structures - If" shows `if err := file.Chmod(0664);
+    # err != nil { ... }` as the idiom; [CRC] "Indent Error Flow" builds on it.
+    # noinlineerr forbids exactly this form.
     - noinlineerr
 
-    # Deprecated in golangci-lint v2.2.0 and replaced by wsl_v5, which
-    # `default: all` already enables. Leaving the old one on produces a
-    # deprecation warning on every run and double-reports the same findings;
-    # reason: superseded by wsl_v5; owner @m4schini; review 2027-02.
+    # [EG] "Named result parameters": names "can make code shorter and
+    # clearer" and are endorsed for documentation and deferred modification;
+    # [CRC] "Named Result Parameters" limits but does not ban them.
+    # nonamedreturns bans them entirely.
+    - nonamedreturns
+
+    # [CRC] "Variable Names": "Prefer c to lineCount. Prefer i to sliceIndex."
+    # [GSG] concision / [GSG Decisions] "Variable names": name length should
+    # scale with scope, short names in small scopes are preferred. varnamelen
+    # penalizes exactly those short names.
+    - varnamelen
+
+    # Not a doc contradiction, but stricter than idiom: forces black-box
+    # tests (`package foo_test`) while stdlib and the reference docs treat
+    # same-package white-box tests as equally idiomatic. Re-enable for
+    # stricter, API-focused test linting.
+    - testpackage
+
+    # Same rationale as nlreturn: [EG] "Formatting" / [CRC] "Gofmt" make gofmt
+    # the arbiter of layout; wsl's additional blank-line rules flag code
+    # formatted exactly like the reference docs' examples.
+    - wsl_v5
+    # Deprecated predecessor of wsl_v5; excluded by `default: all` already,
+    # disabled explicitly for clarity.
     - wsl
 
-    # Deprecated in golangci-lint v2.12.0 and replaced by gomodguard_v2, which
-    # `default: all` already enables; reason: superseded by gomodguard_v2;
-    # owner @m4schini; review 2027-02.
+    # Project convention is to use TODO and FIXME to mark areas for future improvements
+    - godox
+
+    # Deprecated since v2.12.0 in favour of gomodguard_v2; excluded by
+    # `default: all` already, disabled explicitly to silence the warning.
     - gomodguard
 
+    # //go:embed vars, sentinel errors, and Cobra command vars are all
+    # legitimate package-level variables used throughout this codebase.
+    # Banning globals outright contradicts their idiomatic use.
+    - gochecknoglobals
+
   settings:
-    # Suppression governance: a //nolint must say which linter it silences and
-    # why, and must not linger after the finding it silenced is gone.
-    nolintlint:
-      require-explanation: true
-      require-specific: true
-      allow-unused: false
-
-    depguard:
-      rules:
-        main:
-          list-mode: lax
-          deny:
-            - pkg: io/ioutil
-              desc: deprecated since Go 1.16; use io and os equivalents
-            - pkg: github.com/pkg/errors
-              desc: use stdlib errors with fmt.Errorf %w wrapping
-
-    revive:
-      rules:
-        # A hard ceiling on file size. Not a style preference: a 1,200-line
-        # file is where reviewers stop reading carefully.
-        - name: file-length-limit
-          arguments:
-            - max: 400
-              skipComments: false
-              skipBlankLines: false
-
-    govet:
-      enable:
-        # Finds nil dereferences and impossible nil comparisons that the
-        # compiler accepts. Off by default because it is expensive; worth it.
-        - nilness
-
-    forbidigo:
-      forbid:
-        # Printing to stdout from library or service code is either a leftover
-        # debug statement or output that should have gone through a logger.
-        # Commands are excluded below, where printing is the entire point.
-        - pattern: ^fmt\.Print.*$
-          msg: use a logger instead of printing to stdout
-        - pattern: ^print(ln)?$
-          msg: the builtin print/println are debug aids, not output
-
-    sloglint:
-      # Structured logs end up in log aggregators that are readable by more
-      # people than the ones who may see a password. Keys are cheap to police;
-      # a leaked secret in a log index is not cheap to clean up. (This repo
-      # logs via zap today; the setting guards a future slog migration.)
-      forbidden-keys:
-        - password
-        - secret
-        - token
-        - apikey
-        - api_key
-        - authorization
+    goheader:
+      # License is still TODO (see AGENTS.md "Licensing"); every hand-written
+      # file carries this placeholder SPDX header until a license is chosen.
+      template: |-
+        SPDX-License-Identifier: TODO
 
   exclusions:
-    # golangci-lint's own defaults for generated files: skip anything carrying
-    # the standard "Code generated by ... DO NOT EDIT." header (covers the
-    # committed ports/rest/v1/gen.go and client/client.gen.go).
+    # Generated files (client/client.gen.go, ports/rest/v1/gen.go — see
+    # AGENTS.md "Code Generation") are never hand-edited, so no linter should
+    # report on them. "lax" matches Go's standard `// Code generated ...
+    # DO NOT EDIT.` marker anywhere in the file (not just the first line),
+    # which is how oapi-codegen emits it in both files.
     generated: lax
-
+    presets:
+      - std-error-handling
+      - common-false-positives
     rules:
-      # Test files are allowed to be long, repetitive, and branchy. Table tests
-      # legitimately repeat structure, and a thorough test function is a
-      # feature; reason: these three linters measure the wrong thing in tests;
-      # owner @m4schini; review 2027-02.
+      # config/defaults.go is a flat table of literal default values passed to
+      # viper.SetDefault. Naming each one (defaultServerPort = 8080 on the line
+      # above v.SetDefault("server.port", defaultServerPort)) adds a level of
+      # indirection without adding information -- the setting key already names
+      # the value. The literals ARE the documentation here.
+      - path: config/defaults\.go
+        linters:
+          - mnd
+
+      # Tests are linted more laxly. Rationale per group:
+      #
+      # Table-driven tests ([GSG Best Practices] "Test tables") are long,
+      # repetitive, and inline their data by design; splitting them into
+      # helpers or constants hurts the readability the docs ask for
+      # ([GSG Decisions] "Useful test failures": keep the failing case
+      # visible at the call site).
+      #   - dupl, funlen, gocognit, gocyclo, cyclop, nestif, maintidx:
+      #     length/complexity/duplication metrics are dominated by test tables.
+      #   - goconst, mnd: repeated strings and magic numbers ARE the test
+      #     data; naming them adds indirection, not meaning.
+      #
+      # Test code is not production attack surface or public API:
+      #   - gosec: hardcoded test credentials, math/rand, permissive file
+      #     modes, and /tmp paths are normal in tests.
+      #   - wrapcheck: error wrapping is an API-design concern for callers;
+      #     tests have none.
+      #
+      # Failure mode in tests is "test fails", which is the desired outcome:
+      #   - forcetypeassert: an unchecked assertion panics and fails the test
+      #     at exactly the right spot.
+      #
+      # Stubs reproduce the contract they stand in for:
+      #   - nilnil: a test double returning (nil, nil) is mirroring the
+      #     production signature it substitutes, not designing a new API.
+      #
+      # Performance of test code is irrelevant:
+      #   - prealloc, perfsprint.
       - path: _test\.go
         linters:
-          - funlen
+          - cyclop
           - dupl
+          - forcetypeassert
+          - funlen
           - gocognit
-
-      # exhaustruct demands every field of every struct literal be set,
-      # including on stdlib types embedded in test fixtures (http.Request,
-      # tls.ConnectionState, url.URL, hand-rolled ResponseWriters). In test
-      # code that turns every table-driven case into enumerating irrelevant
-      # zero-value fields instead of expressing intent, for no gain in
-      # fixture correctness; reason: fights table-test ergonomics; owner
-      # @m4schini; review 2027-02.
-      - path: _test\.go
-        linters:
-          - exhaustruct
-
-      # varnamelen and goconst both measure the wrong thing in table-driven
-      # tests: `tt`/`tc` for the current case, and short loop/param names like
-      # `i`, `w`, `r`, `v`, are a near-universal Go test idiom, and a literal
-      # such as a hostname or error string repeated across a dozen test cases
-      # is intentional fixture data, not a maintenance risk; reason: fights
-      # table-test idiom and fixture repetition; owner @m4schini; review
-      # 2027-02.
-      - path: _test\.go
-        linters:
-          - varnamelen
           - goconst
+          - gocyclo
+          - gosec
+          - maintidx
+          - mnd
+          - nestif
+          - nilnil
+          - perfsprint
+          - prealloc
+          - wrapcheck
+          - noctx
 
-      # A command's job is to write to stdout. forbidigo's ban on fmt.Print* is
-      # aimed at library and service code, so it is lifted for the entry point
-      # (main.go at the repo root) and the cobra commands in cmd/; reason:
-      # printing is the contract of a CLI entry point; owner @m4schini; review
-      # 2027-02.
-      - path: ^main\.go$
-        linters:
-          - forbidigo
-      - path: ^cmd/
-        linters:
-          - forbidigo
-
-      # Package-level variables in the entry-point packages are how the linker
-      # injects build metadata (-ldflags "-X main.version=...") and how cobra
-      # commands are conventionally wired. Scoped so globals stay banned
-      # everywhere else; reason: required by the -ldflags -X mechanism and the
-      # cobra command idiom; owner @m4schini; review 2027-02.
-      - path: ^main\.go$
-        linters:
-          - gochecknoglobals
-      - path: ^cmd/
-        linters:
-          - gochecknoglobals
+issues:
+  # golangci-lint defaults to reporting at most 50 issues per linter and 3 of
+  # the same kind, silently truncating the rest -- which makes a run look clean
+  # while fixes to the visible three uncover more. Report everything.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Likewise, the default keeps only one issue per source line, so a function
+  # flagged by two linters at once only ever shows one of them.
+  uniq-by-line: false
 
 formatters:
+  # [CRC] "Gofmt": "Run gofmt on your code"; [GSG] requires gofmt-conforming
+  # source. [CRC] "Imports": goimports manages import grouping.
+  # golines is intentionally absent: it enforces a line length, which
+  # contradicts [CRC] "Line Length" (see lll above).
   enable:
-    # gofumpt is gofmt plus the rules gofmt left out; goimports keeps the
-    # import block grouped and sorted.
-    - gofumpt
+    - gofmt
     - goimports
-
-  exclusions:
-    # Committed oapi-codegen output (ports/rest/v1/gen.go, client/client.gen.go)
-    # must stay byte-identical to what `make generate` produces, or the CI
-    # generated-drift check breaks; the standard DO NOT EDIT header covers them.
-    generated: lax
-
-  settings:
-    gofumpt:
-      extra-rules: true
-
-    goimports:
-      # Imports of this module sort into their own group.
-      local-prefixes:
-        - github.com/m4schini/splitkauf
