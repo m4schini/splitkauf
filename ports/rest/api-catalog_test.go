@@ -517,13 +517,15 @@ func TestAPICatalogEncodeFailureIsOnlyLogged(t *testing.T) {
 }
 
 // setOpenAPISpecForTest registers spec as the package-level OpenAPI spec and
-// resets it once the test finishes. The spec is global mutable state shared
-// with the JSON spec handler, so tests that touch it must not call t.Parallel.
+// restores the real project spec once the test finishes. The spec is global
+// mutable state shared with every other test in the binary — including
+// parallel ones that assume it is configured — so tests that touch it must
+// not call t.Parallel.
 func setOpenAPISpecForTest(t *testing.T, spec []byte) {
 	t.Helper()
 
 	rest.SetOpenAPISpec(spec)
-	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
+	t.Cleanup(func() { rest.SetOpenAPISpec(projectOpenAPISpec(t)) })
 }
 
 // openAPIYAMLRequest sends req through a freshly built api-docs handler and
@@ -758,13 +760,14 @@ func TestOpenAPISpecHandlerWriteFailure(t *testing.T) {
 // not run in parallel with each other or with the /openapi.yaml tests.
 
 // serveOpenAPIJSON registers spec as the package-global OpenAPI spec and
-// performs a single GET /openapi.json against the docs router. The global is
-// reset when the (sub)test finishes so cases cannot leak into each other.
+// performs a single GET /openapi.json against the docs router. The real
+// project spec is restored when the (sub)test finishes so cases cannot leak
+// into each other, or into the parallel tests that assume it is configured.
 func serveOpenAPIJSON(t *testing.T, spec []byte) *httptest.ResponseRecorder {
 	t.Helper()
 
 	rest.SetOpenAPISpec(spec)
-	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
+	t.Cleanup(func() { rest.SetOpenAPISpec(projectOpenAPISpec(t)) })
 
 	h := rest.APIDocsHandler()
 
@@ -938,7 +941,7 @@ func TestOpenAPISpecJSONHandlerRoundTrip(t *testing.T) {
 //nolint:paralleltest // mutates the package-level openAPISpec; must not run beside other tests
 func TestOpenAPISpecJSONHandlerRepeatedRequests(t *testing.T) {
 	rest.SetOpenAPISpec([]byte(openAPITestSpec))
-	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
+	t.Cleanup(func() { rest.SetOpenAPISpec(projectOpenAPISpec(t)) })
 
 	h := rest.APIDocsHandler()
 
@@ -971,7 +974,7 @@ func TestOpenAPISpecJSONHandlerRepeatedRequests(t *testing.T) {
 //nolint:paralleltest // mutates the package-level openAPISpec; must not run beside other tests
 func TestOpenAPISpecJSONHandlerConcurrent(t *testing.T) {
 	rest.SetOpenAPISpec([]byte(openAPITestSpec))
-	t.Cleanup(func() { rest.SetOpenAPISpec(nil) })
+	t.Cleanup(func() { rest.SetOpenAPISpec(projectOpenAPISpec(t)) })
 
 	h := rest.APIDocsHandler()
 
