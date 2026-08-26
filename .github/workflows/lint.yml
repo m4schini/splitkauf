@@ -1,0 +1,67 @@
+# Lint: gofmt/goimports and golangci-lint, split into their own jobs so a
+# formatting failure and a lint failure show up as distinct checks.
+#
+# Structure follows ais-schule/community-exchange's .github/workflows/lint.yml
+# (workflow_call, one job per check, concurrency-cancelled). Not a `uses:`
+# call to that file directly: its jobs assume a plain `go build`, but
+# splitkauf's ports/web package needs `make generate` first (the gitignored
+# ports/web/dist/index.html embed stub — see Makefile), so both jobs here run
+# through the equivalent make targets instead of raw gofmt/golangci-lint
+# invocations. govulncheck is deliberately not mirrored as a third job: it
+# already runs as part of `make security` in quality.yml's gates job, and
+# splitkauf has no push-time security hook that would need it split out.
+
+name: Lint
+
+on:
+  workflow_call:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      # Same pin as the golangci-lint job below and .pre-commit-config.yaml's
+      # `rev:` (kept in sync by hack/lint/check-golangci-pin.sh).
+      - name: Install the pinned golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: "Check formatting (golangci-lint fmt: gofmt + goimports)"
+        run: make fmt-check
+
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: "**/go.sum"
+
+      - name: Install the pinned golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Run golangci-lint
+        run: make lint

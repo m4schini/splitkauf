@@ -5,9 +5,10 @@ GO ?= go
 # test-unit` output stays byte-identical to before this existed.
 GOTESTFLAGS ?=
 
-# golangci-lint is expected on PATH (v2.12.2 — the pin lives in
+# golangci-lint is expected on PATH (v2.13.1 — the pin lives in
 # .pre-commit-config.yaml and .github/workflows/quality.yml, kept in sync by
-# hack/lint/check-golangci-pin.sh).
+# hack/lint/check-golangci-pin.sh; .github/workflows/lint.yml carries the
+# same version but is not part of that drift check).
 GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1
 
@@ -140,8 +141,8 @@ security:
 deps:
 	$(GO) install tool
 	$(GO) install $(GOVULNCHECK_PACKAGE)
-	@echo "note: golangci-lint v2.12.2 is expected on PATH:"
-	@echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2"
+	@echo "note: golangci-lint v2.13.1 is expected on PATH:"
+	@echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1"
 
 # ── Frontend (implemented in Phase 3) ──────────────────────────────────
 .PHONY: frontend-deps

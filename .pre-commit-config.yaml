@@ -98,7 +98,7 @@ repos:
   # `golangci-lint-pin-drift` hook below enforces that.
   # ---------------------------------------------------------------------
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
+    rev: v2.13.1
     hooks:
       # Formats the repository in place. When it rewrites a file the commit
       # fails and you re-stage: pre-commit never quietly commits bytes you did

@@ -33,6 +33,15 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------
+  # gofmt/goimports and golangci-lint, structured like
+  # ais-schule/community-exchange's .github/workflows/lint.yml (see
+  # lint.yml's header comment for why this isn't a direct `uses:` of that
+  # file).
+  # ---------------------------------------------------------------------
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  # ---------------------------------------------------------------------
   # Proves the hook suite passes over the whole repository. A contributor
   # who habitually commits with --no-verify is caught here rather than by a
   # reviewer.
@@ -83,8 +92,9 @@ jobs:
         run: pre-commit run --all-files --show-diff-on-failure
 
   # ---------------------------------------------------------------------
-  # The repository-wide gates: formatting, config, lint, module tidiness,
-  # security. Same make targets a human runs.
+  # The repository-wide gates: lint config, lint debt, module tidiness,
+  # security. Formatting and lint itself run in the lint job above. Same
+  # make targets a human runs.
   # ---------------------------------------------------------------------
   gates:
     name: quality gates
@@ -105,7 +115,7 @@ jobs:
       # compares against the .pre-commit-config.yaml rev.
       - name: Install the pinned golangci-lint
         run: |
-          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # trivy is not preinstalled on GitHub-hosted runners.
@@ -122,14 +132,8 @@ jobs:
       - name: Fail on generated-code drift
         run: git diff --exit-code
 
-      - name: Check formatting
-        run: make fmt-check
-
       - name: Verify lint config
         run: make lint-config
-
-      - name: Lint
-        run: make lint
 
       # Report-only: reruns lint with the deferred disables stripped from
       # .golangci.yml (permanent disables kept) so the quality dashboard
