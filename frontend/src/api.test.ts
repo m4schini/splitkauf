@@ -18,6 +18,8 @@ import {
   renameList,
   restoreItem,
   uncheckItem,
+  unitPresets,
+  units,
   updateItem,
   type Item,
   type List,
@@ -361,6 +363,32 @@ describe('endpoint helpers', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: 'alex', password: 'correct horse' }),
     })
+  })
+})
+
+// US-L.12: the chip row is driven entirely by this map, so its shape is pinned
+// here rather than re-asserted in every component test.
+describe('unitPresets', () => {
+  it('covers every unit, with integer quantities ≥ 1', () => {
+    expect(Object.keys(unitPresets).sort()).toEqual([...units].sort())
+    for (const presets of Object.values(unitPresets)) {
+      for (const preset of presets) {
+        expect(Number.isInteger(preset)).toBe(true)
+        expect(preset).toBeGreaterThanOrEqual(1)
+      }
+    }
+  })
+
+  it('offers pack sizes for weight/volume units and none for count-like ones', () => {
+    expect(unitPresets.g).toEqual([100, 250, 500, 1000])
+    expect(unitPresets.ml).toEqual([100, 250, 500, 1000])
+    expect(unitPresets.kg).toEqual([1, 2, 5])
+    expect(unitPresets.l).toEqual([1, 2, 5])
+    for (const unit of units) {
+      if (!['g', 'ml', 'kg', 'l'].includes(unit)) {
+        expect(unitPresets[unit]).toEqual([])
+      }
+    }
   })
 })
 

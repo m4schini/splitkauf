@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Unit } from './api'
+import { type Unit, unitPresets } from './api'
 
 /**
  * The quantity a `QuantityField` reports for a raw input draft, or null when
@@ -32,7 +32,8 @@ export interface QuantityFieldProps {
 /**
  * A typeable quantity control: `−`/`+` step by 1 with a minimum of 1, and the
  * value between them is a number input, so "200 g" is typed rather than tapped
- * 199 times (US-L.12).
+ * 199 times (US-L.12). Units with common pack sizes (`unitPresets`) also get a
+ * row of one-tap chips; a unit change only swaps that row, never the quantity.
  *
  * While the user types, the raw string lives in `draft` and only parses that
  * yield a valid integer ≥ 1 reach `onChange`. That keeps the parent's quantity
@@ -41,8 +42,16 @@ export interface QuantityFieldProps {
  * into a `1`, so typing "200" would become "1200". Blur drops the draft, so
  * the display snaps back to the committed value.
  */
-export function QuantityField({ id, label, value, onChange, inputTestId }: QuantityFieldProps) {
+export function QuantityField({
+  id,
+  label,
+  value,
+  unit,
+  onChange,
+  inputTestId,
+}: QuantityFieldProps) {
   const [draft, setDraft] = useState<string | null>(null)
+  const presets = unitPresets[unit]
 
   /** Sets an explicit quantity (stepper button), discarding any pending draft. */
   function commit(quantity: number) {
@@ -91,6 +100,21 @@ export function QuantityField({ id, label, value, onChange, inputTestId }: Quant
           +
         </button>
       </div>
+      {presets.length > 0 && (
+        <div className="quantity-presets" role="group" aria-label="Quantity presets">
+          {presets.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className="preset-chip"
+              aria-pressed={value === preset}
+              onClick={() => commit(preset)}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

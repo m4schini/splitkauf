@@ -445,6 +445,35 @@ input {
   margin: 0;
 }
 
+/* One-tap presets for the selected unit (US-L.12). They wrap rather than
+   overflow, so a 320px viewport keeps every chip reachable. */
+.quantity-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset-chip {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 22px;
+  border: 1px solid var(--control-border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.preset-chip:hover:not([aria-pressed='true']) {
+  background: var(--bg-elevated-hover);
+}
+
+.preset-chip[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
 .quick-add-unit-label {
   font-size: 14px;
   color: var(--fg-muted);

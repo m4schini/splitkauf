@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { QuantityField, parseQuantity } from './QuantityField'
@@ -86,6 +86,48 @@ describe('QuantityField', () => {
     expect(decrease).toBeEnabled()
     await user.click(decrease)
     expect(onChange).toHaveBeenLastCalledWith(1)
+  })
+
+  it('shows no preset chips for a count-like unit', () => {
+    render(<QuantityField id="qty" value={1} unit="amount" onChange={() => {}} />)
+    expect(screen.queryByRole('group', { name: 'Quantity presets' })).not.toBeInTheDocument()
+  })
+
+  it('offers the presets of the selected unit as one-tap chips, marking the current one', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const { rerender } = render(<QuantityField id="qty" value={1} unit="g" onChange={onChange} />)
+
+    const chips = screen.getByRole('group', { name: 'Quantity presets' })
+    expect(
+      within(chips)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['100', '250', '500', '1000'])
+
+    await user.click(within(chips).getByRole('button', { name: '250' }))
+    expect(onChange).toHaveBeenLastCalledWith(250)
+
+    rerender(<QuantityField id="qty" value={250} unit="g" onChange={onChange} />)
+    expect(within(chips).getByRole('button', { name: '250' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(within(chips).getByRole('button', { name: '500' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('a chip replaces a pending draft', async () => {
+    const user = userEvent.setup()
+    render(<Harness unit="g" />)
+
+    const input = screen.getByLabelText('Quantity')
+    await user.clear(input)
+    await user.click(screen.getByRole('button', { name: '500' }))
+
+    expect(input).toHaveValue(500)
   })
 
   it('is labelled either implicitly or by its visible label', () => {

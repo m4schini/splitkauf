@@ -206,6 +206,28 @@ export const unitLabels: Record<Unit, string> = {
   bag: 'Beutel',
 }
 
+/**
+ * One-tap quantity presets per unit, shown as chips under the quantity field
+ * (US-L.12). Weight/volume units get the common pack sizes; `amount` and the
+ * count-like units have none — the stepper is enough and the quick-add bar
+ * stays uncluttered. Quantities are integers, so kg/l presets are coarse by
+ * design ("1.5 kg" is entered as 1500 g).
+ */
+export const unitPresets: Record<Unit, readonly number[]> = {
+  amount: [],
+  g: [100, 250, 500, 1000],
+  kg: [1, 2, 5],
+  ml: [100, 250, 500, 1000],
+  l: [1, 2, 5],
+  pack: [],
+  bottle: [],
+  can: [],
+  jar: [],
+  cup: [],
+  bunch: [],
+  bag: [],
+}
+
 /** A single item on a shopping list. */
 export interface Item {
   id: string

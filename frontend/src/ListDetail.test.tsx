@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ListDetail } from './ListDetail'
@@ -466,6 +466,98 @@ describe('ListDetail', () => {
     expect(await screen.findByText('200 g')).toBeInTheDocument()
     expect(postedBody).toMatchObject({ name: 'Bread', quantity: 200, unit: 'g' })
     expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
+  })
+
+  it('preset chips follow the selected unit and keep the quantity across a unit change', async () => {
+    const user = userEvent.setup()
+    let postedBody: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST' && String(input).endsWith('/items')) {
+          postedBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(
+            jsonResponse(
+              {
+                id: 'new-item',
+                listId: 'l1',
+                name: postedBody.name,
+                quantity: postedBody.quantity,
+                unit: postedBody.unit,
+                note: null,
+                checked: false,
+                checkedAt: null,
+                createdAt: '2026-01-01T00:00:00Z',
+                updatedAt: '2026-01-01T00:00:00Z',
+              },
+              201,
+            ),
+          )
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await user.type(await screen.findByLabelText('Add item'), 'Flour')
+    // Stück has no presets: the chip row does not exist at all.
+    expect(screen.queryByRole('group', { name: 'Quantity presets' })).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Unit'), 'g')
+    const chips = screen.getByRole('group', { name: 'Quantity presets' })
+    // Picking a unit never touches the quantity.
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
+
+    await user.click(within(chips).getByRole('button', { name: '500' }))
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(500)
+
+    await user.selectOptions(screen.getByLabelText('Unit'), 'l')
+    expect(
+      within(screen.getByRole('group', { name: 'Quantity presets' }))
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['1', '2', '5'])
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(500)
+
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+    await waitFor(() => expect(postedBody).toMatchObject({ quantity: 500, unit: 'l' }))
+    // Reset to 1 × Stück takes the chip row with it.
+    expect(screen.queryByRole('group', { name: 'Quantity presets' })).not.toBeInTheDocument()
+  })
+
+  it('editing an item with a unit that has presets can pick one', async () => {
+    const user = userEvent.setup()
+    let patchBody: Record<string, unknown> | undefined
+    const list: ListWithItems = {
+      ...baseList,
+      items: [{ ...baseList.items[0], name: 'Flour', quantity: 500, unit: 'g' }],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'PATCH' && /\/items\/i1$/.test(String(input))) {
+          patchBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(jsonResponse({ ...list.items[0], ...patchBody }))
+        }
+        return Promise.resolve(jsonResponse(list))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Flour')
+    await user.click(screen.getByRole('button', { name: 'Edit Flour' }))
+    // Only the edit form is showing a `g` unit, so its chips are unambiguous.
+    const chips = screen.getByRole('group', { name: 'Quantity presets' })
+    await user.click(within(chips).getByRole('button', { name: '1000' }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(patchBody).toMatchObject({ quantity: 1000 }))
   })
 
   it('editing an item can type a new quantity', async () => {
