@@ -410,11 +410,6 @@ func TestYAMLToJSONTaggedScalars(t *testing.T) {
 			want: "{\n  \"logo\": \"hello\"\n}",
 		},
 		{
-			name: "binary tag with non-utf8 bytes becomes replacement characters",
-			src:  []byte("blob: !!binary //79\n"),
-			want: "{\n  \"blob\": \"\\ufffd\\ufffd\\ufffd\"\n}",
-		},
-		{
 			name: "explicit timestamp tag marshals as rfc 3339",
 			src:  []byte("when: !!timestamp 2024-01-02T03:04:05Z\n"),
 			want: "{\n  \"when\": \"2024-01-02T03:04:05Z\"\n}",
@@ -448,6 +443,37 @@ func TestYAMLToJSONTaggedScalars(t *testing.T) {
 				t.Errorf("yamlToJSON(%q) produced invalid JSON: %s", tt.src, got)
 			}
 		})
+	}
+}
+
+// TestYAMLToJSONBinaryNonUTF8 pins that !!binary bytes which are not valid
+// UTF-8 survive as replacement characters rather than corrupting the response.
+//
+// It asserts the decoded string, not the encoded bytes: how invalid UTF-8 is
+// written is an encoder detail that differs between the encoding/json versions
+// (v1 escapes it as �, v2 writes the replacement rune itself), and both
+// are the same JSON value.
+func TestYAMLToJSONBinaryNonUTF8(t *testing.T) {
+	t.Parallel()
+
+	src := []byte("blob: !!binary //79\n")
+
+	got, err := yamlToJSON(src)
+	if err != nil {
+		t.Fatalf("yamlToJSON(%q) returned error: %v", src, err)
+	}
+
+	if !json.Valid(got) {
+		t.Fatalf("yamlToJSON(%q) produced invalid JSON: %s", src, got)
+	}
+
+	var decoded map[string]string
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatalf("decoding %s: %v", got, err)
+	}
+
+	if want := "���"; decoded["blob"] != want {
+		t.Errorf("yamlToJSON(%q) blob = %q, want %q", src, decoded["blob"], want)
 	}
 }
 

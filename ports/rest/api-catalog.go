@@ -6,6 +6,7 @@ package rest
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -149,10 +150,57 @@ func requestBaseURL(req *http.Request) string {
 	return scheme + "://" + req.Host
 }
 
+// errNonStringMappingKey reports a YAML mapping whose key is not a string
+// ("1: a"). JSON object member names are strings, so such a document has no
+// faithful JSON form.
+var errNonStringMappingKey = errors.New("openapi spec has a non-string mapping key")
+
+// jsonObjectKeys walks a value decoded from YAML and rejects any mapping that
+// yaml.v3 handed back as map[any]any — its fallback for a mapping with a
+// non-string key.
+//
+// The check is explicit rather than left to the JSON encoder because the
+// encoder's answer is not stable: encoding/json v1 refuses a non-string map
+// key outright, while v2 stringifies integer and boolean keys and would
+// silently serve "1" as an object member name. The spec is served as-is or
+// not at all, so the conversion fails here either way.
+func jsonObjectKeys(value any) error {
+	switch typed := value.(type) {
+	case map[any]any:
+		for key := range typed {
+			return fmt.Errorf("%w: %v (%T)", errNonStringMappingKey, key, key)
+		}
+
+		return nil
+	case map[string]any:
+		for _, nested := range typed {
+			if err := jsonObjectKeys(nested); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case []any:
+		for _, nested := range typed {
+			if err := jsonObjectKeys(nested); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	default:
+		return nil
+	}
+}
+
 func yamlToJSON(src []byte) ([]byte, error) {
 	var data any
 	if err := yaml.Unmarshal(src, &data); err != nil {
 		return nil, fmt.Errorf("unmarshalling openapi spec yaml: %w", err)
+	}
+
+	if err := jsonObjectKeys(data); err != nil {
+		return nil, fmt.Errorf("marshalling openapi spec to json: %w", err)
 	}
 
 	out, err := json.MarshalIndent(data, "", "  ")
