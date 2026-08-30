@@ -369,7 +369,7 @@ describe('ListDetail', () => {
     expect(await screen.findByText('2 l')).toBeInTheDocument()
     expect(postedBody).toMatchObject({ name: 'Juice', quantity: 2, unit: 'l' })
     // The additive controls reset to 1 × amount for the next add.
-    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
     expect(screen.getByLabelText('Unit')).toHaveValue('amount')
   })
 
@@ -411,14 +411,91 @@ describe('ListDetail', () => {
     // Disabled at the minimum; clicking it can't drop below 1.
     expect(decrease).toBeDisabled()
     await user.click(decrease)
-    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
 
     await user.click(screen.getByRole('button', { name: 'Increase quantity' }))
-    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('2')
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(2)
     expect(decrease).toBeEnabled()
     await user.click(decrease)
-    expect(screen.getByTestId('quick-add-quantity')).toHaveTextContent('1')
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
     expect(decrease).toBeDisabled()
+  })
+
+  it('adds an item with a typed quantity (US-L.12)', async () => {
+    const user = userEvent.setup()
+    let postedBody: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'POST' && String(input).endsWith('/items')) {
+          postedBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(
+            jsonResponse(
+              {
+                id: 'new-item',
+                listId: 'l1',
+                name: postedBody.name,
+                quantity: postedBody.quantity,
+                unit: postedBody.unit,
+                note: null,
+                checked: false,
+                checkedAt: null,
+                createdAt: '2026-01-01T00:00:00Z',
+                updatedAt: '2026-01-01T00:00:00Z',
+              },
+              201,
+            ),
+          )
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await user.type(await screen.findByLabelText('Add item'), 'Bread')
+    // 200 is typed, not tapped 199 times.
+    const quantity = screen.getByTestId('quick-add-quantity')
+    await user.clear(quantity)
+    await user.type(quantity, '200')
+    await user.selectOptions(screen.getByLabelText('Unit'), 'g')
+    await user.click(screen.getByRole('button', { name: 'Add' }))
+
+    expect(await screen.findByText('200 g')).toBeInTheDocument()
+    expect(postedBody).toMatchObject({ name: 'Bread', quantity: 200, unit: 'g' })
+    expect(screen.getByTestId('quick-add-quantity')).toHaveValue(1)
+  })
+
+  it('editing an item can type a new quantity', async () => {
+    const user = userEvent.setup()
+    let patchBody: Record<string, unknown> | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === 'PATCH' && /\/items\/i1$/.test(String(input))) {
+          patchBody = JSON.parse(init.body as string) as Record<string, unknown>
+          return Promise.resolve(jsonResponse({ ...baseList.items[0], ...patchBody }))
+        }
+        return Promise.resolve(jsonResponse(baseList))
+      }),
+    )
+
+    render(<ListDetail listId="l1" onBack={() => {}} onDeleted={() => {}} onCopied={() => {}} />, {
+      wrapper: withQueryClient(),
+    })
+
+    await screen.findByText('Milk')
+    await user.click(screen.getByRole('button', { name: 'Edit Milk' }))
+    // While editing, the quick-add field answers to "Quantity" too — select the
+    // edit form's input by its id (same pattern as the unit test above).
+    const quantity = screen.getByLabelText('Quantity', { selector: '#edit-qty-i1' })
+    await user.clear(quantity)
+    await user.type(quantity, '12')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(patchBody).toMatchObject({ quantity: 12 }))
   })
 
   it('preserves an item unit through the optimistic check flow', async () => {

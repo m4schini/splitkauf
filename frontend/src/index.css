@@ -417,11 +417,32 @@ input {
   cursor: default;
 }
 
-.stepper-value {
-  min-width: 24px;
-  text-align: center;
-  font-size: 16px;
+.quantity-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The typed quantity (US-L.12) matches the unit select's look. The native spin
+   buttons are hidden: they are far below the 44px touch target and the −/+
+   buttons already cover stepping. */
+.stepper-input {
+  width: 72px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--control-border);
+  background: var(--bg);
   color: var(--fg);
+  font-size: 16px;
+  text-align: center;
+  appearance: textfield;
+}
+
+.stepper-input::-webkit-outer-spin-button,
+.stepper-input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
 }
 
 .quick-add-unit-label {
@@ -456,8 +477,10 @@ input {
   color: var(--fg-muted);
 }
 
-.item-edit-form input,
-.item-edit-form select,
+/* Direct children only: the quantity input lives inside a .quantity-field and
+   carries its own .stepper-input sizing (US-L.12). */
+.item-edit-form > input,
+.item-edit-form > select,
 .rename-form input {
   min-height: 44px;
   padding: 8px 12px;

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Copy, Pencil, Trash2 } from 'lucide-react'
 import { attributionLabel, type Item, type List, type Unit, unitLabels, units } from './api'
+import { QuantityField } from './QuantityField'
 import { Snackbar } from './Snackbar'
 import { useUndoQueue } from './useUndoQueue'
 import {
@@ -102,13 +103,12 @@ function ItemRow({
             onChange={(e) => setName(e.target.value)}
             autoFocus
           />
-          <label htmlFor={`edit-qty-${item.id}`}>Quantity</label>
-          <input
+          <QuantityField
             id={`edit-qty-${item.id}`}
-            type="number"
-            min={1}
+            label="Quantity"
             value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value) || 1)}
+            unit={unit}
+            onChange={setQuantity}
           />
           <label htmlFor={`edit-unit-${item.id}`}>Unit</label>
           <select
@@ -515,28 +515,13 @@ export function ListDetail({ listId, onBack, onDeleted, onCopied }: ListDetailPr
         <div className="quick-add-controls">
           {/* Additive quantity/unit controls (US-L.9): they never take focus
               from the name input, so name-only chained adds are unaffected. */}
-          <div className="stepper" role="group" aria-label="Quantity">
-            <button
-              type="button"
-              className="stepper-button"
-              aria-label="Decrease quantity"
-              onClick={() => setItemQuantity((q) => Math.max(1, q - 1))}
-              disabled={itemQuantity <= 1}
-            >
-              −
-            </button>
-            <span className="stepper-value" aria-live="polite" data-testid="quick-add-quantity">
-              {itemQuantity}
-            </span>
-            <button
-              type="button"
-              className="stepper-button"
-              aria-label="Increase quantity"
-              onClick={() => setItemQuantity((q) => q + 1)}
-            >
-              +
-            </button>
-          </div>
+          <QuantityField
+            id="new-item-quantity"
+            inputTestId="quick-add-quantity"
+            value={itemQuantity}
+            unit={itemUnit}
+            onChange={setItemQuantity}
+          />
           <label className="quick-add-unit-label" htmlFor="new-item-unit">
             Unit
           </label>
