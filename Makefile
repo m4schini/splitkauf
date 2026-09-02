@@ -10,7 +10,7 @@ GOTESTFLAGS ?=
 # hack/lint/check-golangci-pin.sh; .github/workflows/lint.yml carries the
 # same version but is not part of that drift check).
 GOLANGCI_LINT ?= golangci-lint
-GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1
+GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
 .PHONY: all
 all: build

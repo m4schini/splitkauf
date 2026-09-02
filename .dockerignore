@@ -8,3 +8,18 @@ ports/web/dist
 data
 coverage*
 docs
+
+# Local secrets and editor state must never reach an image layer.
+.env
+.env.*
+*.pem
+.idea
+.vscode
+
+# Local build outputs and CI reports (see .gitignore).
+/splitkauf
+test-report.json
+lint-debt.json
+diff-cover.json
+.golangci.debt.yml
+baseline

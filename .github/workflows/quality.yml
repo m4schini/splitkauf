@@ -56,6 +56,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -88,7 +90,7 @@ jobs:
             pre-commit-${{ runner.os }}-
 
       - name: Install pre-commit
-        run: pipx install pre-commit
+        run: pipx install pre-commit==4.6.2
 
       - name: Run every hook over every file
         run: pre-commit run --all-files --show-diff-on-failure
@@ -106,6 +108,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -123,6 +127,8 @@ jobs:
       # trivy is not preinstalled on GitHub-hosted runners.
       - name: Install trivy
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.73.0
 
       # Generate embeds a placeholder ports/web/dist so the //go:embed in
       # ports/web compiles; the Go-compiling steps below need it.
@@ -130,9 +136,17 @@ jobs:
         run: make generate
 
       # Committed generated code must match what `make generate` produces.
-      # This check lives here and nowhere else.
+      # This check lives here and nowhere else. `git status --porcelain` also
+      # catches newly generated files that were never committed, which
+      # `git diff` alone would miss.
       - name: Fail on generated-code drift
-        run: git diff --exit-code
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::make generate changed or created files; commit the regenerated code"
+            git status --porcelain
+            git diff
+            exit 1
+          fi
 
       - name: Verify lint config
         run: make lint-config
@@ -175,6 +189,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -184,6 +200,8 @@ jobs:
 
       - name: Install trivy
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.73.0
 
       - name: Generate
         run: make generate
