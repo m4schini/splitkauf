@@ -3,9 +3,13 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -63,6 +67,12 @@ type passwordAuthenticator struct {
 	members members.Repository
 	sm      *scs.SessionManager
 	logger  *zap.Logger
+	// ipLimiter and userLimiter throttle credential POSTs per client IP and
+	// per username (see ratelimit.go); bcryptSem caps concurrent bcrypt
+	// comparisons so a login flood cannot monopolise every CPU.
+	ipLimiter   *keyedLimiter
+	userLimiter *keyedLimiter
+	bcryptSem   chan struct{}
 }
 
 // newPassword builds the password Authenticator over the users and members
@@ -75,6 +85,10 @@ func newPassword(
 		members: membersRepo,
 		sm:      sm,
 		logger:  telemetry.Logger("auth", "password"),
+
+		ipLimiter:   newKeyedLimiter(loginIPBurst, loginIPInterval, loginLimiterMaxKeys),
+		userLimiter: newKeyedLimiter(loginUserBurst, loginUserInterval, loginLimiterMaxKeys),
+		bcryptSem:   make(chan struct{}, runtime.NumCPU()),
 	}
 }
 
@@ -88,7 +102,9 @@ type loginRequest struct {
 // and a plain GET, which just redirects home so the SPA can render the login
 // form. Any credential failure — unknown user or wrong password — returns the
 // same 401 problem, and both paths perform a bcrypt comparison, so neither the
-// status nor the timing reveals whether the username exists.
+// status nor the timing reveals whether the username exists. Credential POSTs
+// are rate limited per client IP and per username (429 with Retry-After,
+// checked before bcrypt), and concurrent bcrypt comparisons are capped.
 func (a *passwordAuthenticator) Login(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		// The SPA owns the login form; a GET here is just a navigation.
@@ -97,7 +113,14 @@ func (a *passwordAuthenticator) Login(res http.ResponseWriter, req *http.Request
 		return
 	}
 
-	ctx := req.Context()
+	// Throttle per client IP before doing any work at all.
+	ip := clientIP(req)
+	if ok, wait := a.ipLimiter.allow(ip); !ok {
+		a.logger.Warn("login: throttled", zap.String("remote_ip", ip), zap.String("reason", "ip_rate"))
+		writeTooManyRequests(res, req, wait)
+
+		return
+	}
 
 	req.Body = http.MaxBytesReader(res, req.Body, loginBodyLimit)
 
@@ -114,28 +137,16 @@ func (a *passwordAuthenticator) Login(res http.ResponseWriter, req *http.Request
 
 	creds.Username = strings.TrimSpace(creds.Username)
 
-	user, hash, err := a.users.GetByUsername(ctx, creds.Username)
-	if err != nil {
-		if !errors.Is(err, users.ErrNotFound) {
-			// A real lookup failure (DB down) is not an auth decision.
-			a.logger.Error("login: user lookup failed", zap.Error(err))
-			problem.Write(res, req, problem.New(problem.Unavailable, "could not verify credentials"))
-
-			return
-		}
-		// Unknown user: still run a bcrypt comparison against the dummy hash so
-		// the response time matches the found-user path, then fail the same way.
-		users.VerifyPassword(dummyHash(), creds.Password)
-		a.logger.Info("login: rejected", zap.String("username", creds.Username), zap.String("reason", "unknown_user"))
-		problem.Write(res, req, problem.New(problem.Unauthorized, "invalid username or password"))
+	// Throttle per username (across IPs) before the bcrypt comparison.
+	if ok, wait := a.userLimiter.allow(creds.Username); !ok {
+		a.logger.Warn("login: throttled", zap.String("username", creds.Username), zap.String("reason", "user_rate"))
+		writeTooManyRequests(res, req, wait)
 
 		return
 	}
 
-	if !users.VerifyPassword(hash, creds.Password) {
-		a.logger.Info("login: rejected", zap.String("username", creds.Username), zap.String("reason", "bad_password"))
-		problem.Write(res, req, problem.New(problem.Unauthorized, "invalid username or password"))
-
+	user, ok := a.authenticate(res, req, creds)
+	if !ok {
 		return
 	}
 
@@ -143,11 +154,24 @@ func (a *passwordAuthenticator) Login(res http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// A correct password clears this username's throttle so earlier typos
+	// don't count against the legitimate user. The IP bucket is left alone.
+	a.userLimiter.reset(creds.Username)
+
 	a.logger.Info("login: session established",
 		zap.String("username", user.Username),
 		zap.String("subject", user.ID.String()),
 	)
 	res.WriteHeader(http.StatusNoContent)
+}
+
+// writeTooManyRequests writes the 429 problem with a Retry-After header (whole
+// seconds, rounded up, at least 1).
+func writeTooManyRequests(res http.ResponseWriter, req *http.Request, wait time.Duration) {
+	secs := max(int(math.Ceil(wait.Seconds())), 1)
+
+	res.Header().Set("Retry-After", strconv.Itoa(secs))
+	problem.Write(res, req, problem.New(problem.TooManyRequests, "too many login attempts; retry later"))
 }
 
 // Callback has no meaning for password auth (there is no redirect round-trip).
@@ -221,4 +245,64 @@ func (a *passwordAuthenticator) establishSession(res http.ResponseWriter, req *h
 	}
 
 	return true
+}
+
+// authenticate looks up the account and checks the password. Any credential
+// failure — unknown user or wrong password — writes the same 401 problem, and
+// both paths perform a bcrypt comparison (an unknown user is compared against
+// dummyHash), so neither the status nor the timing reveals whether the username
+// exists. On failure it writes the response and returns false.
+func (a *passwordAuthenticator) authenticate(
+	res http.ResponseWriter, req *http.Request, creds loginRequest,
+) (users.User, bool) {
+	user, hash, err := a.users.GetByUsername(req.Context(), creds.Username)
+
+	hashFn, reason := func() string { return hash }, "bad_password"
+
+	if err != nil {
+		if !errors.Is(err, users.ErrNotFound) {
+			// A real lookup failure (DB down) is not an auth decision.
+			a.logger.Error("login: user lookup failed", zap.Error(err))
+			problem.Write(res, req, problem.New(problem.Unavailable, "could not verify credentials"))
+
+			return users.User{}, false
+		}
+
+		hashFn, reason = dummyHash, "unknown_user"
+	}
+
+	match, acquired := a.verifyPassword(req.Context(), hashFn, creds.Password)
+	if !acquired {
+		// The request context ended while waiting for a bcrypt slot.
+		problem.Write(res, req, problem.New(problem.Unavailable, "could not verify credentials"))
+
+		return users.User{}, false
+	}
+
+	if err != nil || !match {
+		a.logger.Info("login: rejected", zap.String("username", creds.Username), zap.String("reason", reason))
+		problem.Write(res, req, problem.New(problem.Unauthorized, "invalid username or password"))
+
+		return users.User{}, false
+	}
+
+	return user, true
+}
+
+// verifyPassword runs the bcrypt comparison while holding a bcryptSem slot, so
+// at most NumCPU comparisons run at once. hash is resolved only after the slot
+// is acquired (dummyHash may itself run bcrypt on first use). acquired is false
+// when the request context ended while waiting; no comparison ran then.
+func (a *passwordAuthenticator) verifyPassword(
+	ctx context.Context, hash func() string, password string,
+) (match, acquired bool) {
+	select {
+	case a.bcryptSem <- struct{}{}:
+	case <-ctx.Done():
+		return false, false
+	}
+
+	defer func() { <-a.bcryptSem }()
+
+	return users.VerifyPassword(hash(), password), true
 }

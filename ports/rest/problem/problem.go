@@ -106,17 +106,29 @@ var (
 		Description: "The request body exceeds the size limit the API enforces " +
 			"for every request. Reduce the size of the request body and retry.",
 	}
+	// TooManyRequests covers requests rejected by a rate limit, notably
+	// repeated sign-in attempts. The response carries a Retry-After header.
+	TooManyRequests = Type{
+		Slug:   "too-many-requests",
+		Title:  http.StatusText(http.StatusTooManyRequests),
+		Status: http.StatusTooManyRequests,
+		Description: "Too many requests were made in a short period, such as " +
+			"repeated sign-in attempts, and this one was rejected by a rate " +
+			"limit. Wait for the number of seconds given in the Retry-After " +
+			"header before retrying.",
+	}
 )
 
 // Types returns every registered problem type. It drives the explanation pages
 // and the registry drift test (every emitted type must have a page).
 func Types() []Type {
-	return []Type{Validation, Unauthorized, NotFound, MethodNotAllowed, Internal, Unavailable, PayloadTooLarge}
+	return []Type{Validation, Unauthorized, NotFound, MethodNotAllowed, Internal, Unavailable, PayloadTooLarge, TooManyRequests}
 }
 
 // FromStatus maps an HTTP status code to its registered problem type: 400 →
 // Validation, 401 → Unauthorized, 404 → NotFound, 405 → MethodNotAllowed, 413
-// → PayloadTooLarge, 503 → Unavailable, and anything else → Internal.
+// → PayloadTooLarge, 429 → TooManyRequests, 503 → Unavailable, and anything
+// else → Internal.
 func FromStatus(status int) Type {
 	switch status {
 	case http.StatusBadRequest:
@@ -129,6 +141,8 @@ func FromStatus(status int) Type {
 		return MethodNotAllowed
 	case http.StatusRequestEntityTooLarge:
 		return PayloadTooLarge
+	case http.StatusTooManyRequests:
+		return TooManyRequests
 	case http.StatusServiceUnavailable:
 		return Unavailable
 	default:

@@ -134,6 +134,7 @@ func TestFromStatus(t *testing.T) {
 		http.StatusNotFound:              problem.NotFound,
 		http.StatusMethodNotAllowed:      problem.MethodNotAllowed,
 		http.StatusRequestEntityTooLarge: problem.PayloadTooLarge,
+		http.StatusTooManyRequests:       problem.TooManyRequests,
 		http.StatusInternalServerError:   problem.Internal,
 		http.StatusTeapot:                problem.Internal, // unknown → internal
 		http.StatusBadGateway:            problem.Internal,
