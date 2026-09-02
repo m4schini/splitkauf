@@ -121,8 +121,8 @@ func (s *Service) DeleteList(ctx context.Context, id uuid.UUID) error {
 }
 
 // AddItem validates the name, applies the quantity default, validates the unit
-// (empty defaults to "amount"), normalises the note, and adds the item to the
-// list. When checked is true the item is created
+// (empty defaults to "amount"), normalises and length-checks the note, and
+// adds the item to the list. When checked is true the item is created
 // already checked off (used when an offline check folds into a queued create);
 // the repository sets checkedAt at insert. It returns ErrNotFound when the list
 // does not exist.
@@ -151,7 +151,12 @@ func (s *Service) AddItem(
 		return Item{}, err
 	}
 
-	item, err := s.repo.AddItem(ctx, listID, clean, qty, cleanUnit, normalizeNote(note), checked, actor)
+	cleanNote, err := validateNote(note)
+	if err != nil {
+		return Item{}, err
+	}
+
+	item, err := s.repo.AddItem(ctx, listID, clean, qty, cleanUnit, cleanNote, checked, actor)
 	if err != nil {
 		return Item{}, fmt.Errorf("adding item: %w", err)
 	}
@@ -160,8 +165,8 @@ func (s *Service) AddItem(
 }
 
 // UpdateItem applies a partial update to an item: only the fields present in
-// update are changed (last-write-wins). It validates any supplied name and
-// quantity. It returns ErrNotFound when the item does not exist on the list.
+// update are changed (last-write-wins). It validates any supplied name,
+// quantity, unit and note. It returns ErrNotFound when the item does not exist on the list.
 func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, update ItemUpdate) (Item, error) {
 	if update.Name != nil {
 		clean, err := validateItemName(*update.Name)
@@ -188,7 +193,12 @@ func (s *Service) UpdateItem(ctx context.Context, listID, itemID uuid.UUID, upda
 	}
 
 	if update.NoteSet {
-		update.Note = normalizeNote(update.Note)
+		cleanNote, err := validateNote(update.Note)
+		if err != nil {
+			return Item{}, err
+		}
+
+		update.Note = cleanNote
 	}
 
 	item, err := s.repo.UpdateItem(ctx, listID, itemID, update)

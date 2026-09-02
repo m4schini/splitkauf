@@ -72,14 +72,14 @@ func TestUpdateItemUnitIsMatchedExactly(t *testing.T) {
 	}
 }
 
-// TestUpdateItemAcceptsALongNote pins that notes are deliberately unbounded:
-// only the name has a length limit, so a note far longer than a name may ever
-// be is stored as given, trimmed but otherwise untouched.
+// TestUpdateItemAcceptsALongNote pins that a note at maxNoteLength runes -
+// longer than any name may be, and multi-byte - is stored as given, trimmed but
+// otherwise untouched. The limit is measured after trimming.
 func TestUpdateItemAcceptsALongNote(t *testing.T) {
 	t.Parallel()
 
 	svc, repo, list, item := newUpdateItemService(t)
-	longNote := strings.Repeat("b", maxNameLength*10)
+	longNote := strings.Repeat("ö", maxNoteLength)
 
 	update := itemUpdate(nil, nil, nil, true, new("  "+longNote+"  "))
 
@@ -92,7 +92,35 @@ func TestUpdateItemAcceptsALongNote(t *testing.T) {
 		t.Fatalf("repository UpdateItem calls = %d, want 1", repo.calls)
 	}
 
-	assertOptionalString(t, "note", got.Note, &longNote)
+	assertNote(t, got.Note, &longNote)
+}
+
+// TestAddItemRejectsATooLongNote pins that AddItem enforces maxNoteLength
+// (in runes) before anything reaches the repository, and returns the
+// ValidationError unwrapped so the REST layer maps it to a 400.
+func TestAddItemRejectsATooLongNote(t *testing.T) {
+	t.Parallel()
+
+	svc := NewService(newFakeRepo())
+	list := mustCreateList(t, svc, "Groceries")
+
+	atLimit := strings.Repeat("ä", maxNoteLength)
+
+	got, err := svc.AddItem(context.Background(), list.ID, "Milk", 1, "", &atLimit, false, testActor())
+	if err != nil {
+		t.Fatalf("AddItem at the limit: %v", err)
+	}
+
+	assertNote(t, got.Note, &atLimit)
+
+	overLimit := atLimit + "ä"
+
+	_, err = svc.AddItem(context.Background(), list.ID, "Eggs", 1, "", &overLimit, false, testActor())
+	assertValidationError(t, err, fieldNote)
+
+	if strings.Contains(err.Error(), "adding item") {
+		t.Errorf("validation error = %q, want it returned unwrapped", err)
+	}
 }
 
 // The prefix DeleteItem wraps every repository failure with; the REST layer
@@ -827,7 +855,7 @@ func assertUncheckedFieldsPreserved(t *testing.T, got, before Item) {
 		)
 	}
 
-	assertOptionalString(t, "note", got.Note, before.Note)
+	assertNote(t, got.Note, before.Note)
 
 	if got.AddedBy == nil || got.AddedBy.ID != testActor() {
 		t.Errorf("addedBy = %+v, want the adder %v", got.AddedBy, testActor())

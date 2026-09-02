@@ -93,18 +93,18 @@ func itemUpdate(name *string, quantity *int, unit *string, noteSet bool, note *s
 	return ItemUpdate{Name: name, Quantity: quantity, Unit: unit, NoteSet: noteSet, Note: note}
 }
 
-// assertOptionalString compares a nullable string field by value, so a cleared
-// note is distinguishable from an unchanged one.
-func assertOptionalString(t *testing.T, label string, got, want *string) {
+// assertNote compares a nullable note by value, so a cleared note is
+// distinguishable from an unchanged one.
+func assertNote(t *testing.T, got, want *string) {
 	t.Helper()
 
 	switch {
 	case want == nil && got != nil:
-		t.Errorf("%s = %q, want nil", label, *got)
+		t.Errorf("note = %q, want nil", *got)
 	case want != nil && got == nil:
-		t.Errorf("%s = nil, want %q", label, *want)
+		t.Errorf("note = nil, want %q", *want)
 	case want != nil && got != nil && *got != *want:
-		t.Errorf("%s = %q, want %q", label, *got, *want)
+		t.Errorf("note = %q, want %q", *got, *want)
 	}
 }
 
@@ -249,7 +249,7 @@ func TestUpdateItemNormalisesFields(t *testing.T) {
 				t.Errorf("unit = %q, want %q", got.Unit, testCase.wantUnit)
 			}
 
-			assertOptionalString(t, "note", got.Note, testCase.wantNote)
+			assertNote(t, got.Note, testCase.wantNote)
 		})
 	}
 }
@@ -262,9 +262,9 @@ func TestUpdateItemValidation(t *testing.T) {
 	t.Parallel()
 
 	overLimit := strings.Repeat("a", maxNameLength+1)
-	// 101 x "ä" is 101 runes but 202 bytes: the limit counts bytes, so a name
-	// far short of the rune limit can still be too long.
-	multiByte := strings.Repeat("ä", 101)
+	// 201 x "ä" is 201 runes (402 bytes): the limit counts runes.
+	multiByte := strings.Repeat("ä", maxNameLength+1)
+	longNote := strings.Repeat("ü", maxNoteLength+1)
 
 	tests := []struct {
 		name      string
@@ -273,8 +273,9 @@ func TestUpdateItemValidation(t *testing.T) {
 	}{
 		{name: "empty name", update: itemUpdate(new(""), nil, nil, false, nil), wantField: fieldName},
 		{name: "blank name", update: itemUpdate(new("   "), nil, nil, false, nil), wantField: fieldName},
-		{name: "name one byte too long", update: itemUpdate(&overLimit, nil, nil, false, nil), wantField: fieldName},
+		{name: "name one rune too long", update: itemUpdate(&overLimit, nil, nil, false, nil), wantField: fieldName},
 		{name: "multi-byte name too long", update: itemUpdate(&multiByte, nil, nil, false, nil), wantField: fieldName},
+		{name: "note one rune too long", update: itemUpdate(nil, nil, nil, true, &longNote), wantField: fieldNote},
 		// Unlike creation, an explicit zero here is a mistake rather than a
 		// request for the default of one.
 		{name: "quantity of zero", update: itemUpdate(nil, new(0), nil, false, nil), wantField: fieldQuantity},

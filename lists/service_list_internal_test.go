@@ -202,27 +202,38 @@ func TestCopyListNameTrimming(t *testing.T) {
 	long := strings.Repeat("a", maxNameLength)
 
 	got := copyListName(long)
-	if len(got) != maxNameLength {
-		t.Errorf("len = %d, want %d: %q", len(got), maxNameLength, got)
+	if n := utf8.RuneCountInString(got); n != maxNameLength {
+		t.Errorf("rune count = %d, want %d: %q", n, maxNameLength, got)
 	}
 
 	if !strings.HasSuffix(got, copySuffix) {
 		t.Errorf("copyListName(long) = %q, want it to end in %q", got, copySuffix)
 	}
 
-	// Multi-byte runes: 100 × "ä" is 200 bytes, so the trim must drop whole
-	// runes (96 fit alongside the 7-byte suffix) rather than half a character.
-	multi := copyListName(strings.Repeat("ä", 100))
-	if len(multi) > maxNameLength {
-		t.Errorf("len = %d, want <= %d", len(multi), maxNameLength)
+	// The limit counts runes: 100 × "ä" (200 bytes) fits with the suffix
+	// untouched, since 100 runes + 7 is well under the cap.
+	if got, want := copyListName(strings.Repeat("ä", 100)), strings.Repeat("ä", 100)+copySuffix; got != want {
+		t.Errorf("copyListName = %q, want %q", got, want)
+	}
+
+	// Multi-byte runes at the limit: 200 × "ä" must be cut by whole runes (193
+	// fit alongside the 7-rune suffix) rather than half a character.
+	multi := copyListName(strings.Repeat("ä", maxNameLength))
+	if n := utf8.RuneCountInString(multi); n > maxNameLength {
+		t.Errorf("rune count = %d, want <= %d", n, maxNameLength)
 	}
 
 	if !utf8.ValidString(multi) {
 		t.Errorf("copyListName cut a rune in half: %q", multi)
 	}
 
-	if want := strings.Repeat("ä", 96) + copySuffix; multi != want {
+	if want := strings.Repeat("ä", maxNameLength-len(copySuffix)) + copySuffix; multi != want {
 		t.Errorf("copyListName = %q, want %q", multi, want)
+	}
+
+	// The derived name must always pass validateName.
+	if _, err := validateName(multi); err != nil {
+		t.Errorf("validateName(copyListName(...)) = %v, want nil", err)
 	}
 
 	// A cut that lands on a space must not leave it dangling before the suffix.

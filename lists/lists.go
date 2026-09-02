@@ -13,13 +13,20 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
 
 // maxNameLength bounds list and item names to keep them display-friendly and
-// to avoid unbounded storage. It is a domain rule, independent of the database.
+// to avoid unbounded storage. It counts runes (Unicode code points), matching
+// the OpenAPI maxLength, so umlauts and emoji do not hit the cap early. It is a
+// domain rule, independent of the database.
 const maxNameLength = 200
+
+// maxNoteLength bounds an item's note, in runes, so a note cannot grow to the
+// request body cap and then be served back on every refetch.
+const maxNoteLength = 500
 
 // defaultUnit is the unit assigned when none is supplied. It is rendered bare
 // ("Stück") in the UI and is the schema/DB default for the unit column.
@@ -28,6 +35,7 @@ const defaultUnit = "amount"
 // Names of the caller-supplied input fields cited in ValidationError values.
 const (
 	fieldName     = "name"
+	fieldNote     = "note"
 	fieldQuantity = "quantity"
 	fieldUnit     = "unit"
 )
@@ -207,7 +215,7 @@ func validateName(name string) (string, error) {
 		return "", &ValidationError{Field: fieldName, Message: "name must not be empty"}
 	}
 
-	if len(trimmed) > maxNameLength {
+	if utf8.RuneCountInString(trimmed) > maxNameLength {
 		return "", &ValidationError{Field: fieldName, Message: "name is too long"}
 	}
 
@@ -220,18 +228,19 @@ const copySuffix = " (copy)"
 
 // copyListName derives the default name for a copy of the list named original:
 // the original with " (copy)" appended. When that would exceed maxNameLength
-// the original is shortened from the end — one whole rune at a time, so a
-// multi-byte character is never cut in half — until the suffixed name fits.
+// the original is shortened from the end — by whole runes, so a multi-byte
+// character is never cut in half — until the suffixed name fits. Lengths are
+// counted in runes, like validateName.
 func copyListName(original string) string {
 	trimmed := strings.TrimSpace(original)
-	if len(trimmed)+len(copySuffix) <= maxNameLength {
+	suffixLen := utf8.RuneCountInString(copySuffix)
+
+	runes := []rune(trimmed)
+	if len(runes)+suffixLen <= maxNameLength {
 		return trimmed + copySuffix
 	}
 
-	runes := []rune(trimmed)
-	for len(runes) > 0 && len(string(runes))+len(copySuffix) > maxNameLength {
-		runes = runes[:len(runes)-1]
-	}
+	runes = runes[:max(maxNameLength-suffixLen, 0)]
 	// Drop whitespace exposed by the cut so the result reads as "Name (copy)".
 	return strings.TrimRight(string(runes), " ") + copySuffix
 }
@@ -266,8 +275,9 @@ func validateUnit(unit string) (string, error) {
 	return "", &ValidationError{Field: fieldUnit, Message: "unit is not a recognised value"}
 }
 
-// note trims an optional note. A nil pointer, or one that trims to empty, is
-// normalised to nil (no note); otherwise the trimmed value is returned.
+// normalizeNote trims an optional note. A nil pointer, or one that trims to
+// empty, is normalised to nil (no note); otherwise the trimmed value is
+// returned. It does not enforce the length limit; see validateNote.
 func normalizeNote(n *string) *string {
 	if n == nil {
 		return nil
@@ -279,4 +289,16 @@ func normalizeNote(n *string) *string {
 	}
 
 	return &trimmed
+}
+
+// validateNote normalises an optional note like normalizeNote and rejects one
+// whose trimmed value exceeds maxNoteLength runes with a ValidationError on the
+// "note" field.
+func validateNote(n *string) (*string, error) {
+	clean := normalizeNote(n)
+	if clean != nil && utf8.RuneCountInString(*clean) > maxNoteLength {
+		return nil, &ValidationError{Field: fieldNote, Message: "note is too long"}
+	}
+
+	return clean, nil
 }

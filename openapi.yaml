@@ -555,6 +555,7 @@ components:
           description: The list's unique identifier.
         name:
           type: string
+          maxLength: 200
           description: The list's name.
         openItemCount:
           type: integer
@@ -614,6 +615,7 @@ components:
           description: The identifier of the list this item belongs to.
         name:
           type: string
+          maxLength: 200
           description: What to buy.
         quantity:
           type: integer
@@ -625,6 +627,7 @@ components:
           $ref: "#/components/schemas/Unit"
         note:
           type: string
+          maxLength: 500
           nullable: true
           description: An optional free-text note (e.g. brand or size).
         checked:
@@ -666,6 +669,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 200
           description: The name for the new list.
     RenameListRequest:
       type: object
@@ -676,6 +680,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 200
           description: The new name for the list.
     CopyListRequest:
       type: object
@@ -686,6 +691,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 200
           description: The name for the copy.
     AddItemRequest:
       type: object
@@ -696,6 +702,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 200
           description: What to buy.
         quantity:
           type: integer
@@ -707,6 +714,7 @@ components:
           $ref: "#/components/schemas/Unit"
         note:
           type: string
+          maxLength: 500
           nullable: true
           description: An optional free-text note.
         checked:
@@ -723,6 +731,7 @@ components:
         name:
           type: string
           minLength: 1
+          maxLength: 200
           description: A new name for the item.
         quantity:
           type: integer
@@ -733,6 +742,7 @@ components:
           $ref: "#/components/schemas/Unit"
         note:
           type: string
+          maxLength: 500
           nullable: true
           description: |
             A new note for the item. Omit the field to leave the note

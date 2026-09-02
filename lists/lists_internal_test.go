@@ -19,16 +19,17 @@ func TestValidateName(t *testing.T) {
 		tooLongMessage = "name is too long"
 	)
 
-	// maxNameLength is a byte cap, so build fixtures whose byte length differs
+	// maxNameLength is a rune cap, so build fixtures whose byte length differs
 	// from their rune count to pin that down.
 	name200 := strings.Repeat("a", 200)
 	name201 := strings.Repeat("a", 201)
-	twoByte200 := strings.Repeat("ä", 100)  // 100 runes, 200 bytes
+	umlaut200 := strings.Repeat("ä", 200)   // 200 runes, 400 bytes
+	umlaut201 := strings.Repeat("ä", 201)   // 201 runes, 402 bytes
 	threeByte201 := strings.Repeat("世", 67) //nolint:gosmopolitan // picked for its 3-byte UTF-8 width, not as text
 
-	if len(twoByte200) != 200 || len(threeByte201) != 201 {
-		t.Fatalf("bad fixtures: len(twoByte200)=%d, len(threeByte201)=%d",
-			len(twoByte200), len(threeByte201))
+	if len(umlaut200) != 400 || len(threeByte201) != 201 {
+		t.Fatalf("bad fixtures: len(umlaut200)=%d, len(threeByte201)=%d",
+			len(umlaut200), len(threeByte201))
 	}
 
 	tests := []struct {
@@ -81,7 +82,7 @@ func TestValidateName(t *testing.T) {
 			want:  name200,
 		},
 		{
-			name:    "one byte over max length is rejected",
+			name:    "one rune over max length is rejected",
 			input:   name201,
 			wantErr: tooLongMessage,
 		},
@@ -91,14 +92,19 @@ func TestValidateName(t *testing.T) {
 			want:  name200,
 		},
 		{
-			name:  "multi byte runes at exactly max bytes are accepted",
-			input: twoByte200,
-			want:  twoByte200,
+			name:  "multi byte runes at exactly max runes are accepted",
+			input: umlaut200,
+			want:  umlaut200,
 		},
 		{
-			name:    "multi byte runes over max bytes are rejected despite few runes",
-			input:   threeByte201,
+			name:    "multi byte runes over max runes are rejected",
+			input:   umlaut201,
 			wantErr: tooLongMessage,
+		},
+		{
+			name:  "over max bytes but under max runes is accepted",
+			input: threeByte201,
+			want:  threeByte201,
 		},
 	}
 
@@ -391,7 +397,7 @@ func TestNormalizeNote(t *testing.T) {
 			want:  "Müsli",
 		},
 		{
-			name:  "long note is not capped",
+			name:  "long note is not truncated",
 			input: "  " + longNote + "  ",
 			want:  strings.TrimSpace(longNote),
 		},
@@ -438,6 +444,64 @@ func TestNormalizeNote(t *testing.T) {
 	}
 }
 
+// TestValidateNote pins the note length cap: it counts runes of the trimmed
+// note, so multi-byte notes and surrounding padding do not hit it early, and a
+// note over it is a ValidationError on the "note" field.
+func TestValidateNote(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   *string
+		want    *string
+		wantErr bool
+	}{
+		{name: "nil stays nil", input: nil, want: nil},
+		{name: "blank normalises to nil", input: new("   "), want: nil},
+		{
+			name:  "max runes of multi byte text is accepted",
+			input: new(strings.Repeat("ä", maxNoteLength)),
+			want:  new(strings.Repeat("ä", maxNoteLength)),
+		},
+		{
+			name:  "padding does not count toward the cap",
+			input: new("  " + strings.Repeat("a", maxNoteLength) + "  "),
+			want:  new(strings.Repeat("a", maxNoteLength)),
+		},
+		{name: "one rune over the cap is rejected", input: new(strings.Repeat("ä", maxNoteLength+1)), wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := validateNote(tt.input)
+			if tt.wantErr {
+				assertValidationError(t, err, fieldNote)
+
+				if got != nil {
+					t.Fatalf("expected nil note on error, got %q", *got)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			switch {
+			case tt.want == nil && got != nil:
+				t.Fatalf("expected nil, got %q", *got)
+			case tt.want != nil && got == nil:
+				t.Fatalf("expected %q, got nil", *tt.want)
+			case tt.want != nil && *got != *tt.want:
+				t.Fatalf("expected %q, got %q", *tt.want, *got)
+			}
+		})
+	}
+}
+
 // TestNormalizeNoteDoesNotAliasInput asserts that the returned pointer is
 // independent of the caller's string: writing through it must not change the
 // value the caller passed in.
@@ -470,9 +534,10 @@ func TestValidateNameTrimBeforeLengthCheck(t *testing.T) {
 		tooLongMessage = "name is too long"
 	)
 
-	// maxNameLength is a byte cap, so the fixtures below are sized in bytes.
+	// maxNameLength is a rune cap, so the fixtures below are sized in runes.
 	name201 := strings.Repeat("a", 201)
-	fourByte204 := strings.Repeat("😀", 51) // 51 runes, 204 bytes
+	fourByte204 := strings.Repeat("😀", 51)  // 51 runes, 204 bytes
+	fourByte201 := strings.Repeat("😀", 201) // 201 runes, 804 bytes
 
 	if len(name201) != 201 || len(fourByte204) != 204 {
 		t.Fatalf("bad fixtures: len(name201)=%d, len(fourByte204)=%d",
@@ -514,8 +579,13 @@ func TestValidateNameTrimBeforeLengthCheck(t *testing.T) {
 			wantErr: tooLongMessage,
 		},
 		{
-			name:    "four byte runes over max bytes are rejected despite few runes",
-			input:   fourByte204,
+			name:  "four byte runes over max bytes but under max runes are accepted",
+			input: fourByte204,
+			want:  fourByte204,
+		},
+		{
+			name:    "four byte runes over max runes are rejected",
+			input:   fourByte201,
 			wantErr: tooLongMessage,
 		},
 	}
