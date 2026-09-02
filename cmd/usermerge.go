@@ -84,34 +84,19 @@ func runUsermerge(cmd *cobra.Command, args []string, yes bool) error {
 	}
 	defer func() { _ = conn.Close() }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), userCmdTimeout)
-	defer cancel()
-
 	identities := db.NewIdentityRepository(conn)
 
-	source, err := resolveSelector(ctx, conn, args[0])
+	plan, err := loadMergePlan(conn, identities, args)
 	if err != nil {
 		return err
 	}
 
-	target, err := resolveSelector(ctx, conn, args[1])
-	if err != nil {
-		return err
-	}
-
-	if source.UserID == target.UserID {
-		return fmt.Errorf("%w %s", errSameUser, source.UserID)
-	}
-
-	listCount, added, bought, err := identities.CountAttribution(ctx, source.UserID)
-	if err != nil {
-		return fmt.Errorf("counting attribution rows: %w", err)
-	}
-
-	printMergePlan(cmd, args, source, target, listCount, added, bought)
+	printMergePlan(cmd, args, plan.source, plan.target, plan.lists, plan.added, plan.bought)
 
 	out := cmd.OutOrStdout()
 
+	// The prompt runs without a deadline: the operator may take as long as
+	// they need to answer. The merge gets its own fresh timeout below.
 	confirmed, err := confirmMerge(yes, cmd.InOrStdin(), out)
 	if err != nil {
 		return err
@@ -123,7 +108,10 @@ func runUsermerge(cmd *cobra.Command, args []string, yes bool) error {
 		return nil
 	}
 
-	result, err := identities.Merge(ctx, source, target)
+	mergeCtx, cancel := context.WithTimeout(context.Background(), userCmdTimeout)
+	defer cancel()
+
+	result, err := identities.Merge(mergeCtx, plan.source, plan.target)
 	if err != nil {
 		return fmt.Errorf("merging identities: %w", err)
 	}
@@ -132,6 +120,42 @@ func runUsermerge(cmd *cobra.Command, args []string, yes bool) error {
 		args[0], args[1], result.Lists, result.Added, result.Bought)
 
 	return nil
+}
+
+// mergePlan is the resolved source and target of a merge plus the number of
+// attribution rows the merge will rewrite.
+type mergePlan struct {
+	source, target       db.Identity
+	lists, added, bought int
+}
+
+// loadMergePlan resolves both selectors and counts the source's attribution
+// rows under its own userCmdTimeout, so the deadline is released before the
+// interactive confirmation prompt.
+func loadMergePlan(conn *sql.DB, identities *db.IdentityRepository, args []string) (mergePlan, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), userCmdTimeout)
+	defer cancel()
+
+	source, err := resolveSelector(ctx, conn, args[0])
+	if err != nil {
+		return mergePlan{}, err
+	}
+
+	target, err := resolveSelector(ctx, conn, args[1])
+	if err != nil {
+		return mergePlan{}, err
+	}
+
+	if source.UserID == target.UserID {
+		return mergePlan{}, fmt.Errorf("%w %s", errSameUser, source.UserID)
+	}
+
+	listCount, added, bought, err := identities.CountAttribution(ctx, source.UserID)
+	if err != nil {
+		return mergePlan{}, fmt.Errorf("counting attribution rows: %w", err)
+	}
+
+	return mergePlan{source: source, target: target, lists: listCount, added: added, bought: bought}, nil
 }
 
 // printMergePlan writes the pre-confirmation summary of what the merge will
