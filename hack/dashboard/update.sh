@@ -40,6 +40,7 @@ set -euo pipefail
 EXIT_ERROR=1
 
 RUNS_PER_WORKFLOW=10
+RUNS_API_PAGE_SIZE=100
 DASHBOARD_LABEL="dashboard"
 DASHBOARD_TITLE="Quality Dashboard"
 SECURITY_STEP_NAME="Security scan"
@@ -67,12 +68,23 @@ log "repo=$REPO trigger_head_sha=${TRIGGER_HEAD_SHA:-<none>}"
 
 # runs_on_main WORKFLOW_FILE
 # Writes "id\thead_sha\thtml_url" (newest first) for the last
-# RUNS_PER_WORKFLOW completed runs of WORKFLOW_FILE on main.
+# RUNS_PER_WORKFLOW completed, trusted runs of WORKFLOW_FILE on main.
+#
+# The API's branch filter matches the run's head branch, which a fork PR
+# from a branch named `main` also has, so runs are further restricted to
+# trusted events (push, schedule, workflow_dispatch) whose head repository
+# is REPO itself. A wider page is fetched so filtering out PR runs still
+# leaves up to RUNS_PER_WORKFLOW trusted ones.
 runs_on_main() {
   local workflow="$1"
 
-  gh api "repos/$REPO/actions/workflows/$workflow/runs?branch=main&status=completed&per_page=$RUNS_PER_WORKFLOW" \
-    --jq '.workflow_runs[] | [(.id | tostring), .head_sha, .html_url] | @tsv'
+  gh api "repos/$REPO/actions/workflows/$workflow/runs?branch=main&status=completed&per_page=$RUNS_API_PAGE_SIZE" \
+    | jq -r --arg repo "$REPO" --argjson limit "$RUNS_PER_WORKFLOW" '
+        [.workflow_runs[]
+          | select(.event == "push" or .event == "schedule" or .event == "workflow_dispatch")
+          | select(.head_repository.full_name == $repo)
+        ][:$limit][]
+        | [(.id | tostring), .head_sha, .html_url] | @tsv'
 }
 
 # run_has_artifact RUN_ID ARTIFACT_NAME
