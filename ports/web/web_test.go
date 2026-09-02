@@ -67,7 +67,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	spec, err := os.ReadFile("../../splitkauf.openapi.yaml")
+	spec, err := os.ReadFile("../../openapi.yaml")
 	if err != nil {
 		panic(err)
 	}

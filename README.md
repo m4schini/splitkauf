@@ -31,7 +31,7 @@ dependency is PostgreSQL.
 - **Three auth modes** — OIDC (BFF pattern, tokens never reach the browser),
   local username/password accounts, or a hardcoded dev user for local
   development. OIDC and password can run side by side.
-- **Spec-first API** — `splitkauf.openapi.yaml` is the source of truth; the
+- **Spec-first API** — `openapi.yaml` is the source of truth; the
   chi server stubs and the typed Go client are generated from it, and errors
   are RFC 9457 Problem Details. Interactive docs at `/docs`.
 - **Operations** — embedded migrations (`splitkauf migrate`), Prometheus
@@ -127,7 +127,7 @@ in the binary.
 - [`AGENTS.md`](AGENTS.md) — the rules the AI assistants work under
   (commit conventions, attribution trailers, what they must not do).
 - API reference: run the app and open `/docs`, or read
-  [`splitkauf.openapi.yaml`](splitkauf.openapi.yaml).
+  [`openapi.yaml`](openapi.yaml).
 
 ## License
 

@@ -32,6 +32,6 @@ instead of add-then-edit.
   the edit form can change both; unit follows the item through check/uncheck,
   offline queueing, and sync unchanged.
 - Spec-first: `Item`/`AddItemRequest`/`UpdateItemRequest` gain the `unit`
-  enum in `splitkauf.openapi.yaml`; `items.unit` is added by a migration (its
+  enum in `openapi.yaml`; `items.unit` is added by a migration (its
   own commit) with a matching check constraint; the offline pending-create
   payload (US-O.2) carries the unit.

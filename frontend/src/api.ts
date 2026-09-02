@@ -128,7 +128,7 @@ export async function logout(): Promise<void> {
   form.submit()
 }
 
-// --- Domain types (mirrors splitkauf.openapi.yaml) ------------------------
+// --- Domain types (mirrors openapi.yaml) ------------------------
 
 /** The authenticated user (US-A.1). `email` is populated in OIDC mode. */
 export interface User {
@@ -162,7 +162,7 @@ export interface List {
 }
 
 /**
- * A grocery unit token (mirrors the `Unit` enum in splitkauf.openapi.yaml and
+ * A grocery unit token (mirrors the `Unit` enum in openapi.yaml and
  * `lists.Units()`). `amount` is the default and is rendered bare (just the
  * number) in item rows; the rest carry a short German label (see `unitLabels`).
  */

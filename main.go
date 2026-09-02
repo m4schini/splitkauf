@@ -11,7 +11,7 @@ import (
 	"github.com/m4schini/splitkauf/ports/rest"
 )
 
-//go:embed splitkauf.openapi.yaml
+//go:embed openapi.yaml
 var openAPISpec []byte
 
 func main() {

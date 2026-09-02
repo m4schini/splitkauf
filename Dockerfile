@@ -13,7 +13,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --prefix frontend
 
 COPY frontend frontend/
-COPY splitkauf.openapi.yaml ./
+COPY openapi.yaml ./
 # Per-build cache buster for the frontend's persisted query cache
 # (frontend/src/queryClient.ts). CI passes the git SHA; .git is dockerignored,
 # so it cannot be derived here. An empty value falls back to 'dev' in the app.

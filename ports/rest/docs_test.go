@@ -30,7 +30,7 @@ func docsSpecFixture(title string) []byte {
 func projectOpenAPISpec(t *testing.T) []byte {
 	t.Helper()
 
-	spec, err := os.ReadFile("../../splitkauf.openapi.yaml")
+	spec, err := os.ReadFile("../../openapi.yaml")
 	if err != nil {
 		t.Fatalf("reading openapi spec: %v", err)
 	}

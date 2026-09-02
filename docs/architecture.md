@@ -69,7 +69,7 @@ community Go template research (`docs/research/go-backend-community-template.md`
 | `client/`     | Generated typed Go client for the API |
 | `frontend/`   | React/Vite/TypeScript PWA source |
 
-**Spec-first API**: `splitkauf.openapi.yaml` at the repo root is the single source of
+**Spec-first API**: `openapi.yaml` at the repo root is the single source of
 truth. `oapi-codegen` generates both the chi server stub (`ports/rest/v1/gen.go`) and
 the typed client (`client/client.gen.go`). Generated files are committed, not built in
 Docker.
@@ -360,7 +360,7 @@ Open sub-items (deliberately not yet decided): backchannel logout, multi-tenancy
 
   **Convention for new endpoints**: reference the reusable `default` `Problem`
   response (`#/components/responses/Problem`) on every operation in
-  `splitkauf.openapi.yaml`. Request validation and uniform error bodies then apply
+  `openapi.yaml`. Request validation and uniform error bodies then apply
   automatically.
 - **Security headers** 🔜: Content-Security-Policy middleware (from the OIDC security
   checklist) not yet implemented.

@@ -49,11 +49,11 @@ ports/web/dist/index.html:
 	@printf '<!doctype html><title>splitkauf</title>\n' > $@
 
 # ── Code generation ────────────────────────────────────────────────────
-ports/rest/v1/api.go: splitkauf.openapi.yaml ports/rest/v1/config.yaml
+ports/rest/v1/api.go: openapi.yaml ports/rest/v1/config.yaml
 	go generate ./ports/rest/v1/...
 	@touch $@
 
-client/gen.go: splitkauf.openapi.yaml client/config.yaml
+client/gen.go: openapi.yaml client/config.yaml
 	go generate ./client/...
 	@touch $@
 

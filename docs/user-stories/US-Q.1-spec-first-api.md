@@ -4,7 +4,7 @@
 **Depends on:** —
 
 **As a** developer (human or agent), **I want** every endpoint defined in
-`splitkauf.openapi.yaml` before implementation, **so that** clients and server never
+`openapi.yaml` before implementation, **so that** clients and server never
 drift.
 
 ## Acceptance criteria

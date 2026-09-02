@@ -43,7 +43,7 @@ func TestMain(m *testing.M) {
 	}
 	// The docs/api-catalog handlers require the OpenAPI spec, normally set from
 	// the embedded copy in main. Load it from the repo root for tests.
-	spec, err := os.ReadFile("../../../splitkauf.openapi.yaml")
+	spec, err := os.ReadFile("../../../openapi.yaml")
 	if err != nil {
 		panic(err)
 	}

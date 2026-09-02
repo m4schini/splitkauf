@@ -32,7 +32,7 @@ func keepInternalOpenAPISpec(t *testing.T) {
 	t.Helper()
 
 	t.Cleanup(func() {
-		spec, err := os.ReadFile("../../splitkauf.openapi.yaml")
+		spec, err := os.ReadFile("../../openapi.yaml")
 		if err != nil {
 			t.Fatalf("reading openapi spec: %v", err)
 		}

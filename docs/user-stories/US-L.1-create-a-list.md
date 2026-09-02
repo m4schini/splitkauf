@@ -8,6 +8,6 @@ group can start collecting items for a shop.
 
 ## Acceptance criteria
 
-- `POST` endpoint exists in `splitkauf.openapi.yaml` before implementation.
+- `POST` endpoint exists in `openapi.yaml` before implementation.
 - The new list is persisted in Postgres and visible to all members.
 - Validation errors return RFC 9457 Problem Details.
