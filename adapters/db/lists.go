@@ -127,7 +127,12 @@ func (r *ListsRepository) RenameList(ctx context.Context, listID uuid.UUID, name
 		return lists.List{}, fmt.Errorf("rename list: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return lists.List{}, fmt.Errorf("rename list: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.List{}, lists.ErrNotFound
 	}
 
@@ -142,7 +147,12 @@ func (r *ListsRepository) DeleteList(ctx context.Context, listID uuid.UUID) erro
 		return fmt.Errorf("delete list: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete list: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.ErrNotFound
 	}
 

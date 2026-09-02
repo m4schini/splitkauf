@@ -177,7 +177,12 @@ func (r *ListsRepository) UpdateItem(
 		return lists.Item{}, fmt.Errorf("update item: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("update item: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
 	// Re-read so the response carries the attributions with their names
@@ -198,7 +203,12 @@ func (r *ListsRepository) DeleteItem(ctx context.Context, listID, itemID uuid.UU
 		return fmt.Errorf("delete item: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete item: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.ErrNotFound
 	}
 
@@ -218,7 +228,12 @@ func (r *ListsRepository) RestoreItem(ctx context.Context, listID, itemID uuid.U
 		return lists.Item{}, fmt.Errorf("restore item: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("restore item: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
 	// A restored item keeps the attributions it had before the delete; the
@@ -244,7 +259,12 @@ func (r *ListsRepository) SetItemChecked(
 		return lists.Item{}, fmt.Errorf("set item checked: %w", err)
 	}
 
-	if n, _ := res.RowsAffected(); n == 0 {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return lists.Item{}, fmt.Errorf("set item checked: rows affected: %w", err)
+	}
+
+	if n == 0 {
 		return lists.Item{}, lists.ErrNotFound
 	}
 
