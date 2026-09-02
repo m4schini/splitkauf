@@ -16,8 +16,10 @@ import (
 
 // newTestRepo opens a repository against the DSN in SPLITKAUF_TEST_DATABASE_DSN,
 // skipping the test when running with -short or when the DSN is unset. It
-// TRUNCATEs the lists table (items cascade) so each test starts clean without
-// dropping or recreating the schema.
+// TRUNCATEs the lists table (items cascade) and the members table so each test
+// starts clean without dropping or recreating the schema. Members are cleared
+// too because attribution names resolve through them: a member left behind by
+// another test would otherwise leak a name into this one.
 func newTestRepo(t *testing.T) (*db.ListsRepository, context.Context) {
 	t.Helper()
 
@@ -37,7 +39,7 @@ func newTestRepo(t *testing.T) (*db.ListsRepository, context.Context) {
 
 	t.Cleanup(func() { _ = conn.Close() })
 
-	if _, err := conn.ExecContext(context.Background(), `TRUNCATE TABLE lists CASCADE`); err != nil {
+	if _, err := conn.ExecContext(context.Background(), `TRUNCATE TABLE lists, members CASCADE`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 
