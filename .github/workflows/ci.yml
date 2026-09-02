@@ -172,6 +172,9 @@ jobs:
 
   docker:
     name: Docker Build & Publish
+    # Never publish (:latest is auto-updated by the Quadlet unit) unless every
+    # gate on this commit is green.
+    needs: [lint, backend, test-full, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
