@@ -27,6 +27,16 @@ func Validator() func(http.Handler) http.Handler {
 		panic(fmt.Sprintf("v1.Validator: loading embedded OpenAPI spec: %v", err))
 	}
 
+	// The spec declares a global session-cookie security requirement for
+	// consumers, but authentication is enforced by auth.RequireAuth (which
+	// answers a missing or invalid session with a 401 problem), not by the
+	// validator. Drop the requirement from this validator-private copy of the
+	// spec (GetSwagger decodes a fresh one per call): otherwise kin-openapi
+	// would demand an AuthenticationFunc and, even with a no-op one, buffer the
+	// whole request body up front and report a MaxBody overflow as a 401
+	// instead of a 400/413.
+	spec.Security = nil
+
 	// Built as a zero value plus field assignments (rather than a literal) so
 	// the untouched options keep their documented defaults without spelling out
 	// every field of the middleware's option surface here.

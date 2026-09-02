@@ -12,6 +12,12 @@ info:
 servers:
   - url: /api/v1
 
+# Every operation requires the session cookie unless it overrides this with an
+# empty security list (only getHealth does). A request without a valid session
+# is rejected with a 401 Problem Details response.
+security:
+  - session: []
+
 tags:
   - name: system
     description: Service health and operational endpoints.
@@ -28,8 +34,10 @@ paths:
       description: |
         Reports overall service health and the status of downstream
         dependencies. Always returns HTTP 200; inspect the payload for status.
+        Public: requires no session.
       tags:
         - system
+      security: []
       responses:
         "200":
           description: Health status of the service.
@@ -37,6 +45,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+        default:
+          $ref: "#/components/responses/Problem"
+
+  /events:
+    get:
+      operationId: streamEvents
+      summary: Stream real-time reload hints
+      description: |
+        A Server-Sent Events (text/event-stream) stream of coarse reload hints
+        for real-time sync. Each event's data is a JSON-encoded Event object
+        (see the Event schema): "type" names the resource that changed and,
+        for "items" events, "listId" names the affected list. Events are not
+        state deltas; a client reacts by refetching the affected resource over
+        REST. The stream stays open until the client disconnects or the server
+        shuts down; clients should reconnect and refetch after a drop.
+      tags:
+        - lists
+      responses:
+        "200":
+          description: |
+            An open event stream. Each SSE "data" line carries one
+            JSON-encoded Event object.
+          content:
+            text/event-stream:
+              schema:
+                type: string
         default:
           $ref: "#/components/responses/Problem"
 
@@ -315,6 +349,15 @@ paths:
           $ref: "#/components/responses/Problem"
 
 components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: session
+      description: |
+        The opaque session cookie set by the /api/auth/* login flows (OIDC or
+        username/password). In dev-auth mode every request is authenticated as
+        the fixed dev user.
   parameters:
     ListId:
       name: listId
@@ -344,6 +387,26 @@ components:
           schema:
             $ref: "#/components/schemas/ProblemDetail"
   schemas:
+    Event:
+      type: object
+      description: |
+        A coarse reload hint delivered as the data of one Server-Sent Event on
+        GET /events. It names what changed, not how.
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum:
+            - lists
+            - items
+          description: |
+            "lists" covers list create, rename and delete; "items" covers item
+            add, update, delete, check and uncheck.
+        listId:
+          type: string
+          format: uuid
+          description: The affected list. Set only on "items" events.
     Unit:
       type: string
       default: amount

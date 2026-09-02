@@ -79,9 +79,12 @@ func New(
 
 	// The SSE stream is registered by hand on the API subrouter, OUTSIDE the
 	// generated ServerInterface handler and its OpenAPI request-validation
-	// middleware: an event stream is not a JSON request/response operation and
-	// cannot be modeled by oapi-codegen, so it must bypass the validator to
-	// stream (the same precedent as the /api/auth/* endpoints above). apiRouter
+	// middleware. It is documented in openapi.yaml (operation streamEvents,
+	// payload schema Event) but excluded from code generation via
+	// exclude-operation-ids in both oapi-codegen configs: an event stream is
+	// not a JSON request/response operation oapi-codegen can serve, so it must
+	// bypass the validator to stream (the same precedent as the /api/auth/*
+	// endpoints above). apiRouter
 	// is mounted at /api/v1, so the route path is relative ("/events" →
 	// /api/v1/events). It is guarded by RequireAuth — events require a logged-in
 	// user — but NOT by publicHealth: unlike health, this endpoint is never

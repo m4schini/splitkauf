@@ -18,6 +18,10 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+const (
+	SessionScopes sessionContextKey = "session.Scopes"
+)
+
 // Defines values for Unit.
 const (
 	Amount Unit = "amount"
@@ -316,6 +320,9 @@ type ListId = openapi_types.UUID
 // Problem RFC 9457 (Problem Details for HTTP APIs) error object. The standard
 // members are optional; additional extension members may be present.
 type Problem = ProblemDetail
+
+// sessionContextKey is the context key for session security scheme
+type sessionContextKey string
 
 // CreateListJSONRequestBody defines body for CreateList for application/json ContentType.
 type CreateListJSONRequestBody = CreateListRequest

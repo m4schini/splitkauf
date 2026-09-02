@@ -3,4 +3,10 @@ generate:
   chi-server: true
   models: true
   embedded-spec: true
+output-options:
+  # GET /events is a Server-Sent Events stream, not a JSON request/response
+  # operation: it is documented in openapi.yaml but served by the hand-written
+  # SSE handler (ports/rest/sse.go), so no stub or client method is generated.
+  exclude-operation-ids:
+    - streamEvents
 output: gen.go
