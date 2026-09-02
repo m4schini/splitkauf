@@ -50,7 +50,7 @@ func (v *V1) AddItem(writer http.ResponseWriter, req *http.Request, listID ListI
 // UpdateItem applies a partial update to an item. The note is special: because
 // it is nullable, "note" being present in the body (even as null) means "set
 // the note" (null clears it), whereas its absence leaves the note unchanged.
-// This distinction requires inspecting the raw body for the key's presence.
+// The generated nullable.Nullable field carries all three states.
 func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listID ListId, itemID ItemId) {
 	raw, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -66,10 +66,6 @@ func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listID Li
 		return
 	}
 
-	var keys map[string]json.RawMessage
-
-	_ = json.Unmarshal(raw, &keys)
-
 	update := lists.ItemUpdate{Name: body.Name, Quantity: nil, Unit: nil, NoteSet: false, Note: nil}
 	if body.Quantity != nil {
 		quantity := int(*body.Quantity)
@@ -81,9 +77,13 @@ func (v *V1) UpdateItem(writer http.ResponseWriter, req *http.Request, listID Li
 		update.Unit = &unit
 	}
 
-	if _, present := keys["note"]; present {
+	if body.Note.IsSpecified() {
 		update.NoteSet = true
-		update.Note = body.Note
+
+		if !body.Note.IsNull() {
+			note := body.Note.MustGet()
+			update.Note = &note
+		}
 	}
 
 	item, err := v.Service.UpdateItem(req.Context(), listID, itemID, update)

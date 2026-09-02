@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/oapi-codegen/nullable"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
@@ -102,9 +103,10 @@ type Attribution struct {
 	// Id The acting user's unique identifier.
 	Id openapi_types.UUID `json:"id"`
 
-	// Name The acting user's display name, or null when no member record
-	// matches the id (the account has never signed in since attribution
-	// was introduced). Clients should show nothing rather than a bare id.
+	// Name The acting user's display name. Absent (or null) when no member
+	// record matches the id (the account has never signed in since
+	// attribution was introduced). Clients should show nothing rather
+	// than a bare id.
 	Name *string `json:"name,omitempty"`
 }
 
@@ -286,8 +288,9 @@ type UpdateItemRequest struct {
 	// Name A new name for the item.
 	Name *string `json:"name,omitempty"`
 
-	// Note A new note for the item (null clears it).
-	Note *string `json:"note,omitempty"`
+	// Note A new note for the item. Omit the field to leave the note
+	// unchanged; send null to clear it.
+	Note nullable.Nullable[string] `json:"note,omitempty"`
 
 	// Quantity A new quantity for the item.
 	Quantity *int32 `json:"quantity,omitempty"`

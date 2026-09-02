@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/m4schini/splitkauf/lists"
 	v1 "github.com/m4schini/splitkauf/ports/rest/v1"
@@ -151,6 +152,69 @@ func TestUpdateItemUnit(t *testing.T) {
 
 	if got.Unit != v1.Kg {
 		t.Errorf("unit = %q, want kg", got.Unit)
+	}
+}
+
+// TestUpdateItemNote covers the three states of the nullable note in a PATCH:
+// absent leaves it unchanged, null clears it and a string sets it. Bodies are
+// marshalled from the generated request type, so the test also proves a typed
+// client can express all three states.
+func TestUpdateItemNote(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		note     nullable.Nullable[string]
+		wantBody string
+		wantSet  bool
+		wantNote *string
+	}{
+		{name: "absent", note: nil, wantBody: `{}`, wantSet: false, wantNote: nil},
+		{name: "null", note: nullable.NewNullNullable[string](), wantBody: `{"note":null}`, wantSet: true, wantNote: nil},
+		{name: "value", note: nullable.NewNullableWithValue("oat"), wantBody: `{"note":"oat"}`, wantSet: true, wantNote: new("oat")},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			listID, itemID := uuid.New(), uuid.New()
+
+			var svc fakeService
+
+			svc.updateItem = func(_ context.Context, _, _ uuid.UUID, itemUpdate lists.ItemUpdate) (lists.Item, error) {
+				if itemUpdate.NoteSet != tt.wantSet {
+					t.Errorf("NoteSet = %v, want %v", itemUpdate.NoteSet, tt.wantSet)
+				}
+
+				switch {
+				case tt.wantNote == nil && itemUpdate.Note != nil:
+					t.Errorf("Note = %q, want nil", *itemUpdate.Note)
+				case tt.wantNote != nil && (itemUpdate.Note == nil || *itemUpdate.Note != *tt.wantNote):
+					t.Errorf("Note = %v, want %q", itemUpdate.Note, *tt.wantNote)
+				}
+
+				return makeItem(itemID, listID, itemNameMilk, 1), nil
+			}
+
+			srv := newServer(t, &svc)
+
+			body, err := json.Marshal(v1.UpdateItemRequest{Note: tt.note})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+
+			if string(body) != tt.wantBody {
+				t.Fatalf("body = %s, want %s", body, tt.wantBody)
+			}
+
+			resp := patchJSON(t, srv.URL+"/api/v1/lists/"+listID.String()+"/items/"+itemID.String(), string(body))
+			defer closeBody(t, resp)
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d, want 200", resp.StatusCode)
+			}
+		})
 	}
 }
 
