@@ -49,6 +49,16 @@ func TestSafeReturnTo(t *testing.T) {
 		// Backslash variants browsers may normalise to "//".
 		{"/\\evil.com", "/"},
 		{"\\\\evil.com", "/"},
+		// Percent-encoded backslash and control-character variants.
+		{"/%5Cevil.com", "/"},
+		{"/%5C%5Cevil.com", "/"},
+		{"/%09/evil.com", "/"},
+		{"/%0A/evil.com", "/"},
+		{"/%2F%2Fevil.com", "/"},
+		// Legitimate paths keep their percent-encoding.
+		{"/lists/abc?x=1", "/lists/abc?x=1"},
+		{"/lists/a%20b", "/lists/a%20b"},
+		{"/lists/k%C3%A4se", "/lists/k%C3%A4se"},
 		// Non-rooted paths must be rejected.
 		{"relative/path", "/"},
 		{"lists", "/"},
