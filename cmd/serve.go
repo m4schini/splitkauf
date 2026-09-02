@@ -196,6 +196,10 @@ func serve() error {
 	apiServer.Addr = net.JoinHostPort(config.C.Server.Host, strconv.Itoa(config.C.Server.Port))
 	apiServer.Handler = rest.New(&v1.V1{DB: conn, Service: service, Events: broker}, sessionManager, authr, broker)
 	apiServer.ReadHeaderTimeout = readHeaderTimeout
+	// Shutdown does not cancel request contexts and waits for connections to go
+	// idle, which an SSE stream never does. Closing the broker ends every open
+	// stream so graceful shutdown completes instead of hitting its deadline.
+	apiServer.RegisterOnShutdown(broker.Close)
 
 	servers := []namedServer{{name: "api", srv: apiServer}}
 

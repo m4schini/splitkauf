@@ -181,3 +181,73 @@ func TestBrokerIsPublisher(t *testing.T) {
 
 	var _ events.Publisher = events.NewBroker()
 }
+
+// TestCloseClosesSubscribers proves Close ends every subscription: each
+// channel is closed and the subscriber set is emptied.
+func TestCloseClosesSubscribers(t *testing.T) {
+	t.Parallel()
+
+	broker := events.NewBroker()
+
+	ch1, unsub1 := broker.Subscribe()
+	defer unsub1()
+
+	ch2, unsub2 := broker.Subscribe()
+	defer unsub2()
+
+	broker.Close()
+
+	for i, ch := range []<-chan events.Event{ch1, ch2} {
+		if _, ok := <-ch; ok {
+			t.Errorf("subscriber %d: channel should be closed after Close", i)
+		}
+	}
+
+	if broker.Count() != 0 {
+		t.Errorf("Count after Close = %d, want 0", broker.Count())
+	}
+}
+
+// TestCloseIsIdempotentAndSafeWithUnsubscribe proves Close can be called more
+// than once, that unsubscribe after Close does not double-close (panic), and
+// that Publish after Close is a no-op.
+func TestCloseIsIdempotentAndSafeWithUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	broker := events.NewBroker()
+	_, unsub := broker.Subscribe()
+
+	broker.Close()
+	broker.Close()
+
+	unsub()
+	unsub()
+
+	broker.Publish(events.Event{Type: events.TypeLists, ListID: ""})
+}
+
+// TestSubscribeAfterCloseReturnsClosedChannel proves a late subscriber (e.g. a
+// stream opened during shutdown) gets an already-closed channel and a no-op
+// unsubscribe, and is not registered.
+func TestSubscribeAfterCloseReturnsClosedChannel(t *testing.T) {
+	t.Parallel()
+
+	broker := events.NewBroker()
+	broker.Close()
+
+	eventCh, unsub := broker.Subscribe()
+	defer unsub()
+
+	select {
+	case _, ok := <-eventCh:
+		if ok {
+			t.Error("channel from Subscribe after Close should be closed")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("channel from Subscribe after Close is not closed")
+	}
+
+	if broker.Count() != 0 {
+		t.Errorf("Count = %d, want 0", broker.Count())
+	}
+}

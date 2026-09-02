@@ -15,43 +15,76 @@ const subscriberBuffer = 16
 // Publish does a non-blocking send to each subscriber so one slow or
 // disconnected client can never stall delivery to the others. The zero value is
 // not usable; construct one with NewBroker. Broker implements Publisher.
+//
+// Close ends every subscription by closing its channel, so long-lived
+// consumers (the SSE streams) return during graceful server shutdown instead
+// of holding their connections open until the shutdown deadline.
 type Broker struct {
-	mu   sync.Mutex
-	subs map[chan Event]struct{}
+	mu     sync.Mutex
+	subs   map[chan Event]struct{}
+	closed bool
 }
 
 // NewBroker returns an empty Broker ready to accept subscribers.
 func NewBroker() *Broker {
 	return &Broker{
-		mu:   sync.Mutex{},
-		subs: make(map[chan Event]struct{}),
+		mu:     sync.Mutex{},
+		subs:   make(map[chan Event]struct{}),
+		closed: false,
 	}
 }
 
 // Subscribe registers a new subscriber and returns a buffered receive channel
-// plus an unsubscribe func. The channel delivers events until unsubscribe is
-// called; unsubscribe removes the subscriber, closes the channel, and is safe
-// to call exactly once (subsequent calls are no-ops). Callers must call
-// unsubscribe (e.g. via defer) to avoid leaking the subscriber.
+// plus an unsubscribe func. The channel delivers events until unsubscribe or
+// Close is called, either of which removes the subscriber and closes the
+// channel; a receive then reports !ok. unsubscribe is safe to call any number
+// of times, including after Close (later calls are no-ops). Callers must call
+// unsubscribe (e.g. via defer) to avoid leaking the subscriber. After Close,
+// Subscribe returns an already-closed channel.
 func (b *Broker) Subscribe() (<-chan Event, func()) {
 	sub := make(chan Event, subscriberBuffer)
 
 	b.mu.Lock()
-	b.subs[sub] = struct{}{}
-	b.mu.Unlock()
+	defer b.mu.Unlock()
 
-	var once sync.Once
+	if b.closed {
+		close(sub)
+
+		return sub, func() {}
+	}
+
+	b.subs[sub] = struct{}{}
 
 	unsubscribe := func() {
-		once.Do(func() {
-			b.mu.Lock()
+		b.mu.Lock()
+		defer b.mu.Unlock()
+
+		// Only close the channel if it is still registered: Close may already
+		// have closed it, and closing twice would panic.
+		if _, ok := b.subs[sub]; ok {
 			delete(b.subs, sub)
-			b.mu.Unlock()
 			close(sub)
-		})
+		}
 	}
 
 	return sub, unsubscribe
+}
+
+// Close closes every subscriber channel, drops all subscribers and makes later
+// Subscribe calls return an already-closed channel. Publish after Close is a
+// no-op. Close is idempotent and safe for concurrent use; it is meant to be
+// registered with http.Server.RegisterOnShutdown so open SSE streams end when
+// the server shuts down.
+func (b *Broker) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.closed = true
+
+	for sub := range b.subs {
+		delete(b.subs, sub)
+		close(sub)
+	}
 }
 
 // Publish delivers event to every current subscriber with a non-blocking send: if a

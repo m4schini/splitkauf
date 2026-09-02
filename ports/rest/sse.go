@@ -21,9 +21,12 @@ const heartbeatInterval = 25 * time.Second
 // It subscribes on connect, writes each event as a `data: <json>` frame,
 // flushes so the browser sees it immediately, and emits a periodic `: ping`
 // comment as a heartbeat. It returns — unsubscribing and stopping the ticker —
-// when the request context is done (client disconnect or server shutdown), so
-// it never leaks the subscription or the ticker. It is nil-safe: with a nil
-// broker it degrades to a heartbeat-only stream rather than panicking.
+// when the request context is done (client disconnect) or when the broker
+// closes the subscription channel (events.Broker.Close, registered as a server
+// shutdown hook, since http.Server.Shutdown does not cancel request contexts),
+// so it never leaks the subscription or the ticker and never stalls a graceful
+// shutdown. It is nil-safe: with a nil broker it degrades to a heartbeat-only
+// stream rather than panicking; such a stream ends only on client disconnect.
 func sseHandler(broker *events.Broker) http.HandlerFunc {
 	return func(writer http.ResponseWriter, req *http.Request) {
 		log := telemetry.Logger("sse")
@@ -69,7 +72,8 @@ func sseHandler(broker *events.Broker) http.HandlerFunc {
 				}
 			case event, ok := <-eventsCh:
 				if !ok {
-					// Broker closed our subscription; end the stream.
+					// Broker closed our subscription (server shutdown); end the
+					// stream so the connection can close.
 					return
 				}
 

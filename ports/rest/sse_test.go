@@ -28,6 +28,16 @@ import (
 func sseServer(t *testing.T, broker *events.Broker) *httptest.Server {
 	t.Helper()
 
+	srv := httptest.NewServer(sseHandlerFor(t, broker))
+	t.Cleanup(srv.Close)
+
+	return srv
+}
+
+// sseHandlerFor builds the full dev-mode REST handler wired to broker.
+func sseHandlerFor(t *testing.T, broker *events.Broker) http.Handler {
+	t.Helper()
+
 	sessions := scs.New()
 
 	var cfg config.Config
@@ -37,10 +47,7 @@ func sseServer(t *testing.T, broker *events.Broker) *httptest.Server {
 		t.Fatalf("auth.New (dev): %v", err)
 	}
 
-	srv := httptest.NewServer(rest.New(&v1.V1{DB: nil, Service: nil, Events: nil}, sessions, authr, broker))
-	t.Cleanup(srv.Close)
-
-	return srv
+	return rest.New(&v1.V1{DB: nil, Service: nil, Events: nil}, sessions, authr, broker)
 }
 
 // TestSSEStreamsPublishedEvent opens the SSE stream, publishes an event on the
@@ -128,6 +135,53 @@ func TestSSEHandlerReturnsOnContextCancel(t *testing.T) {
 
 	// The subscriber must be gone once the handler observes the cancellation.
 	waitForSubscribers(t, broker, 0)
+}
+
+// TestSSEStreamEndsOnServerShutdown proves an open SSE stream does not stall a
+// graceful shutdown: with broker.Close registered as a shutdown hook (as
+// cmd/serve does), Shutdown closes the subscription, the handler returns, and
+// Shutdown completes well before its deadline instead of timing out.
+func TestSSEStreamEndsOnServerShutdown(t *testing.T) {
+	t.Parallel()
+
+	broker := events.NewBroker()
+
+	srv := httptest.NewUnstartedServer(sseHandlerFor(t, broker))
+	srv.Config.RegisterOnShutdown(broker.Close)
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/events: %v", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	waitForSubscribers(t, broker, 1)
+
+	// A generous deadline: a hanging stream would consume all of it and fail
+	// with context.DeadlineExceeded.
+	shutdownCtx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Config.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("Shutdown with an open SSE stream: %v", err)
+	}
+
+	if broker.Count() != 0 {
+		t.Errorf("broker subscriber count after shutdown = %d, want 0", broker.Count())
+	}
+
+	// The stream ended cleanly from the client's point of view too.
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		t.Errorf("reading stream to end after shutdown: %v", err)
+	}
 }
 
 // TestSSERequiresAuth confirms the stream is behind RequireAuth: in OIDC mode
