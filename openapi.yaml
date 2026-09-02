@@ -6,7 +6,8 @@ info:
     Splitkauf API.
 
   license:
-    name: TODO
+    name: CC0-1.0
+    url: https://creativecommons.org/publicdomain/zero/1.0/
 
 servers:
   - url: /api/v1
@@ -44,8 +45,8 @@ paths:
       operationId: getMe
       summary: Get the authenticated user
       description: |
-        Returns the user injected into the request. In M1 this is always the
-        hardcoded dev user (US-A.1); it is replaced by real authentication in M2.
+        Returns the user of the current session, authenticated via OIDC,
+        username/password, or dev mode.
       tags:
         - identity
       responses:
@@ -216,7 +217,7 @@ paths:
       operationId: updateItem
       summary: Update an item
       description: |
-        Updates an item's name, quantity, or note. Only the fields present in
+        Updates an item's name, quantity, unit, or note. Only the fields present in
         the request are changed (last-write-wins for concurrent edits).
       tags:
         - lists
