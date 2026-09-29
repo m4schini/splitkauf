@@ -12,6 +12,14 @@ GOTESTFLAGS ?=
 GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_PACKAGE ?= golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
+# oapi-codegen embeds the OpenAPI spec as a base64'd compress/flate stream, so
+# the bytes of ports/rest/v1/gen.go depend on the stdlib's deflate
+# implementation — a developer on a newer Go than CI regenerates a
+# byte-different file and the generated-code drift gate fails. Pinning the
+# toolchain for the generate recipes (to the same one go.mod, and therefore
+# setup-go, pins) makes `make generate` reproducible on any machine.
+GENERATE_TOOLCHAIN ?= $(shell $(GO) mod edit -json | sed -n 's/.*"Toolchain": "\(go[0-9.]*\)".*/\1/p' | grep . || echo local)
+
 .PHONY: all
 all: build
 
@@ -50,11 +58,11 @@ ports/web/dist/index.html:
 
 # ── Code generation ────────────────────────────────────────────────────
 ports/rest/v1/api.go: openapi.yaml ports/rest/v1/config.yaml
-	go generate ./ports/rest/v1/...
+	GOTOOLCHAIN=$(GENERATE_TOOLCHAIN) go generate ./ports/rest/v1/...
 	@touch $@
 
 client/gen.go: openapi.yaml client/config.yaml
-	go generate ./client/...
+	GOTOOLCHAIN=$(GENERATE_TOOLCHAIN) go generate ./client/...
 	@touch $@
 
 .PHONY: generate
