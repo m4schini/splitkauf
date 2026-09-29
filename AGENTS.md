@@ -96,6 +96,73 @@ Schema changes are new numbered migration pairs (`NNNNNN_name.up.sql` / `.down.s
 
 ---
 
+## Go coding practices
+
+All Go code follows [Effective Go](https://go.dev/doc/effective_go) and [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments). The subset below is what AI assistants must apply to every change; when in doubt, defer to the linked documents.
+
+### Formatting & tooling
+
+- Code MUST be formatted with `make fmt` (`golangci-lint fmt`: `gofmt` + `goimports`).
+- Code MUST pass `make lint` (`golangci-lint`, which includes `go vet`).
+- Run `make tidy` after dependency changes; commit `go.mod` and `go.sum` together.
+
+### Naming
+
+- Package names: short, lowercase, single word, no underscores or mixedCaps.
+- Exported identifiers have a doc comment starting with the identifier's name.
+- Acronyms keep consistent case: `URL`, `ID`, `HTTP`, `SSE`, `DSN` (not `Url`, `Id`, `Http`).
+- Interface names: single-method interfaces end in `-er`. Define interfaces on the consumer side.
+- Receiver names: short (1–2 letters), consistent across all methods of a type.
+
+### Error handling
+
+- Always handle errors; never `_ = someFunc()` without a comment explaining why.
+- Wrap errors with `%w`: `fmt.Errorf("load list: %w", err)`.
+- Error strings: lowercase, no trailing punctuation.
+- Sentinel errors are exported `Err...` variables, compared with `errors.Is`/`errors.As`.
+- Don't log and return the same error — pick one.
+
+### Context
+
+- `context.Context` is always the first parameter, named `ctx`. Never store it in a struct.
+
+### Variables, types & APIs
+
+- Use `any`, not `interface{}`, in new code.
+- Accept interfaces, return concrete types.
+- Don't export identifiers that aren't part of the package's public contract.
+- A nil slice is a valid empty slice — don't return `[]T{}` to "be safe".
+
+### Testing
+
+- File names: `*_test.go`. Prefer table-driven tests with `t.Run(tc.name, ...)`.
+- Use `t.Helper()` in helpers; `t.Cleanup(...)` instead of `defer` for teardown.
+- Run with `-race` for concurrent code (`make test-unit` does).
+- Do not commit fixtures with real credentials, tokens, or personal data.
+
+### Imports
+
+- Group imports in three blocks: standard library, third-party, local (`github.com/m4schini/splitkauf/...`). `goimports` enforces this.
+
+---
+
+## Quality gates
+
+Quality gates are mandatory. Agents MUST NOT skip, bypass, or disable them — not to save time, not to get an unrelated change committed, and not even when a gate looks flaky or the failure looks pre-existing.
+
+Concretely, agents MUST NOT:
+
+- Pass `--no-verify`, `-n`, `--no-gpg-sign`-style bypass flags to `git commit`, `git push`, or any other command in order to skip hooks.
+- Set `HUSKY=0`, `SKIP=...`, `PRE_COMMIT_ALLOW_NO_CONFIG`, `GIT_HOOKS_PATH=/dev/null`, or any other environment variable that disables a hook or gate.
+- Uninstall, rename, move, comment out, or edit a hook (`hack/hooks/`, `.git/hooks/`) to make it stop failing.
+- Add `//nolint`, `eslint-disable`, `t.Skip`, `it.skip`, `xit`, `--no-tests`, or a relaxed `golangci-lint`/`tsconfig`/CI setting to silence a finding instead of fixing it.
+- Narrow a test or lint run (`-run`, `--filter`, single-package invocations) and then report it as if the full gate had passed.
+- Merge, force-push, or mark a PR ready while its checks are failing or still running.
+
+If a gate fails, fix the underlying problem. If it cannot be fixed within the task, stop and report the failure to the user with the exact output — do not work around it. Suppressing a specific finding (a `//nolint` with a reason, a skipped test) is allowed only when a human explicitly asks for that suppression in that place.
+
+---
+
 ## Container builds
 
 The image is defined in `Dockerfile`: a Node stage builds the frontend, a Go stage builds the binary with the frontend embedded, and the runtime stage is `gcr.io/distroless/static:nonroot` with `ENTRYPOINT ["/app"] CMD ["serve"]`.
@@ -212,7 +279,9 @@ The user is always the one who writes and posts the comment. The agent's role en
 - ❌ Adding `Claude-Session` (or similar session-link) trailers.
 - ❌ Writing or posting PR comments on behalf of a human.
 - ❌ Committing secrets, tokens, or credentials.
+- ❌ `interface{}` in new code (use `any`).
 - ❌ Spawning subagents to parallelise plan steps without the user's explicit consent.
 - ❌ Hand-editing generated code instead of changing `openapi.yaml` and regenerating.
 - ❌ Editing a committed migration instead of adding a new one.
 - ❌ Writing documentation outside `docs/agents/` without explicit instruction.
+- ❌ Skipping or bypassing quality gates and commit hooks — `--no-verify`, `HUSKY=0`, disabling a hook, or silencing a finding instead of fixing it.
